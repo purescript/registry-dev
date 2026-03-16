@@ -88,10 +88,9 @@ type PublishConfig =
   }
 
 publishConfigCodec :: CJ.Codec PublishConfig
--- | Publish metadata is authored input, so it must use canonical SPDX
--- | identifiers even though stored manifests remain backward-compatible.
 publishConfigCodec = CJ.named "PublishConfig" $ CJ.Record.object
   { version: Version.codec
+  -- Publish metadata is authored input so it must use canonical SPDX identifiers
   , license: canonicalLicenseCodec
   , location: CJ.Record.optional Location.codec
   , include: CJ.Record.optional (CJ.array CJ.string)
