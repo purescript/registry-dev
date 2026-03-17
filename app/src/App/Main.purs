@@ -18,6 +18,8 @@ main = createServerEnv # Aff.runAff_ case _ of
     Console.log $ "Failed to start server: " <> Aff.message error
     Process.exit' 1
   Right env -> do
+    when env.vars.readOnly do
+      Console.log "READONLY mode enabled: git push, S3 upload, and Pursuit publish are disabled."
     case env.vars.resourceEnv.healthchecksUrl of
       Nothing -> Console.log "HEALTHCHECKS_URL not set, healthcheck pinging disabled"
       Just healthchecksUrl -> Aff.launchAff_ $ healthcheck healthchecksUrl

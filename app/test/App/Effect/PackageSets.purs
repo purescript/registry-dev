@@ -95,6 +95,45 @@ spec = do
       -- bar (dependency) must come before foo (dependent)
       names `Assert.shouldEqual` [ bar, foo ]
 
+  Spec.describe "extraneousPackageDirs" do
+    Spec.it "Returns empty when packages/ matches the target set" do
+      let
+        target = Map.fromFoldable
+          [ Tuple (Utils.unsafePackageName "aff") (Utils.unsafeVersion "7.0.0")
+          , Tuple (Utils.unsafePackageName "prelude") (Utils.unsafeVersion "6.0.0")
+          ]
+        existing = [ "aff@7.0.0", "prelude@6.0.0" ]
+      PackageSets.extraneousPackageDirs target existing `Assert.shouldEqual` []
+
+    Spec.it "Identifies stale packages not in the target set" do
+      let
+        target = Map.fromFoldable
+          [ Tuple (Utils.unsafePackageName "aff") (Utils.unsafeVersion "7.0.0")
+          ]
+        existing = [ "aff@7.0.0", "stale@1.0.0", "old-pkg@2.0.0" ]
+      PackageSets.extraneousPackageDirs target existing `Assert.shouldEqual` [ "stale@1.0.0", "old-pkg@2.0.0" ]
+
+    Spec.it "Identifies old versions of updated packages as extraneous" do
+      let
+        target = Map.fromFoldable
+          [ Tuple (Utils.unsafePackageName "aff") (Utils.unsafeVersion "8.0.0")
+          ]
+        existing = [ "aff@7.0.0" ]
+      PackageSets.extraneousPackageDirs target existing `Assert.shouldEqual` [ "aff@7.0.0" ]
+
+    Spec.it "Returns all dirs when target set is empty" do
+      let
+        target = Map.empty :: Map PackageName Version
+        existing = [ "aff@7.0.0", "prelude@6.0.0" ]
+      PackageSets.extraneousPackageDirs target existing `Assert.shouldEqual` [ "aff@7.0.0", "prelude@6.0.0" ]
+
+    Spec.it "Returns empty when packages/ is empty" do
+      let
+        target = Map.fromFoldable
+          [ Tuple (Utils.unsafePackageName "aff") (Utils.unsafeVersion "7.0.0")
+          ]
+      PackageSets.extraneousPackageDirs target [] `Assert.shouldEqual` []
+
     Spec.it "Processes updates before removals" do
       let
         foo = Utils.unsafePackageName "foo"

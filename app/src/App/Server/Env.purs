@@ -50,6 +50,7 @@ type ServerEnvVars =
   , spacesKey :: String
   , spacesSecret :: String
   , resourceEnv :: ResourceEnv
+  , readOnly :: Boolean
   }
 
 readServerEnvVars :: Aff ServerEnvVars
@@ -62,7 +63,8 @@ readServerEnvVars = do
   spacesKey <- Env.lookupRequired Env.spacesKey
   spacesSecret <- Env.lookupRequired Env.spacesSecret
   resourceEnv <- Env.lookupResourceEnv
-  pure { token, publicKey, privateKey, spacesKey, spacesSecret, resourceEnv }
+  isReadOnly <- Env.lookupWithDefault Env.readOnly false
+  pure { token, publicKey, privateKey, spacesKey, spacesSecret, resourceEnv, readOnly: isReadOnly }
 
 type ServerEnv =
   { cacheDir :: FilePath
@@ -137,20 +139,24 @@ runEffects env operation = Aff.attempt do
   today <- nowUTC
   let logFile = String.take 10 (Formatter.DateTime.format Internal.Format.iso8601Date today) <> ".log"
   let logPath = Path.concat [ env.logsDir, logFile ]
+  let
+    writeMode
+      | env.vars.readOnly = Registry.ReadOnly
+      | otherwise = Registry.CommitAs (Git.pacchettibottiCommitter env.vars.token)
   operation
     # PackageSets.interpret (PackageSets.handle { workdir: scratchDir })
     # Registry.interpret
         ( Registry.handle
             { repos: Registry.defaultRepos
             , pull: Git.ForceClean
-            , write: Registry.CommitAs (Git.pacchettibottiCommitter env.vars.token)
+            , write: writeMode
             , workdir: scratchDir
             , debouncer: env.debouncer
             , cacheRef: env.registryCacheRef
             }
         )
-    # Pursuit.interpret (Pursuit.handleAff env.vars.token)
-    # Storage.interpret (Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
+    # Pursuit.interpret (if env.vars.readOnly then Pursuit.handlePure else Pursuit.handleAff env.vars.token)
+    # Storage.interpret (if env.vars.readOnly then Storage.handleReadOnly env.cacheDir else Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
     # Source.interpret Source.handle
     # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
     # Cache.interpret _compilerCache (Cache.handleFs env.cacheDir)
