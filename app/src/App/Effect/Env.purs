@@ -281,6 +281,20 @@ pacchettibottiED25519Pub = EnvKey
         pure keyFields.key
   }
 
+-- | When set to "true", the server will skip all writes (git push, S3 upload,
+-- | Pursuit publish). Reads and compilations still run normally, which is
+-- | useful for debugging locally without affecting the real registry.
+readOnly :: EnvKey Boolean
+readOnly = EnvKey
+  { key: "READONLY"
+  , decode: case _ of
+      "true" -> Right true
+      "false" -> Right false
+      "1" -> Right true
+      "0" -> Right false
+      other -> Left $ "Expected 'true' or 'false', got: " <> other
+  }
+
 -- | A file path to the JSON payload describing the triggered GitHub event.
 githubEventPath :: EnvKey FilePath
 githubEventPath = EnvKey { key: "GITHUB_EVENT_PATH", decode: pure }
