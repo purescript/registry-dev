@@ -28,7 +28,7 @@ jobs:
 
       - name: Install tools
         if: github.event.action != 'closed'
-        run: npm install --no-save purescript@0.15.15 spago@1.0.3
+        run: npm install --no-save purescript@0.15.15 spago@1.0.3 esbuild
 
       - name: Build dashboard
         if: github.event.action != 'closed'
