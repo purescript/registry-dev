@@ -30,6 +30,13 @@ jobs:
         if: github.event.action != 'closed'
         run: npm install --no-save purescript@0.15.15 spago@1.0.3 esbuild
 
+      # TODO: this is temporary until we fix a bug in spago for bundling single packages:
+      # there is a `purs graph` call that fails when doing that because it's trying to use
+      # all the dependencies of the package, which might not be there. So we build everything.
+      - name: Build whole repo
+        if: github.event.action != 'closed'
+        run: spago build
+
       - name: Build dashboard
         if: github.event.action != 'closed'
         run: npm run dashboard:build
