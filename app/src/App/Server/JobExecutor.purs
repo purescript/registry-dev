@@ -119,7 +119,7 @@ findNextAvailableJob = runMaybeT
 
 jobTimeout :: Job -> Duration.Minutes
 jobTimeout = case _ of
-  PackageSetJob _ -> Duration.Minutes 30.0
+  PackageSetJob _ -> Duration.Minutes 90.0
   PublishJob _ -> Duration.Minutes 10.0
   _ -> Duration.Minutes 5.0
 
