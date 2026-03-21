@@ -70,7 +70,8 @@ instance Ord Manifest where
 
 -- | A codec for encoding and decoding a `Manifest` as JSON. Represented as a
 -- | JSON object. The implementation uses explicitly ordered keys instead of
--- | record sugar.
+-- | record sugar. This decoder remains backward-compatible with historical
+-- | manifests stored in the registry and manifest index.
 codec :: CJ.Codec Manifest
 codec = Profunctor.wrapIso Manifest $ CJ.named "Manifest" $ CJ.object
   $ CJ.recordProp @"name" PackageName.codec

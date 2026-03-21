@@ -129,6 +129,20 @@ derive instance Eq ManifestOrigin
 -- | A parsed manifest along with which format it originated from.
 type ParsedManifest = { manifest :: Manifest, origin :: ManifestOrigin }
 
+type ManifestLicenseField = { license :: String }
+
+manifestLicenseFieldCodec :: CJ.Codec ManifestLicenseField
+manifestLicenseFieldCodec = CJ.named "ManifestLicenseField" $ CJ.Record.object
+  { license: CJ.string
+  }
+
+validateCanonicalManifestLicense :: String -> Either String Unit
+validateCanonicalManifestLicense input = do
+  { license } <- case parseJson manifestLicenseFieldCodec input of
+    Left err -> Left $ CJ.DecodeError.print err
+    Right decoded -> Right decoded
+  void $ License.parseCanonical license
+
 -- | Effect row for package set updates. Authentication is done at the API
 -- | boundary, so we don't need GITHUB_EVENT_ENV effects here.
 type PackageSetUpdateEffects r = (REGISTRY + PACKAGE_SETS + LOG + EXCEPT String + r)
@@ -436,13 +450,17 @@ parseSourceManifest { packageDir, name, version, ref, location } = do
         Left error -> do
           Log.error $ "Manifest does not typecheck: " <> error
           Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
-        Right _ -> case parseJson Manifest.codec string of
+        Right _ -> case validateCanonicalManifestLicense string of
           Left err -> do
-            Log.error $ "Failed to parse manifest: " <> CJ.DecodeError.print err
-            Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
-          Right m -> do
-            Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec m
-            pure m
+            Log.error $ "Manifest license is not canonical: " <> err
+            Except.throw $ "Found a purs.json file in the package source, but its license field is not canonical."
+          Right _ -> case parseJson Manifest.codec string of
+            Left err -> do
+              Log.error $ "Failed to parse manifest: " <> CJ.DecodeError.print err
+              Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
+            Right m -> do
+              Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec m
+              pure m
 
     FromSpagoYaml -> do
       let spagoYamlPath = Path.concat [ packageDir, "spago.yaml" ]
@@ -1308,20 +1326,17 @@ instance FsEncodable PursGraphCache where
       Exists.mkExists $ Cache.AsJson cacheKey codec next
 
 -- | Errors that can occur when validating license consistency
-data LicenseValidationError = LicenseMismatch
-  { manifestLicense :: License
-  , detectedLicenses :: Array License
-  }
+data LicenseValidationError = LicenseMismatch { manifest :: License, detected :: Array License }
 
 derive instance Eq LicenseValidationError
 
 printLicenseValidationError :: LicenseValidationError -> String
 printLicenseValidationError = case _ of
-  LicenseMismatch { manifestLicense, detectedLicenses } -> Array.fold
+  LicenseMismatch licenses -> Array.fold
     [ "License mismatch: The manifest specifies license '"
-    , License.print manifestLicense
+    , License.print licenses.manifest
     , "' but the following license(s) were detected in your repository: "
-    , String.joinWith ", " (map License.print detectedLicenses)
+    , String.joinWith ", " (map License.print licenses.detected)
     , ". Please ensure your manifest license accurately represents all licenses "
     , "in your repository. If multiple licenses apply, join them using SPDX "
     , "conjunctions (e.g., 'MIT AND Apache-2.0' or 'MIT OR Apache-2.0')."
@@ -1344,44 +1359,40 @@ validateLicense packageDir manifestLicense = do
       pure Nothing
     Right detectedStrings -> do
       let
+        -- Best effort: keep detected licenses that parse, which canonicalizes
+        -- deprecated IDs when possible and preserves recognized ambiguous
+        -- deprecated IDs for validation.
         parsedLicenses :: Array License
-        parsedLicenses = Array.mapMaybe (hush <<< License.parse) detectedStrings
+        parsedLicenses =
+          detectedStrings # Array.mapMaybe (hush <<< License.parse)
 
       Log.debug $ "Detected licenses: " <> String.joinWith ", " detectedStrings
 
       if Array.null parsedLicenses then do
         Log.debug "No licenses detected from repository files, nothing to validate."
         pure Nothing
-      else case License.extractIds manifestLicense of
-        Left err -> do
-          -- This shouldn't be possible (we have already validated the license)
-          -- as part of constructing the manifest
-          Log.warn $ "Could not extract license IDs from manifest: " <> err
+      else do
+        let
+          manifestIds = License.extractIds manifestLicense
+          manifestIdSet = Set.fromFoldable manifestIds
+
+          -- A detected license is covered if all its IDs are in the manifest IDs
+          isCovered :: License -> Boolean
+          isCovered license =
+            License.extractIds license # Array.all \id ->
+              Set.member id manifestIdSet
+
+          uncoveredLicenses :: Array License
+          uncoveredLicenses = Array.filter (not <<< isCovered) parsedLicenses
+
+        if Array.null uncoveredLicenses then do
+          Log.debug "All detected licenses are covered by the manifest license."
           pure Nothing
-        Right manifestIds -> do
-          let
-            manifestIdSet = Set.fromFoldable manifestIds
-
-            -- A detected license is covered if all its IDs are in the manifest IDs
-            isCovered :: License -> Boolean
-            isCovered license = case License.extractIds license of
-              Left _ -> false
-              Right ids -> Array.all (\id -> Set.member id manifestIdSet) ids
-
-            uncoveredLicenses :: Array License
-            uncoveredLicenses = Array.filter (not <<< isCovered) parsedLicenses
-
-          if Array.null uncoveredLicenses then do
-            Log.debug "All detected licenses are covered by the manifest license."
-            pure Nothing
-          else do
-            Log.warn $ Array.fold
-              [ "License mismatch detected: manifest has '"
-              , License.print manifestLicense
-              , "' but detected "
-              , String.joinWith ", " (map License.print parsedLicenses)
-              ]
-            pure $ Just $ LicenseMismatch
-              { manifestLicense
-              , detectedLicenses: uncoveredLicenses
-              }
+        else do
+          Log.warn $ Array.fold
+            [ "License mismatch detected: manifest has '"
+            , License.print manifestLicense
+            , "' but detected "
+            , String.joinWith ", " (map License.print parsedLicenses)
+            ]
+          pure $ Just $ LicenseMismatch { manifest: manifestLicense, detected: uncoveredLicenses }

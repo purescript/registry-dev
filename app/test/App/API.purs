@@ -8,6 +8,7 @@ import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
+import Data.String.Pattern (Pattern(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Ref as Ref
@@ -27,6 +28,7 @@ import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
 import Registry.License as License
+import Registry.Location (Location(..))
 import Registry.PackageName as PackageName
 import Registry.Test.Assert as Assert
 import Registry.Test.Assert.Run as Assert.Run
@@ -51,6 +53,9 @@ spec :: Spec.Spec Unit
 spec = do
   Spec.describe "Verifies build plans" do
     checkBuildPlanToResolutions
+
+  Spec.describe "Parses source manifests" do
+    parseSourceManifestSpec
 
   Spec.describe "Validates licenses match" do
     licenseValidation
@@ -222,6 +227,38 @@ checkBuildPlanToResolutions = do
       path = Path.concat [ installedResolutions, PackageName.print packageName <> "-" <> Version.print version ]
     pure $ Tuple bowerName { path, version }
 
+parseSourceManifestSpec :: Spec.Spec Unit
+parseSourceManifestSpec = do
+  Spec.it "Rejects deprecated SPDX identifiers in purs.json" do
+    resourceEnv <- liftEffect Env.lookupResourceEnv
+    Aff.bracket Tmp.mkTmpDir FS.Extra.remove \packageDir -> do
+      let
+        manifestPath = Path.concat [ packageDir, "purs.json" ]
+        args =
+          { packageDir
+          , name: Utils.unsafePackageName "registry-lib"
+          , version: Utils.unsafeVersion "0.0.1"
+          , ref: "v0.0.1"
+          , location: GitHub { owner: "purescript", repo: "registry-dev", subdir: Nothing }
+          }
+
+      FS.Aff.writeTextFile UTF8 manifestPath
+        """{"name":"registry-lib","version":"0.0.1","license":"AGPL-3.0","location":{"githubOwner":"purescript","githubRepo":"registry-dev"},"ref":"v0.0.1","dependencies":{"prelude":">=6.0.0 <7.0.0"}}"""
+
+      result <-
+        API.parseSourceManifest args
+          # Env.runResourceEnv resourceEnv
+          # Log.interpret (\(Log.Log _ _ next) -> pure next)
+          # Except.runExcept
+          # Run.runBaseAff'
+
+      case result of
+        Left err ->
+          unless (String.contains (Pattern "license field is not canonical") err) do
+            Assert.fail $ "Expected a canonical license error, but got: " <> err
+        Right _ ->
+          Assert.fail "Expected parseSourceManifest to reject deprecated SPDX identifiers"
+
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do
   Spec.it "Picks correct files when packaging a tarball" \{ tmp, writeDirectories, writeFiles } -> do
@@ -361,7 +398,10 @@ copySourceFiles = Spec.hoistSpec identity (\_ -> Assert.Run.runBaseEffects) $ Sp
 
 licenseValidation :: Spec.Spec Unit
 licenseValidation = do
-  let fixtures = Path.concat [ "app", "fixtures", "licenses", "halogen-hooks" ]
+  let
+    fixtures = Path.concat [ "app", "fixtures", "licenses", "halogen-hooks" ]
+    deprecatedFixture = Path.concat [ "app", "fixtures", "licenses", "deprecated-agpl" ]
+    ambiguousFixture = Path.concat [ "app", "fixtures", "licenses", "ambiguous-gfdl" ]
 
   Spec.describe "validateLicense" do
     Spec.it "Passes when manifest license covers all detected licenses" do
@@ -375,9 +415,9 @@ licenseValidation = do
       let manifestLicense = unsafeLicense "MIT"
       result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
       case result of
-        Just (LicenseMismatch { detectedLicenses }) ->
+        Just (LicenseMismatch { detected }) ->
           -- Should detect that Apache-2.0 is not covered
-          Assert.shouldContain (map License.print detectedLicenses) "Apache-2.0"
+          Assert.shouldContain (map License.print detected) "Apache-2.0"
         _ ->
           Assert.fail "Expected LicenseMismatch error"
 
@@ -386,11 +426,11 @@ licenseValidation = do
       let manifestLicense = unsafeLicense "BSD-3-Clause"
       result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
       case result of
-        Just (LicenseMismatch { manifestLicense: ml, detectedLicenses }) -> do
+        Just (LicenseMismatch { manifest: ml, detected }) -> do
           Assert.shouldEqual "BSD-3-Clause" (License.print ml)
           -- Both MIT and Apache-2.0 should be in the detected licenses
-          Assert.shouldContain (map License.print detectedLicenses) "MIT"
-          Assert.shouldContain (map License.print detectedLicenses) "Apache-2.0"
+          Assert.shouldContain (map License.print detected) "MIT"
+          Assert.shouldContain (map License.print detected) "Apache-2.0"
         _ ->
           Assert.fail "Expected LicenseMismatch error"
 
@@ -399,6 +439,24 @@ licenseValidation = do
       let manifestLicense = unsafeLicense "MIT OR Apache-2.0"
       result <- Assert.Run.runBaseEffects $ validateLicense fixtures manifestLicense
       Assert.shouldEqual Nothing result
+
+    Spec.it "Canonicalizes deterministic deprecated detected licenses during validation" do
+      let manifestLicense = unsafeLicense "MIT"
+      result <- Assert.Run.runBaseEffects $ validateLicense deprecatedFixture manifestLicense
+      case result of
+        Just (LicenseMismatch { detected }) ->
+          Assert.shouldContain (map License.print detected) "AGPL-3.0-only"
+        _ ->
+          Assert.fail "Expected LicenseMismatch error"
+
+    Spec.it "Preserves ambiguous deprecated detected licenses during validation" do
+      let manifestLicense = unsafeLicense "MIT"
+      result <- Assert.Run.runBaseEffects $ validateLicense ambiguousFixture manifestLicense
+      case result of
+        Just (LicenseMismatch { detected }) ->
+          Assert.shouldContain (map License.print detected) "GFDL-1.3"
+        _ ->
+          Assert.fail "Expected LicenseMismatch error"
 
 unsafeLicense :: String -> License
 unsafeLicense str = unsafeFromRight $ License.parse str

@@ -15,6 +15,7 @@ import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Codec as Codec
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Common as CJ.Common
@@ -74,9 +75,14 @@ bowerfileToPursJson
   :: Bowerfile
   -> Either String { license :: License, description :: Maybe String, dependencies :: Map PackageName Range }
 bowerfileToPursJson (Bowerfile { description, dependencies, license }) = do
-  parsedLicense <- case Array.mapMaybe (hush <<< License.parse) license of
-    [] -> Left "No valid SPDX license found in bower.json"
-    multiple -> Right $ License.joinWith License.And multiple
+  let
+    -- Best effort: keep any licenses that parse cleanly and drop the rest.
+    validLicenses = Array.mapMaybe (hush <<< License.parseCanonical) license
+
+  parsedLicense <-
+    case NonEmptyArray.fromArray validLicenses of
+      Nothing -> Left "No valid SPDX license found in bower.json"
+      Just multiple -> Right $ License.joinWith License.And multiple
 
   parsedDeps <- parseDependencies dependencies
 
@@ -134,7 +140,7 @@ spagoDhallToPursJson
 spagoDhallToPursJson (SpagoDhallJson { license, dependencies, packages }) = do
   parsedLicense <- case license of
     Nothing -> Left "No license found in spago.dhall"
-    Just lic -> case License.parse (NonEmptyString.toString lic) of
+    Just lic -> case License.parseCanonical (NonEmptyString.toString lic) of
       Left _ -> Left $ "Invalid SPDX license in spago.dhall: " <> NonEmptyString.toString lic
       Right l -> Right l
 

@@ -361,7 +361,7 @@ Alternately, this can be written without an id:
 **[Source](./lib/src/Registry/License.purs)**
 **[Spec](./types/v1/License.dhall)**
 
-All packages in the registry must have a license that grants permission for redistribution of the source code. Concretely, the registry requires that all packages use an SPDX license and specify an [SPDX license identifier](https://spdx.dev/ids/). `AND` and `OR` conjunctions are allowed, and licenses can contain exceptions using the `WITH` preposition. The SPDX specification describes [how licenses can be combined and exceptions applied](https://spdx.dev/ids#how).
+All packages in the registry must have a license that grants permission for redistribution of the source code. Concretely, the registry requires that all packages use an SPDX license and specify an [SPDX license identifier](https://spdx.dev/ids/). `AND` and `OR` conjunctions are allowed, and licenses can contain exceptions using the `WITH` preposition. The SPDX specification describes [how licenses can be combined and exceptions applied](https://spdx.dev/ids#how). Newly submitted manifests must use current canonical SPDX identifiers, but registry readers should remain backward-compatible with historical stored manifests that still use deprecated SPDX spellings.
 
 A `License` is represented as a string, which must be a valid SPDX identifier. For example:
 

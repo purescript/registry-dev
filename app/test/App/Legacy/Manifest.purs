@@ -6,6 +6,7 @@ import Codec.JSON.DecodeError as CJ.DecodeError
 import Data.Array as Array
 import Data.Codec.JSON as CJ
 import Registry.App.Legacy.Manifest as Legacy.Manifest
+import Registry.License as License
 import Registry.Manifest (Manifest(..))
 import Registry.Test.Assert as Assert
 import Test.Spec (Spec)
@@ -133,6 +134,21 @@ bowerfileToPursJsonSpec = do
         Right bowerfile -> case Legacy.Manifest.bowerfileToPursJson bowerfile of
           Left err -> Assert.fail $ "Failed to convert bowerfile:\n" <> err
           Right _ -> pure unit
+
+    Spec.it "Drops invalid SPDX identifiers when valid licenses remain" do
+      let
+        input =
+          """
+          { "license": [ "MIT", "AGPL-3.0" ]
+          , "dependencies": { "purescript-prelude": "^6.0.0" }
+          }
+          """
+      case parseJson Legacy.Manifest.bowerfileCodec input of
+        Left err -> Assert.fail $ "Failed to parse bowerfile:\n" <> CJ.DecodeError.print err
+        Right bowerfile -> case Legacy.Manifest.bowerfileToPursJson bowerfile of
+          Left err -> Assert.fail $ "Failed to convert bowerfile:\n" <> err
+          Right result ->
+            Assert.shouldEqual "MIT" (License.print result.license)
 
   Spec.describe "Rejects invalid Bowerfiles" do
     Spec.it "Fails on missing license" do
