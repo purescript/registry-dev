@@ -573,7 +573,7 @@ code, pre {
   text-align: right;
   padding-right: 0.75em;
 }
-.log-table__th--time { width: 9em; }
+.log-table__th--time { width: 13em; }
 .log-table__th--level { width: 5em; }
 .log-entry__rownum {
   font-family: "Roboto Mono", monospace;
@@ -596,7 +596,7 @@ code, pre {
   white-space: nowrap;
   padding: 0.25em 0.75em 0.25em 0;
   vertical-align: baseline;
-  width: 8em;
+  width: 13em;
 }
 @media (prefers-color-scheme: dark) {
   .log-entry__time { color: #a0a0a0; }
