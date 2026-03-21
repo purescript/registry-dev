@@ -35,7 +35,7 @@ jobs:
       # all the dependencies of the package, which might not be there. So we build everything.
       - name: Build whole repo
         if: github.event.action != 'closed'
-        run: spago build
+        run: npx spago build
 
       - name: Build dashboard
         if: github.event.action != 'closed'
