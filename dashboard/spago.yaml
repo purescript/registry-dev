@@ -12,14 +12,15 @@ package:
     - datetime
     - effect
     - either
-    - enums
     - exceptions
     - fetch
     - foldable-traversable
+    - formatters
     - halogen
     - halogen-subscriptions
     - integers
     - json
+    - lists
     - maybe
     - newtype
     - now
