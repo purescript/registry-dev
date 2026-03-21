@@ -36,6 +36,10 @@ There are two additional PureScript directories focused on testing only:
 - `app-e2e` contains tests that exercise the server API, which requires that a server and associated wiremock services are running
 - `test-utils` contains utility code intended only for tests
 
+There is one additional directory for the web dashboard:
+
+- `dashboard` contains the static HTML/CSS/JS dashboard for monitoring registry jobs. It is deployed independently to GitHub Pages and requires no build step.
+
 There are three more directories containing code for the registry.
 
 - `db` contains schemas and migrations for the sqlite3 database used by the server.
@@ -252,6 +256,36 @@ services.wiremock-github-api = {
 ```
 
 It is also possible to include specific files that should be returned to requests via the `files` key. Here's another short example of setting up an S3 mock, in which we copy files from the fixtures into the wiremock service's working directory given a particular file name, and then write request/response mappings that respond to requests by reading the file at path given by `bodyFileName`.
+
+## Dashboard Development
+
+The `dashboard/` directory contains a Halogen (PureScript) application for monitoring registry jobs. It is deployed to GitHub Pages and calls the registry API cross-origin.
+
+### Building
+
+To produce a browser JS bundle:
+
+```sh
+npm run dashboard:build
+```
+
+This outputs `dashboard/app.js`, which `dashboard/index.html` loads via `<script src="./app.js">`.
+
+### Local Development
+
+For iterative development with live rebuild and a local dev server:
+
+```sh
+npm run dashboard:dev
+```
+
+This starts esbuild in watch mode: it serves the dashboard at `http://localhost:8000` and automatically rebuilds `app.js` when PureScript source files change (after running `spago build`).
+
+The API base URL is hardcoded in `dashboard/src/Dashboard/API.purs` (`defaultConfig`) to the production registry URL. The server includes CORS headers with `Access-Control-Allow-Origin: *`, so cross-origin requests from the dashboard work without any additional configuration.
+
+### Deployment
+
+The dashboard is deployed automatically by the `.github/workflows/dashboard.yml` workflow. Pushing changes to `dashboard/**` on `master` triggers a GitHub Pages deployment.
 
 ## Deployment
 

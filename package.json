@@ -6,5 +6,9 @@
     "app",
     "foreign",
     "lib"
-  ]
+  ],
+  "scripts": {
+    "dashboard:dev": "spago bundle -p registry-dashboard --module Dashboard.Main --platform browser --bundle-type app --outfile ../dashboard/app.js --bundler-args '--watch=forever' --bundler-args '--servedir=./dashboard'",
+    "dashboard:build": "spago bundle -p registry-dashboard --module Dashboard.Main --platform browser --bundle-type app --outfile ../dashboard/app.js"
+  }
 }

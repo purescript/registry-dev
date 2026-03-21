@@ -1,0 +1,60 @@
+name: Deploy Dashboard
+
+on:
+  push:
+    branches: [master]
+    paths: ['dashboard/**']
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+    paths: ['dashboard/**']
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency: pages-${{ github.ref }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        if: github.event.action != 'closed'
+        uses: DeterminateSystems/nix-installer-action@v4
+
+      - name: Setup Nix cache
+        if: github.event.action != 'closed'
+        uses: DeterminateSystems/magic-nix-cache-action@v2
+
+      - name: Build dashboard
+        if: github.event.action != 'closed'
+        run: nix develop --command npm run dashboard:build
+
+      - name: Verify bundle
+        if: github.event.action != 'closed'
+        run: test -f dashboard/app.js
+
+      - name: Prepare deploy directory
+        if: github.event.action != 'closed'
+        run: |
+          mkdir -p _site
+          cp dashboard/index.html _site/
+          cp dashboard/app.js _site/
+          cp -r dashboard/static _site/
+
+      - name: Deploy to Pages
+        if: github.ref == 'refs/heads/master'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: _site
+          clean-exclude: pr-preview
+
+      # On 'closed' events this removes the preview directory from gh-pages;
+      # on all other PR events it deploys the build to pr-preview/pr-<number>/.
+      - name: Deploy PR preview
+        if: github.event_name == 'pull_request'
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./_site/

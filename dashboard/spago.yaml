@@ -1,0 +1,34 @@
+package:
+  name: registry-dashboard
+  publish:
+    license: BSD-3-Clause
+    version: 0.0.1
+  dependencies:
+    - aff
+    - arrays
+    - codec-json
+    - const
+    - control
+    - datetime
+    - effect
+    - either
+    - enums
+    - exceptions
+    - fetch
+    - foldable-traversable
+    - halogen
+    - halogen-subscriptions
+    - integers
+    - json
+    - maybe
+    - newtype
+    - now
+    - parallel
+    - prelude
+    - registry-lib
+    - routing-duplex
+    - strings
+    - tailrec
+    - web-events
+    - web-html
+    - web-uievents
