@@ -20,6 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node
+        if: github.event.action != 'closed'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Install tools
         if: github.event.action != 'closed'
         run: npm install --no-save purescript@0.15.15 spago@1.0.3
