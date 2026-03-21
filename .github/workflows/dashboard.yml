@@ -20,17 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nix
+      - name: Install tools
         if: github.event.action != 'closed'
-        uses: DeterminateSystems/nix-installer-action@v4
-
-      - name: Setup Nix cache
-        if: github.event.action != 'closed'
-        uses: DeterminateSystems/magic-nix-cache-action@v2
+        run: npm install --no-save purescript@0.15.15 spago@1.0.3
 
       - name: Build dashboard
         if: github.event.action != 'closed'
-        run: nix develop --command npm run dashboard:build
+        run: npm run dashboard:build
 
       - name: Verify bundle
         if: github.event.action != 'closed'
