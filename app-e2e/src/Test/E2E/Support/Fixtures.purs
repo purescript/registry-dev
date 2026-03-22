@@ -43,9 +43,9 @@ import Registry.Version (Version)
 
 type PackageFixture = { name :: PackageName, version :: Version }
 
--- | effect@4.0.0 fixture package
+-- | effect@4.0.1 fixture package (4.0.0 is pre-populated in startup fixtures for cascade testing)
 effect :: PackageFixture
-effect = { name: Utils.unsafePackageName "effect", version: Utils.unsafeVersion "4.0.0" }
+effect = { name: Utils.unsafePackageName "effect", version: Utils.unsafeVersion "4.0.1" }
 
 -- | console@6.1.0 fixture package
 console :: PackageFixture
@@ -59,8 +59,8 @@ prelude = { name: Utils.unsafePackageName "prelude", version: Utils.unsafeVersio
 slug :: PackageFixture
 slug = { name: Utils.unsafePackageName "slug", version: Utils.unsafeVersion "3.0.0" }
 
--- | Standard publish data for effect@4.0.0, used by E2E tests.
--- | This matches the fixtures in app/fixtures/github-packages/effect-4.0.0
+-- | Standard publish data for effect@4.0.1, used by E2E tests.
+-- | This matches the fixtures in app/fixtures/github-packages/effect-4.0.1
 effectPublishData :: Operation.PublishData
 effectPublishData =
   { name: effect.name
@@ -69,7 +69,7 @@ effectPublishData =
       , repo: "purescript-effect"
       , subdir: Nothing
       }
-  , ref: "v4.0.0"
+  , ref: "v4.0.1"
   , compiler: Just $ Utils.unsafeVersion "0.15.10"
   , resolutions: Nothing
   , version: effect.version

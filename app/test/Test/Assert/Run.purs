@@ -3,6 +3,7 @@
 module Registry.Test.Assert.Run
   ( TEST_EFFECTS
   , runBaseEffects
+  , runRegistryMock
   , runTestEffects
   , shouldContain
   , shouldNotContain
@@ -136,6 +137,14 @@ runBaseEffects :: forall a. Run (LOG + EXCEPT String + AFF + EFFECT + ()) a -> A
 runBaseEffects = do
   Log.interpret (\(Log _ _ next) -> pure next)
     -- Base effects
+    >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
+    >>> Run.runBaseAff'
+
+-- | For testing Run functions that only need the REGISTRY effect.
+runRegistryMock :: forall a. Ref (Map PackageName Metadata) -> Ref ManifestIndex -> Run (EXCEPT String + LOG + REGISTRY + AFF + EFFECT + ()) a -> Aff a
+runRegistryMock metadataRef indexRef =
+  Registry.interpret (handleRegistryMock { metadataRef, indexRef })
+    >>> Log.interpret (\(Log _ _ next) -> pure next)
     >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
     >>> Run.runBaseAff'
 

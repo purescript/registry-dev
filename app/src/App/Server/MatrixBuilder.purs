@@ -211,15 +211,22 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
   manifestIndex <- Registry.readAllManifests
   let dependentManifests = ManifestIndex.dependants manifestIndex name version
   newJobs <- for dependentManifests \(Manifest manifest) -> do
-    -- we first verify if we have already attempted this package with this compiler,
-    -- either in the form of having it in the metadata already, or as a failed compilation
-    -- (i.e. if we find compilers in the metadata for this version we only check this one
-    -- if it's newer, because all the previous ones have been tried)
+    -- We skip if this compiler is already in the package's metadata compilers
+    -- list (meaning it was already successfully tested). Failed compilations
+    -- are not recorded in metadata, but the DB deduplication in insertMatrixJob
+    -- prevents re-enqueuing jobs that already exist.
     shouldAttemptToCompile <- Registry.readMetadata manifest.name >>= case _ of
-      Nothing -> pure false
-      Just metadata -> pure $ case Map.lookup version (un Metadata metadata).published of
-        Nothing -> false
-        Just { compilers } -> any (_ > compiler) compilers
+      Nothing -> do
+        Log.debug $ "Skipping " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version <> ": no metadata found"
+        pure false
+      Just metadata -> do
+        let
+          result = case Map.lookup manifest.version (un Metadata metadata).published of
+            Nothing -> false
+            Just { compilers } -> all (_ /= compiler) compilers
+        unless result do
+          Log.debug $ "Skipping " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version <> ": compiler " <> Version.print compiler <> " already tested or version not published"
+        pure result
     case shouldAttemptToCompile of
       false -> pure Nothing
       true -> do
