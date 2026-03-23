@@ -174,10 +174,12 @@ spec = do
         copyFixture "registry"
         copyFixture "registry-storage"
         copyFixture "github-packages"
-        -- We remove effect-4.0.0.tar.gz since the unit test publishes it from
-        -- scratch and will fail if it's already in storage. We have it in
-        -- storage for the separate integration tests.
+        -- We remove effect fixtures since the unit test publishes effect from
+        -- scratch and will fail if it's already registered. We have these in
+        -- fixtures for the separate integration tests.
         FS.Extra.remove $ Path.concat [ testFixtures, "registry-storage", "effect-4.0.0.tar.gz" ]
+        FS.Extra.remove $ Path.concat [ testFixtures, "registry", "metadata", "effect.json" ]
+        FS.Extra.remove $ Path.concat [ testFixtures, "registry-index", "ef" ]
 
       let
         readFixtures = do

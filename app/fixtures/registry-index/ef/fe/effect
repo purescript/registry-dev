@@ -1,0 +1,1 @@
+{"name":"effect","version":"4.0.0","license":"BSD-3-Clause","location":{"githubOwner":"purescript","githubRepo":"purescript-effect"},"ref":"v4.0.0","description":"Native side effects","dependencies":{"prelude":">=6.0.0 <7.0.0"}}

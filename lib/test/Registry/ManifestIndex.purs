@@ -139,6 +139,40 @@ spec = do
 
     testIndex ManifestIndex.ConsiderRanges { satisfied, unsatisfied: [] }
 
+  Spec.it "Rejects deletion when remaining versions don't satisfy dependents' ranges" do
+    let
+      prelude = unsafeManifest "prelude" "1.0.0" []
+      effect_1 = unsafeManifest "effect" "1.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
+      effect_2 = unsafeManifest "effect" "2.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
+      -- console depends on effect >=2.0.0, so removing effect@2.0.0 should fail
+      console = unsafeManifest "console" "1.0.0" [ Tuple "effect" ">=2.0.0 <3.0.0" ]
+      index = ManifestIndex.insert ManifestIndex.ConsiderRanges prelude ManifestIndex.empty
+        >>= ManifestIndex.insert ManifestIndex.ConsiderRanges effect_1
+        >>= ManifestIndex.insert ManifestIndex.ConsiderRanges effect_2
+        >>= ManifestIndex.insert ManifestIndex.ConsiderRanges console
+    case index of
+      Left errors -> Assert.fail $ formatInsertErrors errors
+      Right idx -> case ManifestIndex.delete ManifestIndex.ConsiderRanges (Utils.unsafePackageName "effect") (Utils.unsafeVersion "2.0.0") idx of
+        Left _ -> pure unit
+        Right _ -> Assert.fail "Expected deletion to fail when remaining versions don't satisfy dependent's range"
+
+  Spec.it "Allows deletion when remaining versions satisfy dependents' ranges" do
+    let
+      prelude = unsafeManifest "prelude" "1.0.0" []
+      effect_1 = unsafeManifest "effect" "1.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
+      effect_2 = unsafeManifest "effect" "2.0.0" [ Tuple "prelude" ">=1.0.0 <2.0.0" ]
+      -- console depends on effect >=1.0.0, so removing effect@2.0.0 is fine (1.0.0 satisfies)
+      console = unsafeManifest "console" "1.0.0" [ Tuple "effect" ">=1.0.0 <3.0.0" ]
+      index = ManifestIndex.insert ManifestIndex.ConsiderRanges prelude ManifestIndex.empty
+        >>= ManifestIndex.insert ManifestIndex.ConsiderRanges effect_1
+        >>= ManifestIndex.insert ManifestIndex.ConsiderRanges effect_2
+        >>= ManifestIndex.insert ManifestIndex.ConsiderRanges console
+    case index of
+      Left errors -> Assert.fail $ formatInsertErrors errors
+      Right idx -> case ManifestIndex.delete ManifestIndex.ConsiderRanges (Utils.unsafePackageName "effect") (Utils.unsafeVersion "2.0.0") idx of
+        Left errors -> Assert.fail $ "Expected deletion to succeed but got errors:\n" <> formatDeleteErrors errors
+        Right _ -> pure unit
+
   Spec.it "Does not parse unacceptable cyclical index" do
     let
       unsatisfied :: Array Manifest
@@ -212,6 +246,12 @@ testSorted input = do
       , " is not equal to "
       , JSON.printIndented $ CJ.encode (CJ.array manifestCodec') sorted
       ]
+
+formatDeleteErrors :: Map PackageName (Map Version.Version (Map PackageName Range)) -> String
+formatDeleteErrors errors = String.joinWith "\n"
+  [ "Failed to delete. Unsatisfied:"
+  , JSON.printIndented $ CJ.encode (Internal.Codec.packageMap (Internal.Codec.versionMap (Internal.Codec.packageMap Range.codec))) errors
+  ]
 
 formatInsertErrors :: Map PackageName Range -> String
 formatInsertErrors errors = String.joinWith "\n"

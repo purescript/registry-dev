@@ -133,10 +133,9 @@ insert consider manifest@(Manifest { name, version, dependencies }) (ManifestInd
     Left unsatisfied
 
 -- | Delete a package version from the manifest index, failing if it produces an
--- | invalid manifest index. Since we only verify unsatisfied dependencies wrt
--- | package names (and not package versions), it is always acceptable to delete
--- | a package version so long as it has at least 2 versions. However, removing
--- | a package altogether incurs a full validation check.
+-- | invalid manifest index. When considering ranges, we must validate that
+-- | removing the version doesn't leave any dependent's ranges unsatisfied,
+-- | even if other versions of the same package remain.
 delete :: IncludeRanges -> PackageName -> Version -> ManifestIndex -> Either (Map PackageName (Map Version (Map PackageName Range))) ManifestIndex
 delete consider name version (ManifestIndex index) = do
   case Map.lookup name index of
@@ -146,8 +145,14 @@ delete consider name version (ManifestIndex index) = do
         Tuple _ versions <- Map.toUnfoldableUnordered (Map.delete name index)
         Tuple _ manifest <- Map.toUnfoldableUnordered versions
         [ manifest ]
-    Just _ -> do
-      pure (ManifestIndex (Map.update (Just <<< Map.delete version) name index))
+    Just _ -> case consider of
+      IgnoreRanges ->
+        pure (ManifestIndex (Map.update (Just <<< Map.delete version) name index))
+      ConsiderRanges ->
+        fromSet consider $ Set.fromFoldable do
+          Tuple _ versions <- Map.toUnfoldableUnordered (Map.update (Just <<< Map.delete version) name index)
+          Tuple _ manifest <- Map.toUnfoldableUnordered versions
+          [ manifest ]
 
 -- | Convert a set of manifests into a `ManifestIndex`. Reports all failures
 -- | encountered rather than short-circuiting.

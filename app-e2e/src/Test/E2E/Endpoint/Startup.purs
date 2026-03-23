@@ -14,6 +14,7 @@ import Registry.Test.Assert as Assert
 import Registry.Test.Utils as Utils
 import Test.E2E.Support.Client as Client
 import Test.E2E.Support.Env (E2ESpec)
+import Test.E2E.Support.Env as Env
 import Test.Spec as Spec
 
 spec :: E2ESpec
@@ -47,3 +48,26 @@ spec = do
           <> show (Array.length matrixJobs)
           <> " matrix jobs for packages: "
           <> String.joinWith ", " (map PackageName.print matrixPackages)
+
+    Spec.it "cascades matrix jobs to dependant packages after dependency-free jobs complete" do
+      -- Wait for ALL pending jobs: the dependency-free matrix jobs and any
+      -- cascade jobs they trigger.
+      Env.waitForAllPendingJobs
+
+      -- Check that effect got a matrix job with the new compiler (0.15.11).
+      -- effect depends on prelude, so after prelude's 0.15.11 matrix job
+      -- succeeds, the cascade should enqueue a job for effect.
+      allJobs <- Client.getJobsWith Client.IncludeCompleted
+      let
+        effectName = Utils.unsafePackageName "effect"
+        newCompiler = Utils.unsafeVersion "0.15.11"
+        effectCascadeJobs = Array.filter
+          ( case _ of
+              MatrixJob { packageName, compilerVersion } ->
+                packageName == effectName && compilerVersion == newCompiler
+              _ -> false
+          )
+          allJobs
+
+      when (Array.null effectCascadeJobs) do
+        Assert.fail "Expected cascade matrix job for effect with compiler 0.15.11, but found none."

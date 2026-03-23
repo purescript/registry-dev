@@ -19,6 +19,7 @@ result*
 
 TODO.md
 .spec-results
+/generated-docs
 
 # Keep it secret, keep it safe.
 .env
