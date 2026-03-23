@@ -301,6 +301,9 @@ code, pre {
     border-color: #43434e;
   }
 }
+.jobs-toolbar__custom-range .toolbar-input {
+  max-width: none;
+}
 .toolbar-btn {
   font-family: "Roboto", sans-serif;
   font-size: var(--font-size-sm);
