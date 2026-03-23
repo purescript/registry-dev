@@ -62,9 +62,9 @@ spec = do
   -- | given compilers in its metadata.
   setup effectCompilers = do
     let
-      index = Utils.fromRight "Failed to build ManifestIndex"
-        $ ManifestIndex.insert ManifestIndex.ConsiderRanges preludeManifest ManifestIndex.empty
-        >>= ManifestIndex.insert ManifestIndex.ConsiderRanges effectManifest
+      index = Utils.fromRight "Failed to build ManifestIndex" do
+        ManifestIndex.insert ManifestIndex.ConsiderRanges preludeManifest ManifestIndex.empty
+          >>= ManifestIndex.insert ManifestIndex.ConsiderRanges effectManifest
 
       -- prelude must include 0.15.11 in its compilers because this test
       -- simulates the state AFTER prelude's own matrix job has completed.
