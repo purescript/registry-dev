@@ -148,8 +148,10 @@ data Action
   | FetchJobsSilent
   | HandleFetchResult (Either ApiError (Array Job))
   | SetTimeRange TimeRange
-  | SetCustomSince String
-  | SetCustomUntil String
+  | SetCustomSinceDate String
+  | SetCustomSinceTime String
+  | SetCustomUntilDate String
+  | SetCustomUntilTime String
   | ToggleAutoRefresh Boolean
   | SetFilterJobType String
   | SetFilterPackageName String
@@ -367,23 +369,41 @@ renderToolbar state =
 
   customRangeRow
     | state.timeRange == Custom =
-        [ HH.div [ HP.class_ (HH.ClassName "jobs-toolbar__custom-range") ]
-            [ HH.label [ HP.class_ (HH.ClassName "toolbar-field__label") ] [ HH.text "FROM" ]
-            , HH.input
-                [ HP.type_ HP.InputDatetimeLocal
-                , HP.class_ (HH.ClassName "toolbar-input")
-                , HP.value state.sinceStr
-                , HE.onValueInput SetCustomSince
-                ]
-            , HH.label [ HP.class_ (HH.ClassName "toolbar-field__label") ] [ HH.text "TO" ]
-            , HH.input
-                [ HP.type_ HP.InputDatetimeLocal
-                , HP.class_ (HH.ClassName "toolbar-input")
-                , HP.value state.untilStr
-                , HE.onValueInput SetCustomUntil
-                ]
-            ]
-        ]
+        let
+          sinceDatePart = String.take 10 state.sinceStr
+          sinceTimePart = String.drop 11 state.sinceStr
+          untilDatePart = String.take 10 state.untilStr
+          untilTimePart = String.drop 11 state.untilStr
+        in
+          [ HH.div [ HP.class_ (HH.ClassName "jobs-toolbar__custom-range") ]
+              [ HH.label [ HP.class_ (HH.ClassName "toolbar-field__label") ] [ HH.text "FROM" ]
+              , HH.input
+                  [ HP.type_ HP.InputDate
+                  , HP.class_ (HH.ClassName "toolbar-input")
+                  , HP.value sinceDatePart
+                  , HE.onValueChange SetCustomSinceDate
+                  ]
+              , HH.input
+                  [ HP.type_ HP.InputTime
+                  , HP.class_ (HH.ClassName "toolbar-input")
+                  , HP.value sinceTimePart
+                  , HE.onValueChange SetCustomSinceTime
+                  ]
+              , HH.label [ HP.class_ (HH.ClassName "toolbar-field__label") ] [ HH.text "TO" ]
+              , HH.input
+                  [ HP.type_ HP.InputDate
+                  , HP.class_ (HH.ClassName "toolbar-input")
+                  , HP.value untilDatePart
+                  , HE.onValueChange SetCustomUntilDate
+                  ]
+              , HH.input
+                  [ HP.type_ HP.InputTime
+                  , HP.class_ (HH.ClassName "toolbar-input")
+                  , HP.value untilTimePart
+                  , HE.onValueChange SetCustomUntilTime
+                  ]
+              ]
+          ]
     | otherwise = []
 
 -- | A labeled field: small uppercase label above the control.
@@ -585,11 +605,35 @@ handleAction = case _ of
   Initialize ->
     handleAction FetchJobs
 
-  -- The component owns its filter/sort state after initialization; URL params
-  -- are only used once in initialState. Re-renders from the parent only
-  -- update the apiConfig.
-  Receive input ->
+  -- When the parent passes new params (e.g. the user clicked the title to
+  -- go home), re-apply them if they differ from the current component state.
+  Receive input -> do
+    state <- H.get
+    let currentParams = stateToParams state
     H.modify_ _ { apiConfig = input.apiConfig }
+    when (input.params /= currentParams) do
+      let p = input.params
+      H.modify_ _
+        { timeRange = parseTimeRange (fromMaybe "" p.range)
+        , filters =
+            { jobType: p.jobType >>= parseJobType
+            , packageName: fromMaybe "" p.package
+            , packageVersion: fromMaybe "" p.version
+            , compilerVersion: fromMaybe "" p.compiler
+            , statusFilter: parseStatusFilter (fromMaybe "" p.status)
+            }
+        , sortOrder = case p.order of
+            Just "asc" -> ASC
+            _ -> defaultSortOrder
+        , sinceStr = fromMaybe "" p.since
+        , untilStr = fromMaybe "" p.until
+        , currentPage = fromMaybe 1 p.page
+        , since = Nothing
+        , until = Nothing
+        , pageCursors = []
+        , hasNextPage = true
+        }
+      handleAction FetchJobs
 
   FetchJobs -> do
     H.modify_ _ { loading = true, error = Nothing }
@@ -631,22 +675,29 @@ handleAction = case _ of
     handleAction FetchJobs
     notifyFiltersChanged
 
-  SetCustomSince val -> do
-    H.modify_ _ { sinceStr = val, since = Nothing, until = Nothing, currentPage = 1, pageCursors = [], hasNextPage = true }
+  SetCustomSinceDate dateVal -> do
     state <- H.get
-    -- Fetch when both inputs have been provided.
-    case Job.parseDateTimeLocal val, Job.parseDateTimeLocal state.untilStr of
-      Just _, Just _ -> handleAction FetchJobs
-      _, _ -> pure unit
-    notifyFiltersChanged
+    let timePart = String.drop 11 state.sinceStr
+    let newSince = dateVal <> "T" <> (if timePart == "" then "00:00" else timePart)
+    updateCustomSince newSince
 
-  SetCustomUntil val -> do
-    H.modify_ _ { untilStr = val, since = Nothing, until = Nothing, currentPage = 1, pageCursors = [], hasNextPage = true }
+  SetCustomSinceTime timeVal -> do
     state <- H.get
-    case Job.parseDateTimeLocal state.sinceStr, Job.parseDateTimeLocal val of
-      Just _, Just _ -> handleAction FetchJobs
-      _, _ -> pure unit
-    notifyFiltersChanged
+    let datePart = String.take 10 state.sinceStr
+    let newSince = (if datePart == "" then "1970-01-01" else datePart) <> "T" <> timeVal
+    updateCustomSince newSince
+
+  SetCustomUntilDate dateVal -> do
+    state <- H.get
+    let timePart = String.drop 11 state.untilStr
+    let newUntil = dateVal <> "T" <> (if timePart == "" then "00:00" else timePart)
+    updateCustomUntil newUntil
+
+  SetCustomUntilTime timeVal -> do
+    state <- H.get
+    let datePart = String.take 10 state.untilStr
+    let newUntil = (if datePart == "" then "1970-01-01" else datePart) <> "T" <> timeVal
+    updateCustomUntil newUntil
 
   ToggleAutoRefresh enabled -> do
     state <- H.get
@@ -761,6 +812,28 @@ doFetchJobs = do
       ASC -> baseUntil
     includeCompleted = Just (state.filters.statusFilter /= ActiveOnly)
   H.liftAff $ API.fetchJobs state.apiConfig { since, until, order: Just state.sortOrder, includeCompleted }
+
+-- | Update the combined sinceStr from a date or time part change, fetch if
+-- | both endpoints parse, and sync the URL.
+updateCustomSince :: forall m. MonadAff m => String -> H.HalogenM State Action () Output m Unit
+updateCustomSince newSince = do
+  H.modify_ _ { sinceStr = newSince, since = Nothing, until = Nothing, currentPage = 1, pageCursors = [], hasNextPage = true }
+  state <- H.get
+  case Job.parseDateTimeLocal newSince, Job.parseDateTimeLocal state.untilStr of
+    Just _, Just _ -> handleAction FetchJobs
+    _, _ -> pure unit
+  notifyFiltersChanged
+
+-- | Update the combined untilStr from a date or time part change, fetch if
+-- | both endpoints parse, and sync the URL.
+updateCustomUntil :: forall m. MonadAff m => String -> H.HalogenM State Action () Output m Unit
+updateCustomUntil newUntil = do
+  H.modify_ _ { untilStr = newUntil, since = Nothing, until = Nothing, currentPage = 1, pageCursors = [], hasNextPage = true }
+  state <- H.get
+  case Job.parseDateTimeLocal state.sinceStr, Job.parseDateTimeLocal newUntil of
+    Just _, Just _ -> handleAction FetchJobs
+    _, _ -> pure unit
+  notifyFiltersChanged
 
 -- | Notify the parent component that filter state has changed so the URL can
 -- | be updated.

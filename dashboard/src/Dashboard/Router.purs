@@ -1,5 +1,6 @@
 module Dashboard.Router
   ( component
+  , getRouteFromHash
   ) where
 
 import Prelude
@@ -58,7 +59,7 @@ data Action
   | GoHome MouseEvent
   | GoTab Route MouseEvent
 
-component :: forall query output m. MonadAff m => H.Component query Unit output m
+component :: forall query output m. MonadAff m => H.Component query Route output m
 component =
   H.mkComponent
     { initialState
@@ -69,10 +70,12 @@ component =
         }
     }
 
-initialState :: Unit -> State
-initialState _ =
-  { route: JobsList Route.defaultParams
-  , lastJobsListParams: Route.defaultParams
+initialState :: Route -> State
+initialState route =
+  { route
+  , lastJobsListParams: case route of
+      JobsList params -> params
+      _ -> Route.defaultParams
   }
 
 render :: forall m. MonadAff m => State -> H.ComponentHTML Action Slots m
@@ -133,8 +136,6 @@ render state =
 handleAction :: forall output m. MonadAff m => Action -> H.HalogenM State Action Slots output m Unit
 handleAction = case _ of
   Initialize -> do
-    route <- liftEffect getRouteFromHash
-    applyRoute route
     emitter <- liftEffect hashChangeEmitter
     void $ H.subscribe (map HandleRouteChange emitter)
 
@@ -154,8 +155,7 @@ handleAction = case _ of
 
   GoHome ev -> do
     liftEffect $ Event.preventDefault (MouseEvent.toEvent ev)
-    state <- H.get
-    liftEffect $ setHash (routeToHash (JobsList state.lastJobsListParams))
+    liftEffect $ setHash (routeToHash (JobsList Route.defaultParams))
 
   GoTab route ev -> do
     liftEffect $ Event.preventDefault (MouseEvent.toEvent ev)
