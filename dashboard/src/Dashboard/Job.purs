@@ -14,6 +14,8 @@ module Dashboard.Job
   , formatTimestamp
   , formatDateTimeLocal
   , parseDateTimeLocal
+  , formatCursorTimestamp
+  , parseCursorTimestamp
   , formatDurationSecs
   , formatDurationBetween
   , timerEmitter
@@ -157,6 +159,21 @@ dateTimeLocalFormat :: List FormatterCommand
 dateTimeLocalFormat = List.fromFoldable
   [ YearFull, Placeholder "-", MonthTwoDigits, Placeholder "-", DayOfMonthTwoDigits
   , Placeholder "T", Hours24, Placeholder ":", MinutesTwoDigits
+  ]
+
+-- | Format a DateTime as a URL-safe cursor timestamp "YYYY-MM-DDTHH:MM:SS".
+formatCursorTimestamp :: DateTime -> String
+formatCursorTimestamp = Formatter.DateTime.format cursorTimestampFormat
+
+-- | Parse a cursor timestamp ("YYYY-MM-DDTHH:MM:SS") into a DateTime.
+parseCursorTimestamp :: String -> Maybe DateTime
+parseCursorTimestamp = hush <<< Formatter.DateTime.unformat cursorTimestampFormat
+
+-- "YYYY-MM-DDTHH:MM:SS"
+cursorTimestampFormat :: List FormatterCommand
+cursorTimestampFormat = List.fromFoldable
+  [ YearFull, Placeholder "-", MonthTwoDigits, Placeholder "-", DayOfMonthTwoDigits
+  , Placeholder "T", Hours24, Placeholder ":", MinutesTwoDigits, Placeholder ":", SecondsTwoDigits
   ]
 
 -- | Format a duration in seconds as a human-readable string.

@@ -22,6 +22,7 @@ import Data.Newtype (unwrap)
 import Effect.Aff (Milliseconds(..))
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
+import Effect.Now as Now
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
@@ -67,6 +68,7 @@ type State =
   , payloadCollapsed :: Boolean
   , logUntil :: Maybe DateTime
   , logPage :: Int
+  , currentTime :: Maybe DateTime
   }
 
 data Action
@@ -117,6 +119,7 @@ initialState input =
   , payloadCollapsed: false
   , logUntil: Nothing
   , logPage: 0
+  , currentTime: Nothing
   }
 
 -- --------------------------------------------------------------------------
@@ -189,15 +192,15 @@ renderJobDetail state job = do
   let info = V1.jobInfo job
   let statusName = Job.printStatus (Job.deriveStatus info)
   HH.div [ HP.class_ (HH.ClassName "job-detail") ]
-    [ renderInfoBlock info statusName (Job.getCompilerVersion job)
+    [ renderInfoBlock state.currentTime info statusName (Job.getCompilerVersion job)
     , renderPayloadSection state job
     , renderLogsSection state
     ]
 
-renderInfoBlock :: forall m. V1.JobInfo () -> String -> Maybe Version -> H.ComponentHTML Action () m
-renderInfoBlock info statusName compiler = do
-  let waitDuration = computeDurationBetween info.createdAt info.startedAt
-  let runDuration = map (\s -> computeDurationBetween s info.finishedAt) info.startedAt
+renderInfoBlock :: forall m. Maybe DateTime -> V1.JobInfo () -> String -> Maybe Version -> H.ComponentHTML Action () m
+renderInfoBlock mNow info statusName compiler = do
+  let waitDuration = computeDurationBetween mNow info.createdAt info.startedAt
+  let runDuration = map (\s -> computeDurationBetween mNow s info.finishedAt) info.startedAt
   HH.div [ HP.class_ (HH.ClassName "job-detail__timestamps") ]
     ( Array.catMaybes
         [ Just $ renderInfoRow "Job ID"
@@ -318,17 +321,20 @@ renderLogEntries state
                     , HH.th [ HP.class_ (HH.ClassName "log-table__th") ] [ HH.text "Message" ]
                     ]
                 ]
-            , HH.tbody_ (Array.mapWithIndex (renderLogEntry pageStart) pageLogs)
+            , HH.tbody_ (Array.mapWithIndex (renderLogEntry state.logSortOrder totalLogs pageStart) pageLogs)
             ]
         , renderLogPagination page totalPages totalLogs
         ]
 
-renderLogEntry :: forall m. Int -> Int -> LogLine -> H.ComponentHTML Action () m
-renderLogEntry offset index logLine = do
+renderLogEntry :: forall m. SortOrder -> Int -> Int -> Int -> LogLine -> H.ComponentHTML Action () m
+renderLogEntry sortOrder totalLogs offset index logLine = do
   let level = V1.printLogLevel logLine.level
+  let rowNum = case sortOrder of
+        ASC -> offset + index + 1
+        DESC -> totalLogs - offset - index
   HH.tr [ HP.class_ (HH.ClassName ("log-entry log-entry--" <> level)) ]
     [ HH.td [ HP.class_ (HH.ClassName "log-entry__rownum") ]
-        [ HH.text (show (offset + index + 1)) ]
+        [ HH.text (show rowNum) ]
     , HH.td [ HP.class_ (HH.ClassName "log-entry__time") ]
         [ HH.text (Job.formatTimestamp logLine.timestamp) ]
     , HH.td [ HP.class_ (HH.ClassName "log-entry__level") ]
@@ -370,6 +376,8 @@ renderLogPagination page totalPages totalLogs
 handleAction :: forall m. MonadAff m => Action -> H.HalogenM State Action () Output m Unit
 handleAction = case _ of
   Initialize -> do
+    now <- liftEffect Now.nowDateTime
+    H.modify_ _ { currentTime = Just now }
     handleAction FetchJob
     state <- H.get
     let finished = case state.job of
@@ -397,6 +405,7 @@ handleAction = case _ of
       let msg = API.printApiError err
       H.modify_ _ { loading = false, error = Just msg, job = Nothing }
     Right job -> do
+      now <- liftEffect Now.nowDateTime
       let info = V1.jobInfo job
       let logs = info.logs
       let lastTs = map _.timestamp (Array.last logs)
@@ -408,6 +417,7 @@ handleAction = case _ of
         , lastLogTimestamp = lastTs
         , logUntil = info.finishedAt
         , logPage = 0
+        , currentTime = Just now
         }
       fetchAllRemainingLogs
       stopAutoRefreshIfFinished info
@@ -445,6 +455,8 @@ handleAction = case _ of
       }
 
   LogRefreshTick -> do
+    now <- liftEffect Now.nowDateTime
+    H.modify_ _ { currentTime = Just now }
     state <- H.get
     -- No-op if the job is already finished: all logs have been fetched.
     let finished = case state.job of
@@ -460,6 +472,7 @@ handleAction = case _ of
     -- next tick will attempt another fetch automatically.
     Left _ -> pure unit
     Right job -> do
+      now <- liftEffect Now.nowDateTime
       state <- H.get
       let info = V1.jobInfo job
       let newLogs = Array.filter (isNewerThan state.lastLogTimestamp) info.logs
@@ -469,7 +482,7 @@ handleAction = case _ of
         let combined = capLogs state.logSortOrder (state.allLogs <> newLogs)
         H.modify_ _ { allLogs = combined, lastLogTimestamp = lastTs }
       -- Update job status and logUntil from the refreshed data
-      H.modify_ _ { job = Just job, logUntil = info.finishedAt }
+      H.modify_ _ { job = Just job, logUntil = info.finishedAt, currentTime = Just now }
       stopAutoRefreshIfFinished info
 
   TogglePayload ->
@@ -552,11 +565,14 @@ getPayloadJson = case _ of
   PackageSetJob j -> JSON.printIndented (CJ.encode Operation.packageSetOperationCodec j.payload)
 
 -- | Compute a human-readable duration between a start time and an optional
--- | end time. If the end time is absent, shows "ongoing".
-computeDurationBetween :: DateTime -> Maybe DateTime -> String
-computeDurationBetween start = case _ of
-  Nothing -> "ongoing"
+-- | end time. If the end time is absent, uses the current time as a fallback
+-- | and appends "(ongoing)".
+computeDurationBetween :: Maybe DateTime -> DateTime -> Maybe DateTime -> String
+computeDurationBetween mNow start = case _ of
   Just end -> Job.formatDurationBetween start end
+  Nothing -> case mNow of
+    Just now -> Job.formatDurationBetween start now <> " (ongoing)"
+    Nothing -> "ongoing"
 
 -- | Fetch all remaining log pages after the initial fetch by looping until
 -- | either an empty batch is returned or the maximum number of iterations

@@ -28,6 +28,7 @@ type JobsListParams =
   , until :: Maybe String
   , order :: Maybe String
   , page :: Maybe Int
+  , cursor :: Maybe String
   }
 
 -- | All-Nothing params representing defaults (no filters active).
@@ -44,6 +45,7 @@ defaultParams =
   , until: Nothing
   , order: Nothing
   , page: Nothing
+  , cursor: Nothing
   }
 
 data Route
@@ -91,4 +93,5 @@ routes = RD.root routeChoice
     , until: RD.optional <<< RD.string
     , order: RD.optional <<< RD.string
     , page: RD.optional <<< RD.int <<< RD.string
+    , cursor: RD.optional <<< RD.string
     }

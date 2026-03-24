@@ -137,10 +137,31 @@ type State =
   , currentPage :: Int
   -- | Whether there are more results beyond the current page.
   , hasNextPage :: Boolean
-  -- | Boundary timestamps for pages we have visited. `pageCursors !! 0` is
-  -- | the cursor that takes us from page 1 to page 2, etc.
-  , pageCursors :: Array DateTime
+  -- | The cursor used to fetch the current page, if any.
+  , pageCursor :: Maybe PageCursor
   }
+
+-- | Direction of a pagination cursor relative to the sort order.
+data PaginationDir = Forward | Backward
+
+derive instance Eq PaginationDir
+
+-- | A pagination cursor: a boundary timestamp and the direction it was
+-- | computed from (forward = NextPage, backward = PrevPage).
+type PageCursor = { timestamp :: DateTime, dir :: PaginationDir }
+
+printCursorParam :: PageCursor -> String
+printCursorParam { timestamp, dir } =
+  (case dir of
+    Forward -> "f:"
+    Backward -> "b:")
+    <> Job.formatCursorTimestamp timestamp
+
+parseCursorParam :: String -> Maybe PageCursor
+parseCursorParam s = case String.take 2 s of
+  "f:" -> map (\dt -> { timestamp: dt, dir: Forward }) (Job.parseCursorTimestamp (String.drop 2 s))
+  "b:" -> map (\dt -> { timestamp: dt, dir: Backward }) (Job.parseCursorTimestamp (String.drop 2 s))
+  _ -> Nothing
 
 data Action
   = Initialize
@@ -205,7 +226,9 @@ initialState input = do
   , untilStr: fromMaybe "" p.until
   , currentPage: fromMaybe 1 p.page
   , hasNextPage: true
-  , pageCursors: []
+  , pageCursor: case p.page, p.cursor >>= parseCursorParam of
+      Just pg, Just pc | pg > 1 -> Just pc
+      _, _ -> Nothing
   }
 
 -- --------------------------------------------------------------------------
@@ -246,6 +269,9 @@ stateToParams s =
   , page:
       if s.currentPage <= 1 then Nothing
       else Just s.currentPage
+  , cursor: case s.pageCursor of
+      Just pc | s.currentPage > 1 -> Just (printCursorParam pc)
+      _ -> Nothing
   }
 
 -- --------------------------------------------------------------------------
@@ -630,7 +656,9 @@ handleAction = case _ of
         , currentPage = fromMaybe 1 p.page
         , since = Nothing
         , until = Nothing
-        , pageCursors = []
+        , pageCursor = case p.page, p.cursor >>= parseCursorParam of
+            Just pg, Just pc | pg > 1 -> Just pc
+            _, _ -> Nothing
         , hasNextPage = true
         }
       handleAction FetchJobs
@@ -663,7 +691,10 @@ handleAction = case _ of
       -- avoids VDOM diffing on every auto-refresh tick when nothing new
       -- has arrived.
       unless (not state.loading && newFingerprints == oldFingerprints) do
-        let hasNext = Array.length jobs >= pageSize
+        let isBackward = case state.pageCursor of
+              Just { dir: Backward } -> true
+              _ -> false
+        let hasNext = isBackward || Array.length jobs >= pageSize
         H.modify_ _ { loading = false, error = Nothing, jobs = summaries, hasNextPage = hasNext }
 
   SetTimeRange range -> do
@@ -671,7 +702,7 @@ handleAction = case _ of
       now <- liftEffect Now.nowDateTime
       let sinceDefault = subtractHours 24.0 now
       H.modify_ _ { sinceStr = Job.formatDateTimeLocal sinceDefault, untilStr = Job.formatDateTimeLocal now }
-    H.modify_ _ { timeRange = range, since = Nothing, until = Nothing, currentPage = 1, pageCursors = [], hasNextPage = true }
+    H.modify_ _ { timeRange = range, since = Nothing, until = Nothing, currentPage = 1, pageCursor = Nothing, hasNextPage = true }
     handleAction FetchJobs
     notifyFiltersChanged
 
@@ -722,17 +753,17 @@ handleAction = case _ of
     -- Re-fetch when switching between Active and other modes, because
     -- Active excludes completed jobs server-side.
     when (needsRefetch state) do
-      H.modify_ _ { currentPage = 1, pageCursors = [], hasNextPage = true }
+      H.modify_ _ { currentPage = 1, pageCursor = Nothing, hasNextPage = true }
       handleAction FetchJobs
 
   ClearFilters -> do
-    H.modify_ _ { filters = emptyFilters, sortOrder = defaultSortOrder, currentPage = 1, pageCursors = [], hasNextPage = true }
+    H.modify_ _ { filters = emptyFilters, sortOrder = defaultSortOrder, currentPage = 1, pageCursor = Nothing, hasNextPage = true }
     notifyFiltersChanged
 
   SetSort field -> do
     H.modify_ \s -> do
       let newOrder = if s.sortField == field then (if s.sortOrder == DESC then ASC else DESC) else DESC
-      s { sortField = field, sortOrder = newOrder, currentPage = 1, pageCursors = [], hasNextPage = true }
+      s { sortField = field, sortOrder = newOrder, currentPage = 1, pageCursor = Nothing, hasNextPage = true }
     handleAction FetchJobs
     notifyFiltersChanged
 
@@ -749,18 +780,30 @@ handleAction = case _ of
       case cursor of
         Nothing -> pure unit
         Just ts -> do
-          let newCursors = state.pageCursors <> [ ts ]
-          H.modify_ _ { currentPage = state.currentPage + 1, pageCursors = newCursors }
+          H.modify_ _ { currentPage = state.currentPage + 1, pageCursor = Just { timestamp: ts, dir: Forward } }
           handleAction FetchJobs
           notifyFiltersChanged
 
   PrevPage -> do
     state <- H.get
     when (state.currentPage > 1) do
-      let newCursors = fromMaybe [] (Array.init state.pageCursors)
-      H.modify_ _ { currentPage = state.currentPage - 1, pageCursors = newCursors, hasNextPage = true }
-      handleAction FetchJobs
-      notifyFiltersChanged
+      let targetPage = state.currentPage - 1
+      if targetPage <= 1 then do
+        -- Arriving at page 1: reset cursor for fresh data
+        H.modify_ _ { currentPage = 1, pageCursor = Nothing, hasNextPage = true }
+        handleAction FetchJobs
+        notifyFiltersChanged
+      else do
+        let
+          cursor = case state.sortOrder of
+            DESC -> extremeCreatedAt max state.jobs
+            ASC -> extremeCreatedAt min state.jobs
+        case cursor of
+          Nothing -> pure unit
+          Just ts -> do
+            H.modify_ _ { currentPage = targetPage, pageCursor = Just { timestamp: ts, dir: Backward }, hasNextPage = true }
+            handleAction FetchJobs
+            notifyFiltersChanged
 
   Tick ->
     handleAction FetchJobsSilent
@@ -799,25 +842,24 @@ doFetchJobs = do
       Custom -> customUntil
       UntilNow -> Just now
       _ -> Nothing
-    pageCursor = Array.index state.pageCursors (state.currentPage - 2)
-    since = case state.sortOrder of
-      DESC -> baseSince
-      ASC ->
-        if state.currentPage > 1 then pageCursor
-        else baseSince
-    until = case state.sortOrder of
-      DESC ->
-        if state.currentPage > 1 then pageCursor
-        else baseUntil
-      ASC -> baseUntil
+    { since, until, fetchOrder, needsReverse } = case state.pageCursor of
+      Nothing ->
+        { since: baseSince, until: baseUntil, fetchOrder: state.sortOrder, needsReverse: false }
+      Just { timestamp, dir: Forward } -> case state.sortOrder of
+        DESC -> { since: baseSince, until: Just timestamp, fetchOrder: DESC, needsReverse: false }
+        ASC -> { since: Just timestamp, until: baseUntil, fetchOrder: ASC, needsReverse: false }
+      Just { timestamp, dir: Backward } -> case state.sortOrder of
+        DESC -> { since: Just timestamp, until: baseUntil, fetchOrder: ASC, needsReverse: true }
+        ASC -> { since: baseSince, until: Just timestamp, fetchOrder: DESC, needsReverse: true }
     includeCompleted = Just (state.filters.statusFilter /= ActiveOnly)
-  H.liftAff $ API.fetchJobs state.apiConfig { since, until, order: Just state.sortOrder, includeCompleted }
+  result <- H.liftAff $ API.fetchJobs state.apiConfig { since, until, order: Just fetchOrder, includeCompleted }
+  pure $ if needsReverse then map Array.reverse result else result
 
 -- | Update the combined sinceStr from a date or time part change, fetch if
 -- | both endpoints parse, and sync the URL.
 updateCustomSince :: forall m. MonadAff m => String -> H.HalogenM State Action () Output m Unit
 updateCustomSince newSince = do
-  H.modify_ _ { sinceStr = newSince, since = Nothing, until = Nothing, currentPage = 1, pageCursors = [], hasNextPage = true }
+  H.modify_ _ { sinceStr = newSince, since = Nothing, until = Nothing, currentPage = 1, pageCursor = Nothing, hasNextPage = true }
   state <- H.get
   case Job.parseDateTimeLocal newSince, Job.parseDateTimeLocal state.untilStr of
     Just _, Just _ -> handleAction FetchJobs
@@ -828,7 +870,7 @@ updateCustomSince newSince = do
 -- | both endpoints parse, and sync the URL.
 updateCustomUntil :: forall m. MonadAff m => String -> H.HalogenM State Action () Output m Unit
 updateCustomUntil newUntil = do
-  H.modify_ _ { untilStr = newUntil, since = Nothing, until = Nothing, currentPage = 1, pageCursors = [], hasNextPage = true }
+  H.modify_ _ { untilStr = newUntil, since = Nothing, until = Nothing, currentPage = 1, pageCursor = Nothing, hasNextPage = true }
   state <- H.get
   case Job.parseDateTimeLocal state.sinceStr, Job.parseDateTimeLocal newUntil of
     Just _, Just _ -> handleAction FetchJobs

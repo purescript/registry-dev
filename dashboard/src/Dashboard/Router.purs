@@ -146,7 +146,7 @@ handleAction = case _ of
     liftEffect $ setHash ("#/jobs/" <> jobId)
 
   HandleJobsListOutput (JobsList.FiltersChanged params) -> do
-    H.modify_ _ { lastJobsListParams = params }
+    H.modify_ _ { route = JobsList params, lastJobsListParams = params }
     liftEffect $ replaceHash (routeToHash (JobsList params))
 
   HandleJobDetailOutput JobDetail.NavigateBack -> do
