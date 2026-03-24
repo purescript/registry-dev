@@ -188,8 +188,7 @@ solveForAllCompilers { compilerIndex, name, version, compiler, dependencies } = 
     Log.debug $ "Trying compiler " <> Version.print target <> " for package " <> PackageName.print name
     case Solver.solveWithCompiler (Range.exact target) compilerIndex dependencies of
       Left _solverErrors -> do
-        Log.info $ "Failed to solve with compiler " <> Version.print target
-        -- Log.debug $ Solver.printSolverError solverErrors
+        Log.info $ "Failed to solve with compiler " <> Version.print target <> ": " <> PackageName.print name <> "@" <> Version.print version
         pure Nothing
       Right (Tuple solvedCompiler resolutions) -> case solvedCompiler == target of
         true -> do
@@ -234,12 +233,11 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
         Log.debug $ "Trying compiler " <> Version.print compiler <> " for package " <> PackageName.print manifest.name
         case Solver.solveWithCompiler (Range.exact compiler) compilerIndex manifest.dependencies of
           Left _solverErrors -> do
-            Log.info $ "Failed to solve with compiler " <> Version.print compiler
-            -- Log.debug $ Solver.printSolverError solverErrors
+            Log.info $ "Failed to solve with compiler " <> Version.print compiler <> ": " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version
             pure Nothing
           Right (Tuple solvedCompiler resolutions) -> case compiler == solvedCompiler of
             true -> do
-              Log.debug $ "Solved with compiler " <> Version.print solvedCompiler
+              Log.debug $ "Solved " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version <> " with compiler " <> Version.print solvedCompiler
               pure $ Just { compiler, resolutions, name: manifest.name, version: manifest.version }
             false -> do
               Log.debug $ Array.fold
