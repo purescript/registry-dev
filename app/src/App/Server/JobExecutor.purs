@@ -119,9 +119,11 @@ findNextAvailableJob = runMaybeT
 
 jobTimeout :: Job -> Duration.Minutes
 jobTimeout = case _ of
+  MatrixJob _ -> Duration.Minutes 60.0
   PackageSetJob _ -> Duration.Minutes 90.0
   PublishJob _ -> Duration.Minutes 10.0
-  _ -> Duration.Minutes 5.0
+  TransferJob _ -> Duration.Minutes 10.0
+  UnpublishJob _ -> Duration.Minutes 10.0
 
 executeJob :: DateTime -> Job -> Run ServerEffects Unit
 executeJob _ = case _ of
@@ -195,7 +197,7 @@ upgradeRegistryToNewCompiler newCompilerVersion = do
     -- as they complete new jobs for their dependants will be queued up.
     when (Map.isEmpty manifest.dependencies) do
       Log.info $ Array.fold
-        [ "Enqueuing matrix job for _new_ compiler "
+        [ "Enqueuing matrix job for new compiler "
         , Version.print newCompilerVersion
         , ", package "
         , PackageName.print manifest.name
