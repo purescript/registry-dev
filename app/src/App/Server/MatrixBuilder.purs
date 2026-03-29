@@ -14,6 +14,7 @@ import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Map as Map
 import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
@@ -187,8 +188,11 @@ solveForAllCompilers { compilerIndex, name, version, compiler, dependencies } = 
   newJobs <- for compilers \target -> do
     Log.debug $ "Trying compiler " <> Version.print target <> " for package " <> PackageName.print name
     case Solver.solveWithCompiler (Range.exact target) compilerIndex dependencies of
-      Left _solverErrors -> do
+      Left solverErrors -> do
         Log.info $ "Failed to solve with compiler " <> Version.print target <> ": " <> PackageName.print name <> "@" <> Version.print version
+        Log.debug $ "Solver errors:\n" <> foldMapWithIndex
+          (\i error -> "[Error " <> show (i + 1) <> "]\n" <> Solver.printSolverError error <> "\n")
+          solverErrors
         pure Nothing
       Right (Tuple solvedCompiler resolutions) -> case solvedCompiler == target of
         true -> do
@@ -232,8 +236,11 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
         -- if all good then run the solver
         Log.debug $ "Trying compiler " <> Version.print compiler <> " for package " <> PackageName.print manifest.name
         case Solver.solveWithCompiler (Range.exact compiler) compilerIndex manifest.dependencies of
-          Left _solverErrors -> do
+          Left solverErrors -> do
             Log.info $ "Failed to solve with compiler " <> Version.print compiler <> ": " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version
+            Log.debug $ "Solver errors:\n" <> foldMapWithIndex
+              (\i error -> "[Error " <> show (i + 1) <> "]\n" <> Solver.printSolverError error <> "\n")
+              solverErrors
             pure Nothing
           Right (Tuple solvedCompiler resolutions) -> case compiler == solvedCompiler of
             true -> do
