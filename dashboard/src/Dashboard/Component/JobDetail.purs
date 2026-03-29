@@ -312,12 +312,12 @@ renderLogEntries state
       let pageStart = page * logPageSize
       let pageLogs = Array.slice pageStart (pageStart + logPageSize) displayLogs
       HH.div_
-        [ HH.table [ HP.class_ (HH.ClassName "log-table") ]
+        [ renderLogLegend
+        , HH.table [ HP.class_ (HH.ClassName "log-table") ]
             [ HH.thead_
                 [ HH.tr_
                     [ HH.th [ HP.class_ (HH.ClassName "log-table__th log-table__th--rownum") ] [ HH.text "#" ]
                     , HH.th [ HP.class_ (HH.ClassName "log-table__th log-table__th--time") ] [ HH.text "Time" ]
-                    , HH.th [ HP.class_ (HH.ClassName "log-table__th log-table__th--level") ] [ HH.text "Level" ]
                     , HH.th [ HP.class_ (HH.ClassName "log-table__th") ] [ HH.text "Message" ]
                     ]
                 ]
@@ -337,15 +337,23 @@ renderLogEntry sortOrder totalLogs offset index logLine = do
         [ HH.text (show rowNum) ]
     , HH.td [ HP.class_ (HH.ClassName "log-entry__time") ]
         [ HH.text (Job.formatTimestamp logLine.timestamp) ]
-    , HH.td [ HP.class_ (HH.ClassName "log-entry__level") ]
-        [ HH.span [ HP.class_ (HH.ClassName ("log-level log-level--" <> level)) ]
-            [ HH.text level ]
-        ]
     , HH.td [ HP.class_ (HH.ClassName "log-entry__message") ]
         [ HH.pre [ HP.class_ (HH.ClassName "log-entry__text") ]
             [ HH.text logLine.message ]
         ]
     ]
+
+renderLogLegend :: forall m. H.ComponentHTML Action () m
+renderLogLegend =
+  HH.div [ HP.class_ (HH.ClassName "log-legend") ]
+    (map renderItem [ Debug, Info, Warn, Notice, Error ])
+  where
+  renderItem level = do
+    let name = V1.printLogLevel level
+    HH.span [ HP.class_ (HH.ClassName "log-legend__item") ]
+      [ HH.span [ HP.class_ (HH.ClassName ("log-legend__swatch log-legend__swatch--" <> name)) ] []
+      , HH.text name
+      ]
 
 -- | Render pagination controls for the log table, reusing the jobs-nav CSS.
 renderLogPagination :: forall m. Int -> Int -> Int -> H.ComponentHTML Action () m

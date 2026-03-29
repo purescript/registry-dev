@@ -577,7 +577,6 @@ code, pre {
   padding-right: 0.75em;
 }
 .log-table__th--time { width: 13em; }
-.log-table__th--level { width: 5em; }
 .log-entry__rownum {
   font-family: "Roboto Mono", monospace;
   font-size: 75%;
@@ -596,7 +595,7 @@ code, pre {
   font-family: "Roboto Mono", monospace;
   font-size: 75%;
   color: #777;
-  white-space: nowrap;
+  white-space: normal;
   padding: 0.25em 0.75em 0.25em 0;
   vertical-align: baseline;
   width: 13em;
@@ -604,29 +603,57 @@ code, pre {
 @media (prefers-color-scheme: dark) {
   .log-entry__time { color: #a0a0a0; }
 }
-.log-entry__level {
-  font-family: "Roboto Mono", monospace;
-  font-size: 75%;
-  font-weight: 700;
-  white-space: nowrap;
-  padding: 0.25em 0.75em 0.25em 0;
-  vertical-align: baseline;
-  width: 5em;
-}
 .log-entry__message {
   vertical-align: baseline;
 }
-.log-level--DEBUG  { color: #777; }
-.log-level--INFO   { color: #1565c0; }
-.log-level--WARN   { color: #e65100; }
-.log-level--NOTICE { color: #c4953a; }
-.log-level--ERROR  { color: #c62828; }
+/* Level indicated via left border on the row's first cell */
+.log-entry td:first-child { border-left: 5px solid transparent; }
+.log-entry--DEBUG td:first-child  { border-left-color: #777; }
+.log-entry--INFO td:first-child   { border-left-color: #1565c0; }
+.log-entry--WARN td:first-child   { border-left-color: #e65100; }
+.log-entry--NOTICE td:first-child { border-left-color: #c4953a; }
+.log-entry--ERROR td:first-child  { border-left-color: #c62828; }
 @media (prefers-color-scheme: dark) {
-  .log-level--DEBUG  { color: #a0a0a0; }
-  .log-level--INFO   { color: #64b5f6; }
-  .log-level--WARN   { color: #ffb74d; }
-  .log-level--NOTICE { color: #d8ac55; }
-  .log-level--ERROR  { color: #ef9a9a; }
+  .log-entry--DEBUG td:first-child  { border-left-color: #a0a0a0; }
+  .log-entry--INFO td:first-child   { border-left-color: #64b5f6; }
+  .log-entry--WARN td:first-child   { border-left-color: #ffb74d; }
+  .log-entry--NOTICE td:first-child { border-left-color: #d8ac55; }
+  .log-entry--ERROR td:first-child  { border-left-color: #ef9a9a; }
+}
+/* Log level legend */
+.log-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em 1em;
+  font-size: var(--font-size-sm);
+  color: #777;
+  margin-bottom: 0.5em;
+}
+@media (prefers-color-scheme: dark) {
+  .log-legend { color: #a0a0a0; }
+}
+.log-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+}
+.log-legend__swatch {
+  display: inline-block;
+  width: 5px;
+  height: 1em;
+  border-radius: 1px;
+}
+.log-legend__swatch--DEBUG  { background: #777; }
+.log-legend__swatch--INFO   { background: #1565c0; }
+.log-legend__swatch--WARN   { background: #e65100; }
+.log-legend__swatch--NOTICE { background: #c4953a; }
+.log-legend__swatch--ERROR  { background: #c62828; }
+@media (prefers-color-scheme: dark) {
+  .log-legend__swatch--DEBUG  { background: #a0a0a0; }
+  .log-legend__swatch--INFO   { background: #64b5f6; }
+  .log-legend__swatch--WARN   { background: #ffb74d; }
+  .log-legend__swatch--NOTICE { background: #d8ac55; }
+  .log-legend__swatch--ERROR  { background: #ef9a9a; }
 }
 .log-entry__text {
   font-family: "Roboto Mono", monospace;
@@ -784,4 +811,6 @@ code, pre {
   .jobs-table__th:nth-child(6),
   .jobs-table__td:nth-child(6) { display: none; }
   .job-detail__ts-label { flex: 0 0 5.5em; }
+  .log-table__th--time { width: 8em; text-align: right; }
+  .log-entry__time { width: 8em; text-align: right; }
 }
