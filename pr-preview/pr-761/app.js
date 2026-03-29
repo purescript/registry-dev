@@ -32662,17 +32662,17 @@
     return when5(isJust(info2.finishedAt))(bind19(get4)(function(state3) {
       return discard5(for_3(state3.logRefreshSubId)(unsubscribe2))(function() {
         return modify_4(function(v) {
-          var $93 = {};
-          for (var $94 in v) {
-            if ({}.hasOwnProperty.call(v, $94)) {
-              $93[$94] = v[$94];
+          var $94 = {};
+          for (var $95 in v) {
+            if ({}.hasOwnProperty.call(v, $95)) {
+              $94[$95] = v[$95];
             }
             ;
           }
           ;
-          $93.logAutoRefresh = false;
-          $93.logRefreshSubId = Nothing.value;
-          return $93;
+          $94.logAutoRefresh = false;
+          $94.logRefreshSubId = Nothing.value;
+          return $94;
         });
       });
     }));
@@ -32724,13 +32724,20 @@
           })])([text3("\u25B6")])]);
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 351, column 1 - line 351, column 82): " + [page.constructor.name, totalPages.constructor.name, totalLogs.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 359, column 1 - line 359, column 82): " + [page.constructor.name, totalPages.constructor.name, totalLogs.constructor.name]);
       };
     };
   };
   var renderLogLevelSelect = function(current) {
     return select([class_("toolbar-select toolbar-select--small"), onValueChange(SetLogLevel.create)])([option2([value3("DEBUG"), selected(eq7(current)(Debug.value))])([text3("Debug")]), option2([value3("INFO"), selected(eq7(current)(Info.value))])([text3("Info")]), option2([value3("WARN"), selected(eq7(current)(Warn.value))])([text3("Warn")]), option2([value3("NOTICE"), selected(eq7(current)(Notice.value))])([text3("Notice")]), option2([value3("ERROR"), selected(eq7(current)($$Error.value))])([text3("Error")])]);
   };
+  var renderLogLegend = /* @__PURE__ */ (function() {
+    var renderItem = function(level) {
+      var name15 = printLogLevel(level);
+      return span3([class_("log-legend__item")])([span3([class_("log-legend__swatch log-legend__swatch--" + name15)])([]), text3(name15)]);
+    };
+    return div4([class_("log-legend")])(map(functorArray)(renderItem)([Debug.value, Info.value, Warn.value, Notice.value, $$Error.value]));
+  })();
   var renderLogEntry = function(sortOrder) {
     return function(totalLogs) {
       return function(offset) {
@@ -32748,7 +32755,7 @@
               ;
               throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 332, column 16 - line 334, column 43): " + [sortOrder.constructor.name]);
             })();
-            return tr([class_("log-entry log-entry--" + level)])([td([class_("log-entry__rownum")])([text3(show10(rowNum))]), td([class_("log-entry__time")])([text3(formatTimestamp(logLine.timestamp))]), td([class_("log-entry__level")])([span3([class_("log-level log-level--" + level)])([text3(level)])]), td([class_("log-entry__message")])([pre([class_("log-entry__text")])([text3(logLine.message)])])]);
+            return tr([class_("log-entry log-entry--" + level)])([td([class_("log-entry__rownum")])([text3(show10(rowNum))]), td([class_("log-entry__time")])([text3(formatTimestamp(logLine.timestamp))]), td([class_("log-entry__message")])([pre([class_("log-entry__text")])([text3(logLine.message)])])]);
           };
         };
       };
@@ -32810,7 +32817,7 @@
       var page = min4(state3.logPage)(totalPages - 1 | 0);
       var pageStart = page * logPageSize | 0;
       var pageLogs = slice(pageStart)(pageStart + logPageSize | 0)(displayLogs);
-      return div_([table([class_("log-table")])([thead_([tr_([th([class_("log-table__th log-table__th--rownum")])([text3("#")]), th([class_("log-table__th log-table__th--time")])([text3("Time")]), th([class_("log-table__th log-table__th--level")])([text3("Level")]), th([class_("log-table__th")])([text3("Message")])])]), tbody_(mapWithIndex2(renderLogEntry(state3.logSortOrder)(totalLogs)(pageStart))(pageLogs))]), renderLogPagination(page)(totalPages)(totalLogs)]);
+      return div_([renderLogLegend, table([class_("log-table")])([thead_([tr_([th([class_("log-table__th log-table__th--rownum")])([text3("#")]), th([class_("log-table__th log-table__th--time")])([text3("Time")]), th([class_("log-table__th")])([text3("Message")])])]), tbody_(mapWithIndex2(renderLogEntry(state3.logSortOrder)(totalLogs)(pageStart))(pageLogs))]), renderLogPagination(page)(totalPages)(totalLogs)]);
     }
     ;
     throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 299, column 1 - line 299, column 67): " + [state3.constructor.name]);
@@ -32819,8 +32826,8 @@
     return div4([class_("job-detail__section")])([div4([class_("job-detail__section-header")])([h2([class_("job-detail__section-title")])([text3("Logs")]), div4([class_("log-controls")])([renderLogLevelSelect(state3.logLevel), button([class_("toolbar-btn toolbar-btn--small"), onClick(function(v) {
       return ToggleLogSortOrder.value;
     })])([text3((function() {
-      var $108 = eq16(state3.logSortOrder)(ASC.value);
-      if ($108) {
+      var $109 = eq16(state3.logSortOrder)(ASC.value);
+      if ($109) {
         return "Oldest first \u25B2";
       }
       ;
@@ -32843,7 +32850,7 @@
         return greaterThan2(logLine.timestamp)(mTs.value0);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 554, column 27 - line 556, column 36): " + [mTs.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 562, column 27 - line 564, column 36): " + [mTs.constructor.name]);
     };
   };
   var initialState = function(input3) {
@@ -32886,7 +32893,7 @@
       return printIndented(encode2(packageSetOperationCodec)(v.value0.payload));
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 560, column 18 - line 565, column 97): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 568, column 18 - line 573, column 97): " + [v.constructor.name]);
   };
   var renderPayloadSection = function(state3) {
     return function(job) {
@@ -32923,10 +32930,10 @@
             return "ongoing";
           }
           ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 573, column 14 - line 575, column 25): " + [mNow.constructor.name]);
+          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 581, column 14 - line 583, column 25): " + [mNow.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 571, column 37 - line 575, column 25): " + [v.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 579, column 37 - line 583, column 25): " + [v.constructor.name]);
       };
     };
   };
@@ -32941,8 +32948,8 @@
           return div4([class_("job-detail__timestamps")])(catMaybes([new Just(renderInfoRow("Job ID")(code([class_("job-detail__ts-value")])([text3(unwrap10(info2.jobId))]))), new Just(renderInfoRow("Status")(span3([class_("job-status job-status--" + statusName)])([text3(statusName)]))), map38(function(c) {
             return renderInfoRow("Compiler")(tsValue(print5(c)));
           })(compiler), new Just(renderInfoRow("Created")(tsValue(formatTimestamp(info2.createdAt)))), new Just(renderInfoRow("Started")(tsValue(fromMaybe("\u2014")(map38(formatTimestamp)(info2.startedAt))))), new Just(renderInfoRow("Finished")(tsValue(fromMaybe("\u2014")(map38(formatTimestamp)(info2.finishedAt))))), (function() {
-            var $124 = isJust(info2.startedAt);
-            if ($124) {
+            var $125 = isJust(info2.startedAt);
+            if ($125) {
               return new Just(renderInfoRow("Wait time")(tsValue(waitDuration)));
             }
             ;
@@ -32991,8 +32998,8 @@
   };
   var capLogs = function(sortOrder) {
     return function(logs) {
-      var $133 = length(logs) <= maxLogEntries;
-      if ($133) {
+      var $134 = length(logs) <= maxLogEntries;
+      if ($134) {
         return logs;
       }
       ;
@@ -33004,7 +33011,7 @@
         return drop(length(logs) - maxLogEntries | 0)(logs);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 532, column 8 - line 534, column 64): " + [sortOrder.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 540, column 8 - line 542, column 64): " + [sortOrder.constructor.name]);
     };
   };
   var fetchAllRemainingLogs = function(dictMonadAff) {
@@ -33029,8 +33036,8 @@
               ;
               if (result instanceof Right) {
                 var newLogs = filter(isNewerThan(new Just(state3.lastLogTimestamp.value0)))(jobInfo(result.value0).logs);
-                var $138 = $$null(newLogs);
-                if ($138) {
+                var $139 = $$null(newLogs);
+                if ($139) {
                   return pure21(unit);
                 }
                 ;
@@ -33040,28 +33047,28 @@
                     return v.timestamp;
                   })(last(combined));
                   return discard5(modify_4(function(v) {
-                    var $139 = {};
-                    for (var $140 in v) {
-                      if ({}.hasOwnProperty.call(v, $140)) {
-                        $139[$140] = v[$140];
+                    var $140 = {};
+                    for (var $141 in v) {
+                      if ({}.hasOwnProperty.call(v, $141)) {
+                        $140[$141] = v[$141];
                       }
                       ;
                     }
                     ;
-                    $139.allLogs = combined;
-                    $139.lastLogTimestamp = lastTs;
-                    return $139;
+                    $140.allLogs = combined;
+                    $140.lastLogTimestamp = lastTs;
+                    return $140;
                   }))(function() {
                     return go2(iteration + 1 | 0);
                   });
                 });
               }
               ;
-              throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 594, column 13 - line 605, column 37): " + [result.constructor.name]);
+              throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 602, column 13 - line 613, column 37): " + [result.constructor.name]);
             });
           }
           ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 589, column 9 - line 605, column 37): " + [state3.lastLogTimestamp.constructor.name]);
+          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 597, column 9 - line 613, column 37): " + [state3.lastLogTimestamp.constructor.name]);
         })());
       }));
     };
@@ -33075,16 +33082,16 @@
       if (v instanceof Initialize2) {
         return bind19(liftEffect11(nowDateTime))(function(now2) {
           return discard5(modify_4(function(v1) {
-            var $145 = {};
-            for (var $146 in v1) {
-              if ({}.hasOwnProperty.call(v1, $146)) {
-                $145[$146] = v1[$146];
+            var $146 = {};
+            for (var $147 in v1) {
+              if ({}.hasOwnProperty.call(v1, $147)) {
+                $146[$147] = v1[$147];
               }
               ;
             }
             ;
-            $145.currentTime = new Just(now2);
-            return $145;
+            $146.currentTime = new Just(now2);
+            return $146;
           }))(function() {
             return discard5(handleAction(dictMonadAff)(FetchJob.value))(function() {
               return bind19(get4)(function(state3) {
@@ -33097,20 +33104,20 @@
                     return false;
                   }
                   ;
-                  throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 383, column 20 - line 385, column 27): " + [state3.job.constructor.name]);
+                  throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 391, column 20 - line 393, column 27): " + [state3.job.constructor.name]);
                 })();
                 return unless2(finished)(bind19(bindFlipped6(subscribe2)(timerEmitter2(logRefreshInterval)(LogRefreshTick.value)))(function(subId) {
                   return modify_4(function(v1) {
-                    var $150 = {};
-                    for (var $151 in v1) {
-                      if ({}.hasOwnProperty.call(v1, $151)) {
-                        $150[$151] = v1[$151];
+                    var $151 = {};
+                    for (var $152 in v1) {
+                      if ({}.hasOwnProperty.call(v1, $152)) {
+                        $151[$152] = v1[$152];
                       }
                       ;
                     }
                     ;
-                    $150.logRefreshSubId = new Just(subId);
-                    return $150;
+                    $151.logRefreshSubId = new Just(subId);
+                    return $151;
                   });
                 }));
               });
@@ -33122,17 +33129,17 @@
       if (v instanceof Receive2) {
         return bind19(get4)(function(state3) {
           return when5(state3.jobId !== v.value0.jobId || notEq1(state3.apiConfig)(v.value0.apiConfig))(discard5(modify_4(function(v1) {
-            var $153 = {};
-            for (var $154 in v1) {
-              if ({}.hasOwnProperty.call(v1, $154)) {
-                $153[$154] = v1[$154];
+            var $154 = {};
+            for (var $155 in v1) {
+              if ({}.hasOwnProperty.call(v1, $155)) {
+                $154[$155] = v1[$155];
               }
               ;
             }
             ;
-            $153.jobId = v.value0.jobId;
-            $153.apiConfig = v.value0.apiConfig;
-            return $153;
+            $154.jobId = v.value0.jobId;
+            $154.apiConfig = v.value0.apiConfig;
+            return $154;
           }))(function() {
             return handleAction(dictMonadAff)(FetchJob.value);
           }));
@@ -33141,17 +33148,17 @@
       ;
       if (v instanceof FetchJob) {
         return discard5(modify_4(function(v1) {
-          var $157 = {};
-          for (var $158 in v1) {
-            if ({}.hasOwnProperty.call(v1, $158)) {
-              $157[$158] = v1[$158];
+          var $158 = {};
+          for (var $159 in v1) {
+            if ({}.hasOwnProperty.call(v1, $159)) {
+              $158[$159] = v1[$159];
             }
             ;
           }
           ;
-          $157.loading = true;
-          $157.error = Nothing.value;
-          return $157;
+          $158.loading = true;
+          $158.error = Nothing.value;
+          return $158;
         }))(function() {
           return bind19(get4)(function(state3) {
             return bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
@@ -33170,18 +33177,18 @@
         if (v.value0 instanceof Left) {
           var msg = printApiError(v.value0.value0);
           return modify_4(function(v1) {
-            var $161 = {};
-            for (var $162 in v1) {
-              if ({}.hasOwnProperty.call(v1, $162)) {
-                $161[$162] = v1[$162];
+            var $162 = {};
+            for (var $163 in v1) {
+              if ({}.hasOwnProperty.call(v1, $163)) {
+                $162[$163] = v1[$163];
               }
               ;
             }
             ;
-            $161.loading = false;
-            $161.error = new Just(msg);
-            $161.job = Nothing.value;
-            return $161;
+            $162.loading = false;
+            $162.error = new Just(msg);
+            $162.job = Nothing.value;
+            return $162;
           });
         }
         ;
@@ -33192,23 +33199,23 @@
               return v1.timestamp;
             })(last(info2.logs));
             return discard5(modify_4(function(v1) {
-              var $165 = {};
-              for (var $166 in v1) {
-                if ({}.hasOwnProperty.call(v1, $166)) {
-                  $165[$166] = v1[$166];
+              var $166 = {};
+              for (var $167 in v1) {
+                if ({}.hasOwnProperty.call(v1, $167)) {
+                  $166[$167] = v1[$167];
                 }
                 ;
               }
               ;
-              $165.loading = false;
-              $165.error = Nothing.value;
-              $165.job = new Just(v.value0.value0);
-              $165.allLogs = info2.logs;
-              $165.lastLogTimestamp = lastTs2;
-              $165.logUntil = info2.finishedAt;
-              $165.logPage = 0;
-              $165.currentTime = new Just(now2);
-              return $165;
+              $166.loading = false;
+              $166.error = Nothing.value;
+              $166.job = new Just(v.value0.value0);
+              $166.allLogs = info2.logs;
+              $166.lastLogTimestamp = lastTs2;
+              $166.logUntil = info2.finishedAt;
+              $166.logPage = 0;
+              $166.currentTime = new Just(now2);
+              return $166;
             }))(function() {
               return discard5(fetchAllRemainingLogs1)(function() {
                 return stopAutoRefreshIfFinished(info2);
@@ -33217,25 +33224,25 @@
           });
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 403, column 31 - line 423, column 37): " + [v.value0.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 411, column 31 - line 431, column 37): " + [v.value0.constructor.name]);
       }
       ;
       if (v instanceof SetLogLevel) {
         var level = parseLogLevel2(v.value0);
         return discard5(modify_4(function(v1) {
-          var $170 = {};
-          for (var $171 in v1) {
-            if ({}.hasOwnProperty.call(v1, $171)) {
-              $170[$171] = v1[$171];
+          var $171 = {};
+          for (var $172 in v1) {
+            if ({}.hasOwnProperty.call(v1, $172)) {
+              $171[$172] = v1[$172];
             }
             ;
           }
           ;
-          $170.logLevel = level;
-          $170.allLogs = [];
-          $170.lastLogTimestamp = Nothing.value;
-          $170.logPage = 0;
-          return $170;
+          $171.logLevel = level;
+          $171.allLogs = [];
+          $171.lastLogTimestamp = Nothing.value;
+          $171.logPage = 0;
+          return $171;
         }))(function() {
           return bind19(get4)(function(state3) {
             return bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
@@ -33253,17 +33260,17 @@
       if (v instanceof HandleLogLevelResult) {
         if (v.value0 instanceof Left) {
           return modify_4(function(v1) {
-            var $175 = {};
-            for (var $176 in v1) {
-              if ({}.hasOwnProperty.call(v1, $176)) {
-                $175[$176] = v1[$176];
+            var $176 = {};
+            for (var $177 in v1) {
+              if ({}.hasOwnProperty.call(v1, $177)) {
+                $176[$177] = v1[$177];
               }
               ;
             }
             ;
-            $175.allLogs = [];
-            $175.lastLogTimestamp = Nothing.value;
-            return $175;
+            $176.allLogs = [];
+            $176.lastLogTimestamp = Nothing.value;
+            return $176;
           });
         }
         ;
@@ -33273,23 +33280,23 @@
             return v1.timestamp;
           })(last(logs));
           return discard5(modify_4(function(v1) {
-            var $179 = {};
-            for (var $180 in v1) {
-              if ({}.hasOwnProperty.call(v1, $180)) {
-                $179[$180] = v1[$180];
+            var $180 = {};
+            for (var $181 in v1) {
+              if ({}.hasOwnProperty.call(v1, $181)) {
+                $180[$181] = v1[$181];
               }
               ;
             }
             ;
-            $179.allLogs = logs;
-            $179.lastLogTimestamp = lastTs;
-            return $179;
+            $180.allLogs = logs;
+            $180.lastLogTimestamp = lastTs;
+            return $180;
           }))(function() {
             return fetchAllRemainingLogs1;
           });
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 433, column 34 - line 440, column 28): " + [v.value0.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 441, column 34 - line 448, column 28): " + [v.value0.constructor.name]);
       }
       ;
       if (v instanceof ToggleLogAutoRefresh) {
@@ -33298,33 +33305,33 @@
             if (v.value0) {
               return bind19(bindFlipped6(subscribe2)(timerEmitter2(logRefreshInterval)(LogRefreshTick.value)))(function(subId) {
                 return modify_4(function(v1) {
-                  var $185 = {};
-                  for (var $186 in v1) {
-                    if ({}.hasOwnProperty.call(v1, $186)) {
-                      $185[$186] = v1[$186];
+                  var $186 = {};
+                  for (var $187 in v1) {
+                    if ({}.hasOwnProperty.call(v1, $187)) {
+                      $186[$187] = v1[$187];
                     }
                     ;
                   }
                   ;
-                  $185.logAutoRefresh = true;
-                  $185.logRefreshSubId = new Just(subId);
-                  return $185;
+                  $186.logAutoRefresh = true;
+                  $186.logRefreshSubId = new Just(subId);
+                  return $186;
                 });
               });
             }
             ;
             return modify_4(function(v1) {
-              var $188 = {};
-              for (var $189 in v1) {
-                if ({}.hasOwnProperty.call(v1, $189)) {
-                  $188[$189] = v1[$189];
+              var $189 = {};
+              for (var $190 in v1) {
+                if ({}.hasOwnProperty.call(v1, $190)) {
+                  $189[$190] = v1[$190];
                 }
                 ;
               }
               ;
-              $188.logAutoRefresh = false;
-              $188.logRefreshSubId = Nothing.value;
-              return $188;
+              $189.logAutoRefresh = false;
+              $189.logRefreshSubId = Nothing.value;
+              return $189;
             });
           });
         });
@@ -33332,40 +33339,40 @@
       ;
       if (v instanceof ToggleLogSortOrder) {
         return modify_4(function(s) {
-          var $193 = {};
-          for (var $194 in s) {
-            if ({}.hasOwnProperty.call(s, $194)) {
-              $193[$194] = s[$194];
+          var $194 = {};
+          for (var $195 in s) {
+            if ({}.hasOwnProperty.call(s, $195)) {
+              $194[$195] = s[$195];
             }
             ;
           }
           ;
-          $193.logSortOrder = (function() {
-            var $192 = eq16(s.logSortOrder)(ASC.value);
-            if ($192) {
+          $194.logSortOrder = (function() {
+            var $193 = eq16(s.logSortOrder)(ASC.value);
+            if ($193) {
               return DESC.value;
             }
             ;
             return ASC.value;
           })();
-          $193.logPage = 0;
-          return $193;
+          $194.logPage = 0;
+          return $194;
         });
       }
       ;
       if (v instanceof LogRefreshTick) {
         return bind19(liftEffect11(nowDateTime))(function(now2) {
           return discard5(modify_4(function(v1) {
-            var $196 = {};
-            for (var $197 in v1) {
-              if ({}.hasOwnProperty.call(v1, $197)) {
-                $196[$197] = v1[$197];
+            var $197 = {};
+            for (var $198 in v1) {
+              if ({}.hasOwnProperty.call(v1, $198)) {
+                $197[$198] = v1[$198];
               }
               ;
             }
             ;
-            $196.currentTime = new Just(now2);
-            return $196;
+            $197.currentTime = new Just(now2);
+            return $197;
           }))(function() {
             return bind19(get4)(function(state3) {
               var finished = (function() {
@@ -33377,7 +33384,7 @@
                   return false;
                 }
                 ;
-                throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 462, column 20 - line 464, column 27): " + [state3.job.constructor.name]);
+                throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 470, column 20 - line 472, column 27): " + [state3.job.constructor.name]);
               })();
               return unless2(finished)(bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
                 level: new Just(state3.logLevel),
@@ -33408,32 +33415,32 @@
                 })(last(newLogs));
                 var combined = capLogs(state3.logSortOrder)(append15(state3.allLogs)(newLogs));
                 return modify_4(function(v1) {
-                  var $203 = {};
-                  for (var $204 in v1) {
-                    if ({}.hasOwnProperty.call(v1, $204)) {
-                      $203[$204] = v1[$204];
+                  var $204 = {};
+                  for (var $205 in v1) {
+                    if ({}.hasOwnProperty.call(v1, $205)) {
+                      $204[$205] = v1[$205];
                     }
                     ;
                   }
                   ;
-                  $203.allLogs = combined;
-                  $203.lastLogTimestamp = lastTs2;
-                  return $203;
+                  $204.allLogs = combined;
+                  $204.lastLogTimestamp = lastTs2;
+                  return $204;
                 });
               })()))(function() {
                 return discard5(modify_4(function(v1) {
-                  var $206 = {};
-                  for (var $207 in v1) {
-                    if ({}.hasOwnProperty.call(v1, $207)) {
-                      $206[$207] = v1[$207];
+                  var $207 = {};
+                  for (var $208 in v1) {
+                    if ({}.hasOwnProperty.call(v1, $208)) {
+                      $207[$208] = v1[$208];
                     }
                     ;
                   }
                   ;
-                  $206.job = new Just(v.value0.value0);
-                  $206.logUntil = info2.finishedAt;
-                  $206.currentTime = new Just(now2);
-                  return $206;
+                  $207.job = new Just(v.value0.value0);
+                  $207.logUntil = info2.finishedAt;
+                  $207.currentTime = new Just(now2);
+                  return $207;
                 }))(function() {
                   return stopAutoRefreshIfFinished(info2);
                 });
@@ -33442,36 +33449,36 @@
           });
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 470, column 36 - line 486, column 37): " + [v.value0.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 478, column 36 - line 494, column 37): " + [v.value0.constructor.name]);
       }
       ;
       if (v instanceof TogglePayload) {
         return modify_4(function(s) {
-          var $211 = {};
-          for (var $212 in s) {
-            if ({}.hasOwnProperty.call(s, $212)) {
-              $211[$212] = s[$212];
+          var $212 = {};
+          for (var $213 in s) {
+            if ({}.hasOwnProperty.call(s, $213)) {
+              $212[$213] = s[$213];
             }
             ;
           }
           ;
-          $211.payloadCollapsed = !s.payloadCollapsed;
-          return $211;
+          $212.payloadCollapsed = !s.payloadCollapsed;
+          return $212;
         });
       }
       ;
       if (v instanceof LogPrevPage) {
         return modify_4(function(s) {
-          var $214 = {};
-          for (var $215 in s) {
-            if ({}.hasOwnProperty.call(s, $215)) {
-              $214[$215] = s[$215];
+          var $215 = {};
+          for (var $216 in s) {
+            if ({}.hasOwnProperty.call(s, $216)) {
+              $215[$216] = s[$216];
             }
             ;
           }
           ;
-          $214.logPage = max4(0)(s.logPage - 1 | 0);
-          return $214;
+          $215.logPage = max4(0)(s.logPage - 1 | 0);
+          return $215;
         });
       }
       ;
@@ -33479,16 +33486,16 @@
         return bind19(get4)(function(state3) {
           var totalPages = logTotalPages(length(state3.allLogs));
           return modify_4(function(s) {
-            var $217 = {};
-            for (var $218 in s) {
-              if ({}.hasOwnProperty.call(s, $218)) {
-                $217[$218] = s[$218];
+            var $218 = {};
+            for (var $219 in s) {
+              if ({}.hasOwnProperty.call(s, $219)) {
+                $218[$219] = s[$219];
               }
               ;
             }
             ;
-            $217.logPage = min4(totalPages - 1 | 0)(s.logPage + 1 | 0);
-            return $217;
+            $218.logPage = min4(totalPages - 1 | 0)(s.logPage + 1 | 0);
+            return $218;
           });
         });
       }
@@ -33499,7 +33506,7 @@
         });
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 377, column 16 - line 501, column 25): " + [v.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 385, column 16 - line 509, column 25): " + [v.constructor.name]);
     };
   };
   var component = function(dictMonadAff) {
@@ -33511,8 +33518,8 @@
         finalize: defaultEval.finalize,
         handleAction: handleAction(dictMonadAff),
         initialize: new Just(Initialize2.value),
-        receive: function($221) {
-          return Just.create(Receive2.create($221));
+        receive: function($222) {
+          return Just.create(Receive2.create($222));
         }
       })
     });
