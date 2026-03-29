@@ -16,6 +16,7 @@ import Test.Registry.App.Legacy.LenientVersion as Test.Legacy.LenientVersion
 import Test.Registry.App.Legacy.Manifest as Test.Legacy.Manifest
 import Test.Registry.App.Legacy.PackageSet as Test.Legacy.PackageSet
 import Test.Registry.App.Manifest.SpagoYaml as Test.Manifest.SpagoYaml
+import Test.Registry.App.Server.MatrixBuilder as Test.Server.MatrixBuilder
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner.Node (runSpecAndExitProcess')
@@ -49,6 +50,9 @@ main = runSpecAndExitProcess' config [ consoleReporter ] do
 
   Spec.describe "Registry.App.Manifest" do
     Spec.describe "SpagoYaml" Test.Manifest.SpagoYaml.spec
+
+  Spec.describe "Registry.App.Server" do
+    Spec.describe "MatrixBuilder" Test.Server.MatrixBuilder.spec
   where
   config =
     { defaultConfig: Cfg.defaultConfig { timeout = Just $ Milliseconds 300_000.0 }

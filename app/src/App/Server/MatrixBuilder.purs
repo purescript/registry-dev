@@ -14,6 +14,7 @@ import Registry.App.Prelude
 
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Map as Map
 import Data.Set as Set
 import Data.Set.NonEmpty as NonEmptySet
@@ -187,9 +188,11 @@ solveForAllCompilers { compilerIndex, name, version, compiler, dependencies } = 
   newJobs <- for compilers \target -> do
     Log.debug $ "Trying compiler " <> Version.print target <> " for package " <> PackageName.print name
     case Solver.solveWithCompiler (Range.exact target) compilerIndex dependencies of
-      Left _solverErrors -> do
-        Log.info $ "Failed to solve with compiler " <> Version.print target
-        -- Log.debug $ Solver.printSolverError solverErrors
+      Left solverErrors -> do
+        Log.info $ "Failed to solve with compiler " <> Version.print target <> ": " <> PackageName.print name <> "@" <> Version.print version
+        Log.debug $ "Solver errors:\n" <> foldMapWithIndex
+          (\i error -> "[Error " <> show (i + 1) <> "]\n" <> Solver.printSolverError error <> "\n")
+          solverErrors
         pure Nothing
       Right (Tuple solvedCompiler resolutions) -> case solvedCompiler == target of
         true -> do
@@ -211,28 +214,37 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
   manifestIndex <- Registry.readAllManifests
   let dependentManifests = ManifestIndex.dependants manifestIndex name version
   newJobs <- for dependentManifests \(Manifest manifest) -> do
-    -- we first verify if we have already attempted this package with this compiler,
-    -- either in the form of having it in the metadata already, or as a failed compilation
-    -- (i.e. if we find compilers in the metadata for this version we only check this one
-    -- if it's newer, because all the previous ones have been tried)
+    -- We skip if this compiler is already in the package's metadata compilers
+    -- list (meaning it was already successfully tested). Failed compilations
+    -- are not recorded in metadata, but the DB deduplication in insertMatrixJob
+    -- prevents re-enqueuing jobs that already exist.
     shouldAttemptToCompile <- Registry.readMetadata manifest.name >>= case _ of
-      Nothing -> pure false
-      Just metadata -> pure $ case Map.lookup version (un Metadata metadata).published of
-        Nothing -> false
-        Just { compilers } -> any (_ > compiler) compilers
+      Nothing -> do
+        Log.debug $ "Skipping " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version <> ": no metadata found"
+        pure false
+      Just metadata -> do
+        let
+          result = case Map.lookup manifest.version (un Metadata metadata).published of
+            Nothing -> false
+            Just { compilers } -> all (_ /= compiler) compilers
+        unless result do
+          Log.debug $ "Skipping " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version <> ": compiler " <> Version.print compiler <> " already tested or version not published"
+        pure result
     case shouldAttemptToCompile of
       false -> pure Nothing
       true -> do
         -- if all good then run the solver
         Log.debug $ "Trying compiler " <> Version.print compiler <> " for package " <> PackageName.print manifest.name
         case Solver.solveWithCompiler (Range.exact compiler) compilerIndex manifest.dependencies of
-          Left _solverErrors -> do
-            Log.info $ "Failed to solve with compiler " <> Version.print compiler
-            -- Log.debug $ Solver.printSolverError solverErrors
+          Left solverErrors -> do
+            Log.info $ "Failed to solve with compiler " <> Version.print compiler <> ": " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version
+            Log.debug $ "Solver errors:\n" <> foldMapWithIndex
+              (\i error -> "[Error " <> show (i + 1) <> "]\n" <> Solver.printSolverError error <> "\n")
+              solverErrors
             pure Nothing
           Right (Tuple solvedCompiler resolutions) -> case compiler == solvedCompiler of
             true -> do
-              Log.debug $ "Solved with compiler " <> Version.print solvedCompiler
+              Log.debug $ "Solved " <> PackageName.print manifest.name <> "@" <> Version.print manifest.version <> " with compiler " <> Version.print solvedCompiler
               pure $ Just { compiler, resolutions, name: manifest.name, version: manifest.version }
             false -> do
               Log.debug $ Array.fold

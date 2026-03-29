@@ -169,6 +169,30 @@ let
     };
   };
 
+  # effect@4.0.1 (same source as 4.0.0, used by publish E2E tests)
+  effectV401Base64Response =
+    fileName:
+    base64Response {
+      url = "/repos/purescript/purescript-effect/contents/${fileName}?ref=v4.0.1";
+      inherit fileName;
+      filePath = rootPath + "/app/fixtures/github-packages/effect-4.0.0/${fileName}";
+    };
+
+  effectV401404Response = fileName: {
+    request = {
+      method = "GET";
+      url = "/repos/purescript/purescript-effect/contents/${fileName}?ref=v4.0.1";
+    };
+    response = {
+      status = 404;
+      headers."Content-Type" = "application/json";
+      jsonBody = {
+        message = "Not Found";
+        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
+      };
+    };
+  };
+
   # Console package helpers (console@6.1.0)
   consoleBase64Response =
     fileName:
@@ -275,6 +299,13 @@ let
     (effect404Response "spago.dhall")
     (effect404Response "purs.json")
     (effect404Response "package.json")
+    # effect@4.0.1 (same source, different ref — used by publish E2E tests)
+    (effectV401Base64Response "bower.json")
+    (effectV401Base64Response "LICENSE")
+    (effectV401404Response "spago.yaml")
+    (effectV401404Response "spago.dhall")
+    (effectV401404Response "purs.json")
+    (effectV401404Response "package.json")
     # Console package (console@6.1.0)
     (consoleBase64Response "bower.json")
     (consoleBase64Response "LICENSE")
@@ -346,6 +377,45 @@ let
       request = {
         method = "GET";
         urlPattern = "/repos/purescript/purescript-prelude/commits\\?since=.*";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = [ ];
+      };
+    }
+    # Tags for effect package (v4.0.0 and v4.0.1 are published)
+    {
+      request = {
+        method = "GET";
+        url = "/repos/purescript/purescript-effect/tags";
+      };
+      response = {
+        status = 200;
+        headers."Content-Type" = "application/json";
+        jsonBody = [
+          {
+            name = "v4.0.0";
+            commit = {
+              sha = "effect-sha-400";
+              url = "https://api.github.com/repos/purescript/purescript-effect/commits/effect-sha-400";
+            };
+          }
+          {
+            name = "v4.0.1";
+            commit = {
+              sha = "effect-sha-401";
+              url = "https://api.github.com/repos/purescript/purescript-effect/commits/effect-sha-401";
+            };
+          }
+        ];
+      };
+    }
+    # Commits endpoint for effect - return empty (no recent commits)
+    {
+      request = {
+        method = "GET";
+        urlPattern = "/repos/purescript/purescript-effect/commits\\?since=.*";
       };
       response = {
         status = 200;
@@ -1033,6 +1103,9 @@ let
 
       gitbot -C "$FIXTURES_DIR/purescript/package-sets" tag -m "psc-0.15.9-20230105" psc-0.15.9-20230105
       gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" tag -m "v4.0.0" v4.0.0
+      # Create a new commit for v4.0.1 so it's on a different commit than v4.0.0
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" commit --allow-empty -m "v4.0.1 release"
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" tag -m "v4.0.1" v4.0.1
       gitbot -C "$FIXTURES_DIR/purescript/purescript-console" tag -m "v6.1.0" v6.1.0
       gitbot -C "$FIXTURES_DIR/purescript/purescript-unsafe-coerce" tag -m "v6.0.0" v6.0.0
       gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.1" v4.0.1
