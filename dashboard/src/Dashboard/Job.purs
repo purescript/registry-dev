@@ -26,12 +26,12 @@ import Prelude
 import Control.Monad.Rec.Class (forever)
 import Data.DateTime (DateTime)
 import Data.DateTime as DateTime
+import Data.Either (hush)
 import Data.Formatter.DateTime (FormatterCommand(..))
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.Int as Int
 import Data.List (List)
 import Data.List as List
-import Data.Either (hush)
 import Data.Maybe (Maybe(..), isJust, isNothing)
 import Data.Newtype (unwrap)
 import Data.Time.Duration (Seconds)
@@ -142,8 +142,17 @@ formatTimestamp = Formatter.DateTime.format timestampFormat
 -- "YYYY-MM-DD HH:MM:SS"
 timestampFormat :: List FormatterCommand
 timestampFormat = List.fromFoldable
-  [ YearFull, Placeholder "-", MonthTwoDigits, Placeholder "-", DayOfMonthTwoDigits
-  , Placeholder " ", Hours24, Placeholder ":", MinutesTwoDigits, Placeholder ":", SecondsTwoDigits
+  [ YearFull
+  , Placeholder "-"
+  , MonthTwoDigits
+  , Placeholder "-"
+  , DayOfMonthTwoDigits
+  , Placeholder " "
+  , Hours24
+  , Placeholder ":"
+  , MinutesTwoDigits
+  , Placeholder ":"
+  , SecondsTwoDigits
   ]
 
 -- | Format a DateTime as an HTML datetime-local input value "YYYY-MM-DDTHH:MM".
@@ -157,8 +166,15 @@ parseDateTimeLocal = hush <<< Formatter.DateTime.unformat dateTimeLocalFormat
 -- "YYYY-MM-DDTHH:MM"
 dateTimeLocalFormat :: List FormatterCommand
 dateTimeLocalFormat = List.fromFoldable
-  [ YearFull, Placeholder "-", MonthTwoDigits, Placeholder "-", DayOfMonthTwoDigits
-  , Placeholder "T", Hours24, Placeholder ":", MinutesTwoDigits
+  [ YearFull
+  , Placeholder "-"
+  , MonthTwoDigits
+  , Placeholder "-"
+  , DayOfMonthTwoDigits
+  , Placeholder "T"
+  , Hours24
+  , Placeholder ":"
+  , MinutesTwoDigits
   ]
 
 -- | Format a DateTime as a URL-safe cursor timestamp "YYYY-MM-DDTHH:MM:SS".
@@ -172,8 +188,17 @@ parseCursorTimestamp = hush <<< Formatter.DateTime.unformat cursorTimestampForma
 -- "YYYY-MM-DDTHH:MM:SS"
 cursorTimestampFormat :: List FormatterCommand
 cursorTimestampFormat = List.fromFoldable
-  [ YearFull, Placeholder "-", MonthTwoDigits, Placeholder "-", DayOfMonthTwoDigits
-  , Placeholder "T", Hours24, Placeholder ":", MinutesTwoDigits, Placeholder ":", SecondsTwoDigits
+  [ YearFull
+  , Placeholder "-"
+  , MonthTwoDigits
+  , Placeholder "-"
+  , DayOfMonthTwoDigits
+  , Placeholder "T"
+  , Hours24
+  , Placeholder ":"
+  , MinutesTwoDigits
+  , Placeholder ":"
+  , SecondsTwoDigits
   ]
 
 -- | Format a duration in seconds as a human-readable string.

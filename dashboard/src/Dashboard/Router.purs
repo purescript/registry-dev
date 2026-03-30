@@ -10,9 +10,9 @@ import Dashboard.Component.JobDetail as JobDetail
 import Dashboard.Component.JobsList as JobsList
 import Dashboard.Route (Route(..))
 import Dashboard.Route as Route
+import Data.Array as Array
 import Data.Const (Const)
 import Data.Either (hush)
-import Data.Array as Array
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (Pattern(..))
 import Data.String as String

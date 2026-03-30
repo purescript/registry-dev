@@ -303,9 +303,10 @@ renderLogEntries state
         [ HH.p_ [ HH.text "No logs at this level." ] ]
   | otherwise = do
       -- Logs are stored in ASC order; reverse at render time for DESC.
-      let displayLogs = case state.logSortOrder of
-            ASC -> state.allLogs
-            DESC -> Array.reverse state.allLogs
+      let
+        displayLogs = case state.logSortOrder of
+          ASC -> state.allLogs
+          DESC -> Array.reverse state.allLogs
       let totalLogs = Array.length displayLogs
       let totalPages = logTotalPages totalLogs
       let page = min state.logPage (totalPages - 1)
@@ -329,9 +330,10 @@ renderLogEntries state
 renderLogEntry :: forall m. SortOrder -> Int -> Int -> Int -> LogLine -> H.ComponentHTML Action () m
 renderLogEntry sortOrder totalLogs offset index logLine = do
   let level = V1.printLogLevel logLine.level
-  let rowNum = case sortOrder of
-        ASC -> offset + index + 1
-        DESC -> totalLogs - offset - index
+  let
+    rowNum = case sortOrder of
+      ASC -> offset + index + 1
+      DESC -> totalLogs - offset - index
   HH.tr [ HP.class_ (HH.ClassName ("log-entry log-entry--" <> level)) ]
     [ HH.td [ HP.class_ (HH.ClassName "log-entry__rownum") ]
         [ HH.text (show rowNum) ]
@@ -388,9 +390,10 @@ handleAction = case _ of
     H.modify_ _ { currentTime = Just now }
     handleAction FetchJob
     state <- H.get
-    let finished = case state.job of
-          Just job -> isJust (V1.jobInfo job).finishedAt
-          Nothing -> false
+    let
+      finished = case state.job of
+        Just job -> isJust (V1.jobInfo job).finishedAt
+        Nothing -> false
     unless finished do
       subId <- H.subscribe =<< Job.timerEmitter logRefreshInterval LogRefreshTick
       H.modify_ _ { logRefreshSubId = Just subId }
@@ -467,9 +470,10 @@ handleAction = case _ of
     H.modify_ _ { currentTime = Just now }
     state <- H.get
     -- No-op if the job is already finished: all logs have been fetched.
-    let finished = case state.job of
-          Just job -> isJust (V1.jobInfo job).finishedAt
-          Nothing -> false
+    let
+      finished = case state.job of
+        Just job -> isJust (V1.jobInfo job).finishedAt
+        Nothing -> false
     unless finished do
       result <- H.liftAff $ API.fetchJob state.apiConfig (JobId state.jobId)
         { level: Just state.logLevel, since: state.lastLogTimestamp, until: Nothing, order: Just ASC }

@@ -152,9 +152,10 @@ type PageCursor = { timestamp :: DateTime, dir :: PaginationDir }
 
 printCursorParam :: PageCursor -> String
 printCursorParam { timestamp, dir } =
-  (case dir of
-    Forward -> "f:"
-    Backward -> "b:")
+  ( case dir of
+      Forward -> "f:"
+      Backward -> "b:"
+  )
     <> Job.formatCursorTimestamp timestamp
 
 parseCursorParam :: String -> Maybe PageCursor
@@ -691,9 +692,10 @@ handleAction = case _ of
       -- avoids VDOM diffing on every auto-refresh tick when nothing new
       -- has arrived.
       unless (not state.loading && newFingerprints == oldFingerprints) do
-        let isBackward = case state.pageCursor of
-              Just { dir: Backward } -> true
-              _ -> false
+        let
+          isBackward = case state.pageCursor of
+            Just { dir: Backward } -> true
+            _ -> false
         let hasNext = isBackward || Array.length jobs >= pageSize
         H.modify_ _ { loading = false, error = Nothing, jobs = summaries, hasNextPage = hasNext }
 
