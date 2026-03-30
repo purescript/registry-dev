@@ -3,10 +3,24 @@ name: Deploy Dashboard
 on:
   push:
     branches: [master]
-    paths: ['dashboard/**']
+    paths:
+      - '.github/workflows/dashboard.yml'
+      - 'dashboard/**'
+      - 'foreign/**'
+      - 'lib/**'
+      - 'package.json'
+      - 'spago.lock'
+      - 'spago.yaml'
   pull_request:
     types: [opened, reopened, synchronize, closed]
-    paths: ['dashboard/**']
+    paths:
+      - '.github/workflows/dashboard.yml'
+      - 'dashboard/**'
+      - 'foreign/**'
+      - 'lib/**'
+      - 'package.json'
+      - 'spago.lock'
+      - 'spago.yaml'
 
 permissions:
   contents: write
