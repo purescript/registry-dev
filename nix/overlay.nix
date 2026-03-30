@@ -145,7 +145,16 @@ in
       final.spago
       prev.purescript
     ];
-    buildPhase = "spago build";
+    buildPhase = ''
+      # mkSpagoDerivation places the registry cache at the Linux path
+      # ($HOME/.cache/spago-nodejs), but on macOS Spago looks at
+      # $HOME/Library/Caches/spago-nodejs. Symlink to fix.
+      if [ "$(uname)" = "Darwin" ] && [ -d "$HOME/.cache/spago-nodejs" ]; then
+        mkdir -p "$HOME/Library/Caches"
+        ln -s "$HOME/.cache/spago-nodejs" "$HOME/Library/Caches/spago-nodejs"
+      fi
+      spago build
+    '';
     installPhase = "mkdir $out; cp -r * $out";
   };
 
