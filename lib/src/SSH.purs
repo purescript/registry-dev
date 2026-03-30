@@ -3,7 +3,7 @@ module Registry.SSH
   , PrivateKey
   , PrivateKeyParseError(..)
   , printPrivateKeyParseError
-  , Signature(..)
+  , module Registry.SSH.Signature
   , parsePublicKey
   , parsePrivateKey
   , publicKeyToOwner
@@ -17,11 +17,11 @@ import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn4, runFn1, runFn2, runFn3, runFn4)
 import Data.Maybe (Maybe)
-import Data.Newtype (class Newtype)
 import Data.Nullable (Nullable, null)
 import Data.Nullable as Nullable
 import Effect.Exception as Exception
 import Registry.Owner (Owner(..))
+import Registry.SSH.Signature (Signature(..))
 
 -- | A parsed SSH public key which can be used to verify payloads.
 newtype PublicKey = PublicKey ParsedKey
@@ -66,12 +66,6 @@ parsePublicKey :: String -> Either String PublicKey
 parsePublicKey key = case parse key of
   Right parsed | isPrivateKey parsed -> Left $ "Expected public key, but this is a private key of type " <> keyType parsed
   result -> map PublicKey result
-
--- | A hex-encoded SSH signature
-newtype Signature = Signature String
-
-derive instance Newtype Signature _
-derive newtype instance Eq Signature
 
 foreign import signImpl :: Fn2 ParsedKey String Signature
 

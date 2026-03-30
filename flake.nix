@@ -36,6 +36,7 @@
         fileset.unions [
           ./app
           ./app-e2e
+          ./dashboard
           ./foreign
           ./lib
           ./scripts

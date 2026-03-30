@@ -4,6 +4,7 @@
 /scratch
 /.vscode
 /scripts/analysis
+/generated-docs
 
 result*
 
@@ -20,6 +21,9 @@ result*
 TODO.md
 .spec-results
 /generated-docs
+
+# Generated bundle
+dashboard/app.js
 
 # Keep it secret, keep it safe.
 .env

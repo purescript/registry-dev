@@ -52,7 +52,7 @@ import Registry.Location (Location)
 import Registry.Location as Location
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
-import Registry.SSH (Signature(..))
+import Registry.SSH.Signature (Signature(..))
 import Registry.Version (Version)
 import Registry.Version as Version
 

@@ -21,6 +21,7 @@ package:
     - dotenv
     - effect
     - either
+    - enums
     - exceptions
     - exists
     - fetch
@@ -33,7 +34,6 @@ package:
     - httpurple
     - identity
     - integers
-    - js-date
     - js-fetch
     - js-promise-aff
     - js-uri
@@ -51,7 +51,6 @@ package:
     - nullable
     - numbers
     - ordered-collections
-    - orders
     - parallel
     - parsing
     - partial
@@ -64,14 +63,12 @@ package:
     - run
     - safe-coerce
     - strings
-    - these
     - transformers
     - tuples
     - typelevel-prelude
     - unicode
     - unsafe-coerce
     - uuidv4
-    - variant
   test:
     main: Test.Registry.Main
     dependencies:
