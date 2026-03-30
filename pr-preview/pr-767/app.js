@@ -115,10 +115,10 @@
     return dict.map;
   };
   var mapFlipped = function(dictFunctor) {
-    var map116 = map(dictFunctor);
+    var map115 = map(dictFunctor);
     return function(fa) {
       return function(f) {
-        return map116(f)(fa);
+        return map115(f)(fa);
       };
     };
   };
@@ -126,17 +126,17 @@
     return map(dictFunctor)($$const(unit));
   };
   var voidLeft = function(dictFunctor) {
-    var map116 = map(dictFunctor);
+    var map115 = map(dictFunctor);
     return function(f) {
       return function(x) {
-        return map116($$const(x))(f);
+        return map115($$const(x))(f);
       };
     };
   };
   var voidRight = function(dictFunctor) {
-    var map116 = map(dictFunctor);
+    var map115 = map(dictFunctor);
     return function(x) {
-      return map116($$const(x));
+      return map115($$const(x));
     };
   };
   var functorFn = {
@@ -236,11 +236,11 @@
     };
   };
   var liftA1 = function(dictApplicative) {
-    var apply7 = apply(dictApplicative.Apply0());
+    var apply6 = apply(dictApplicative.Apply0());
     var pure112 = pure(dictApplicative);
     return function(f) {
       return function(a2) {
-        return apply7(pure112(f))(a2);
+        return apply6(pure112(f))(a2);
       };
     };
   };
@@ -309,11 +309,11 @@
 
   // output/Data.Ord/foreign.js
   var unsafeCompareImpl = function(lt) {
-    return function(eq11) {
+    return function(eq9) {
       return function(gt) {
         return function(x) {
           return function(y) {
-            return x < y ? lt : x === y ? eq11 : gt;
+            return x < y ? lt : x === y ? eq9 : gt;
           };
         };
       };
@@ -436,7 +436,7 @@
       return function(dictIsSymbol) {
         var reflectSymbol2 = reflectSymbol(dictIsSymbol);
         return function(dictEq) {
-          var eq34 = eq(dictEq);
+          var eq33 = eq(dictEq);
           return {
             eqRecord: function(v) {
               return function(ra) {
@@ -444,7 +444,7 @@
                   var tail3 = eqRecord1($$Proxy.value)(ra)(rb);
                   var key = reflectSymbol2($$Proxy.value);
                   var get7 = unsafeGet(key);
-                  return eq34(get7(ra))(get7(rb)) && tail3;
+                  return eq33(get7(ra))(get7(rb)) && tail3;
                 };
               };
             }
@@ -454,10 +454,10 @@
     };
   };
   var notEq = function(dictEq) {
-    var eq34 = eq(dictEq);
+    var eq33 = eq(dictEq);
     return function(x) {
       return function(y) {
-        return eq2(eq34(x)(y))(false);
+        return eq2(eq33(x)(y))(false);
       };
     };
   };
@@ -1070,13 +1070,13 @@
     return v.value0;
   };
   var eqTuple = function(dictEq) {
-    var eq11 = eq(dictEq);
+    var eq9 = eq(dictEq);
     return function(dictEq1) {
       var eq18 = eq(dictEq1);
       return {
         eq: function(x) {
           return function(y) {
-            return eq11(x.value0)(y.value0) && eq18(x.value1)(y.value1);
+            return eq9(x.value0)(y.value0) && eq18(x.value1)(y.value1);
           };
         }
       };
@@ -1366,7 +1366,7 @@
     };
   };
   var eqMaybe = function(dictEq) {
-    var eq11 = eq(dictEq);
+    var eq9 = eq(dictEq);
     return {
       eq: function(x) {
         return function(y) {
@@ -1375,7 +1375,7 @@
           }
           ;
           if (x instanceof Just && y instanceof Just) {
-            return eq11(x.value0)(y.value0);
+            return eq9(x.value0)(y.value0);
           }
           ;
           return false;
@@ -2243,7 +2243,7 @@
         return xs.concat(ys);
       };
     }
-    return function(apply7) {
+    return function(apply6) {
       return function(map49) {
         return function(pure29) {
           return function(f) {
@@ -2255,12 +2255,12 @@
                   case 1:
                     return map49(array1)(f(array4[bot]));
                   case 2:
-                    return apply7(map49(array2)(f(array4[bot])))(f(array4[bot + 1]));
+                    return apply6(map49(array2)(f(array4[bot])))(f(array4[bot + 1]));
                   case 3:
-                    return apply7(apply7(map49(array3)(f(array4[bot])))(f(array4[bot + 1])))(f(array4[bot + 2]));
+                    return apply6(apply6(map49(array3)(f(array4[bot])))(f(array4[bot + 1])))(f(array4[bot + 2]));
                   default:
                     var pivot = bot + Math.floor((top3 - bot) / 4) * 2;
-                    return apply7(map49(concat2)(go2(bot, pivot)))(go2(pivot, top3));
+                    return apply6(map49(concat2)(go2(bot, pivot)))(go2(pivot, top3));
                 }
               }
               return go2(0, array4.length);
@@ -2376,8 +2376,6 @@
   };
 
   // output/Data.Array/index.js
-  var apply2 = /* @__PURE__ */ apply(applyMaybe);
-  var map5 = /* @__PURE__ */ map(functorMaybe);
   var fromJust4 = /* @__PURE__ */ fromJust();
   var fold1 = /* @__PURE__ */ fold(foldableArray);
   var append2 = /* @__PURE__ */ append(semigroupArray);
@@ -2426,6 +2424,16 @@
     };
   };
   var slice = /* @__PURE__ */ runFn3(sliceImpl);
+  var take = function(n) {
+    return function(xs) {
+      var $152 = n < 1;
+      if ($152) {
+        return [];
+      }
+      ;
+      return slice(0)(n)(xs);
+    };
+  };
   var singleton2 = function(a2) {
     return [a2];
   };
@@ -2449,16 +2457,6 @@
   })();
   var last = function(xs) {
     return index(xs)(length(xs) - 1 | 0);
-  };
-  var unsnoc = function(xs) {
-    return apply2(map5(function(v) {
-      return function(v1) {
-        return {
-          init: v,
-          last: v1
-        };
-      };
-    })(init(xs)))(last(xs));
   };
   var span = function(p2) {
     return function(arr) {
@@ -3024,7 +3022,7 @@
   var append1 = /* @__PURE__ */ append(semigroupArray);
   var eq12 = /* @__PURE__ */ eq(eqPath);
   var over2 = /* @__PURE__ */ over()();
-  var map6 = /* @__PURE__ */ map(functorArray);
+  var map5 = /* @__PURE__ */ map(functorArray);
   var DecodeError = function(x) {
     return x;
   };
@@ -3058,7 +3056,7 @@
       return {
         message: err.message,
         path: f(err.path),
-        causes: map6(withPath(f))(err.causes)
+        causes: map5(withPath(f))(err.causes)
       };
     });
   };
@@ -3080,7 +3078,7 @@
       ;
       return print2(v.path) + ": ";
     })();
-    var causes = map6(function(e) {
+    var causes = map5(function(e) {
       return replaceAll("\n")((function() {
         var $62 = length(v.causes) === 1;
         if ($62) {
@@ -3181,12 +3179,12 @@
   };
 
   // output/Control.Monad.Except.Trans/index.js
-  var map7 = /* @__PURE__ */ map(functorEither);
+  var map6 = /* @__PURE__ */ map(functorEither);
   var ExceptT = function(x) {
     return x;
   };
   var withExceptT = function(dictFunctor) {
-    var map116 = map(dictFunctor);
+    var map115 = map(dictFunctor);
     return function(f) {
       return function(v) {
         var mapLeft = function(v1) {
@@ -3202,7 +3200,7 @@
             throw new Error("Failed pattern match at Control.Monad.Except.Trans (line 43, column 3 - line 43, column 32): " + [v1.constructor.name, v2.constructor.name]);
           };
         };
-        return map116(mapLeft(f))(v);
+        return map115(mapLeft(f))(v);
       };
     };
   };
@@ -3215,10 +3213,10 @@
     };
   };
   var functorExceptT = function(dictFunctor) {
-    var map116 = map(dictFunctor);
+    var map115 = map(dictFunctor);
     return {
       map: function(f) {
-        return mapExceptT(map116(map7(f)));
+        return mapExceptT(map115(map6(f)));
       }
     };
   };
@@ -3365,13 +3363,13 @@
     };
   };
   var applyReaderT = function(dictApply) {
-    var apply7 = apply(dictApply);
+    var apply6 = apply(dictApply);
     var functorReaderT1 = functorReaderT(dictApply.Functor0());
     return {
       apply: function(v) {
         return function(v1) {
           return function(r) {
-            return apply7(v(r))(v1(r));
+            return apply6(v(r))(v1(r));
           };
         };
       },
@@ -3474,7 +3472,7 @@
   };
 
   // output/Data.Codec/index.js
-  var map8 = /* @__PURE__ */ map(functorTuple);
+  var map7 = /* @__PURE__ */ map(functorTuple);
   var Codec = /* @__PURE__ */ (function() {
     function Codec2(value0, value1) {
       this.value0 = value0;
@@ -3489,18 +3487,18 @@
     return Codec2;
   })();
   var profunctorCodec = function(dictFunctor) {
-    var map116 = map(dictFunctor);
+    var map115 = map(dictFunctor);
     return {
       dimap: function(f) {
         return function(g) {
           return function(v) {
             return new Codec((function() {
-              var $91 = map116(g);
+              var $91 = map115(g);
               return function($92) {
                 return $91(v.value0($92));
               };
             })(), (function() {
-              var $93 = map8(g);
+              var $93 = map7(g);
               return function($94) {
                 return $93(v.value1(f($94)));
               };
@@ -3956,7 +3954,7 @@
       };
     };
   };
-  var take = function(n) {
+  var take2 = function(n) {
     return function(s) {
       return s.substr(0, n);
     };
@@ -4016,7 +4014,7 @@
     };
   };
   var fromEnum2 = /* @__PURE__ */ fromEnum(boundedEnumChar);
-  var map9 = /* @__PURE__ */ map(functorMaybe);
+  var map8 = /* @__PURE__ */ map(functorMaybe);
   var unfoldr2 = /* @__PURE__ */ unfoldr(unfoldableArray);
   var div2 = /* @__PURE__ */ div(euclideanRingInt);
   var mod2 = /* @__PURE__ */ mod(euclideanRingInt);
@@ -4064,7 +4062,7 @@
     });
   };
   var unconsButWithTuple = function(s) {
-    return map9(function(v) {
+    return map8(function(v) {
       return new Tuple(v.head, v.tail);
     })(uncons2(s));
   };
@@ -4121,10 +4119,10 @@
       return v1;
     };
   };
-  var take2 = /* @__PURE__ */ _take(takeFallback);
+  var take3 = /* @__PURE__ */ _take(takeFallback);
   var splitAt2 = function(i2) {
     return function(s) {
-      var before = take2(i2)(s);
+      var before = take3(i2)(s);
       return {
         before,
         after: drop2(length3(before))(s)
@@ -4150,7 +4148,7 @@
   };
   var drop3 = function(n) {
     return function(s) {
-      return drop2(length3(take2(n)(s)))(s);
+      return drop2(length3(take3(n)(s)))(s);
     };
   };
   var codePointFromChar = function($77) {
@@ -4254,7 +4252,7 @@
   var fromFoldable1 = /* @__PURE__ */ fromFoldable2(foldableList);
   var append13 = /* @__PURE__ */ append(semigroupDecodeError);
   var bind2 = /* @__PURE__ */ bind(bindExceptT2);
-  var map10 = /* @__PURE__ */ map(functorEither);
+  var map9 = /* @__PURE__ */ map(functorEither);
   var traverseWithIndex2 = /* @__PURE__ */ traverseWithIndex(traversableWithIndexArray)(applicativeExceptT2);
   var map1 = /* @__PURE__ */ map(functorArray);
   var record = /* @__PURE__ */ (function() {
@@ -4418,7 +4416,7 @@
                     return new Left(withPath(AtKey.create(key))(v1.value0));
                   }
                   ;
-                  return map10(Just.create)(v1);
+                  return map9(Just.create)(v1);
                 }
                 ;
                 return new Right(Nothing.value);
@@ -5654,7 +5652,7 @@
   };
   var pure3 = /* @__PURE__ */ pure(applicativeEffect);
   var $$void3 = /* @__PURE__ */ $$void(functorEffect);
-  var map11 = /* @__PURE__ */ map(functorEffect);
+  var map10 = /* @__PURE__ */ map(functorEffect);
   var Canceler = function(x) {
     return x;
   };
@@ -5818,7 +5816,7 @@
   };
   var joinFiber = function(v) {
     return makeAff(function(k) {
-      return map11(effectCanceler)(v.join(k));
+      return map10(effectCanceler)(v.join(k));
     });
   };
   var functorFiber = {
@@ -5836,7 +5834,7 @@
         }
         ;
         return makeAff(function(k) {
-          return map11(effectCanceler)(v.kill(e, k));
+          return map10(effectCanceler)(v.kill(e, k));
         });
       });
     };
@@ -5914,7 +5912,7 @@
       return val;
     };
   };
-  var map13 = /* @__PURE__ */ map(functorMaybe);
+  var map11 = /* @__PURE__ */ map(functorMaybe);
   var Leaf = /* @__PURE__ */ (function() {
     function Leaf2() {
     }
@@ -6140,7 +6138,7 @@
     return function(k) {
       return function(m) {
         var v = unsafeSplit(compare7, k, m);
-        return map13(function(a2) {
+        return map11(function(a2) {
           return new Tuple(a2, unsafeJoinNodes(v.value1, v.value2));
         })(v.value0);
       };
@@ -6689,12 +6687,12 @@
     return false;
   };
   var some = function(dictAlternative) {
-    var apply7 = apply(dictAlternative.Applicative0().Apply0());
-    var map116 = map(dictAlternative.Plus1().Alt0().Functor0());
+    var apply6 = apply(dictAlternative.Applicative0().Apply0());
+    var map115 = map(dictAlternative.Plus1().Alt0().Functor0());
     return function(dictLazy) {
       var defer5 = defer(dictLazy);
       return function(v) {
-        return apply7(map116(Cons.create)(v))(defer5(function(v1) {
+        return apply6(map115(Cons.create)(v))(defer5(function(v1) {
           return many(dictAlternative)(dictLazy)(v);
         }));
       };
@@ -6818,10 +6816,10 @@
   var voidRight2 = /* @__PURE__ */ voidRight(functorEffect);
   var mempty2 = /* @__PURE__ */ mempty(monoidCanceler);
   var thenOrCatch3 = /* @__PURE__ */ thenOrCatch2();
-  var map14 = /* @__PURE__ */ map(functorEffect);
+  var map13 = /* @__PURE__ */ map(functorEffect);
   var resolve3 = /* @__PURE__ */ resolve2();
   var alt2 = /* @__PURE__ */ alt(altMaybe);
-  var map15 = /* @__PURE__ */ map(functorMaybe);
+  var map14 = /* @__PURE__ */ map(functorMaybe);
   var readString2 = /* @__PURE__ */ readString(monadIdentity);
   var bind3 = /* @__PURE__ */ bind(bindAff);
   var liftEffect3 = /* @__PURE__ */ liftEffect(monadEffectAff);
@@ -6829,9 +6827,9 @@
     return function(p2) {
       return makeAff(function(cb) {
         return voidRight2(mempty2)(thenOrCatch3(function(a2) {
-          return map14(resolve3)(cb(new Right(a2)));
+          return map13(resolve3)(cb(new Right(a2)));
         })(function(e) {
-          return map14(resolve3)(cb(new Left(customCoerce(e))));
+          return map13(resolve3)(cb(new Left(customCoerce(e))));
         })(p2));
       });
     };
@@ -6839,7 +6837,7 @@
   var coerce4 = function(rej) {
     return fromMaybe$prime(function(v) {
       return error2("Promise failed, couldn't extract JS Error or String");
-    })(alt2(toError(rej))(map15(error2)(hush(runExcept(readString2(unsafeToForeign(rej)))))));
+    })(alt2(toError(rej))(map14(error2)(hush(runExcept(readString2(unsafeToForeign(rej)))))));
   };
   var toAff = /* @__PURE__ */ toAff$prime(coerce4);
   var toAffE = function(f) {
@@ -6901,7 +6899,7 @@
   // output/Fetch/index.js
   var $$void4 = /* @__PURE__ */ $$void(functorEffect);
   var thenOrCatch4 = /* @__PURE__ */ thenOrCatch2();
-  var map16 = /* @__PURE__ */ map(functorEffect);
+  var map15 = /* @__PURE__ */ map(functorEffect);
   var resolve4 = /* @__PURE__ */ resolve2();
   var bind4 = /* @__PURE__ */ bind(bindAff);
   var liftEffect4 = /* @__PURE__ */ liftEffect(monadEffectAff);
@@ -6914,9 +6912,9 @@
       return makeAff(function(cb) {
         return function __do5() {
           $$void4(thenOrCatch4(function(a2) {
-            return map16(resolve4)(cb(new Right(a2)));
+            return map15(resolve4)(cb(new Right(a2)));
           })(function(e) {
-            return map16(resolve4)(cb(new Left(coerce4(e))));
+            return map15(resolve4)(cb(new Left(coerce4(e))));
           })(p2))();
           return effectCanceler(abort(abortController));
         };
@@ -8582,8 +8580,8 @@
   var compare6 = /* @__PURE__ */ compare(ordDate);
   var compare14 = /* @__PURE__ */ compare(ordTime);
   var bind6 = /* @__PURE__ */ bind(bindMaybe);
-  var apply3 = /* @__PURE__ */ apply(applyMaybe);
-  var map17 = /* @__PURE__ */ map(functorMaybe);
+  var apply2 = /* @__PURE__ */ apply(applyMaybe);
+  var map16 = /* @__PURE__ */ map(functorMaybe);
   var join2 = /* @__PURE__ */ join(bindMaybe);
   var toEnum3 = /* @__PURE__ */ toEnum(boundedEnumYear);
   var toEnum1 = /* @__PURE__ */ toEnum(boundedEnumMonth);
@@ -8655,7 +8653,7 @@
     return function(d) {
       return function(dt2) {
         return bind6(adjustImpl(Just.create)(Nothing.value)(fromDuration2(d))(toRecord(dt2)))(function(rec) {
-          return apply3(map17(DateTime.create)(join2(apply3(apply3(map17(exactDate)(toEnum3(rec.year)))(toEnum1(rec.month)))(toEnum23(rec.day)))))(apply3(apply3(apply3(map17(Time.create)(toEnum32(rec.hour)))(toEnum4(rec.minute)))(toEnum5(rec.second)))(toEnum6(rec.millisecond)));
+          return apply2(map16(DateTime.create)(join2(apply2(apply2(map16(exactDate)(toEnum3(rec.year)))(toEnum1(rec.month)))(toEnum23(rec.day)))))(apply2(apply2(apply2(map16(Time.create)(toEnum32(rec.hour)))(toEnum4(rec.minute)))(toEnum5(rec.second)))(toEnum6(rec.millisecond)));
         });
       };
     };
@@ -9150,7 +9148,7 @@
   var alt3 = /* @__PURE__ */ alt(altParserT);
   var defer3 = /* @__PURE__ */ defer(lazyParserT);
   var pure6 = /* @__PURE__ */ pure(applicativeParserT);
-  var map18 = /* @__PURE__ */ map(functorParserT);
+  var map17 = /* @__PURE__ */ map(functorParserT);
   var $$void5 = /* @__PURE__ */ $$void(functorParserT);
   var empty7 = /* @__PURE__ */ empty(plusParserT);
   var withLazyErrorMessage = function(p2) {
@@ -9181,7 +9179,7 @@
     };
   };
   var optionMaybe = function(p2) {
-    return option(Nothing.value)(map18(Just.create)(p2));
+    return option(Nothing.value)(map17(Just.create)(p2));
   };
   var lookAhead = function(v) {
     return function(state1, more, lift4, $$throw2, done) {
@@ -25575,7 +25573,7 @@
   var bind12 = /* @__PURE__ */ bind(bindParserT);
   var foldDigits2 = /* @__PURE__ */ foldDigits(foldableList);
   var pure12 = /* @__PURE__ */ pure(applicativeParserT);
-  var map19 = /* @__PURE__ */ map(functorParserT);
+  var map18 = /* @__PURE__ */ map(functorParserT);
   var negate2 = /* @__PURE__ */ negate(ringInt);
   var identity10 = /* @__PURE__ */ identity(categoryFn);
   var abs3 = /* @__PURE__ */ abs(ordInt)(ringInt);
@@ -25601,11 +25599,11 @@
   var mul2 = /* @__PURE__ */ mul(semiringInt);
   var parseDigit2 = /* @__PURE__ */ parseDigit(monadStateT2);
   var append14 = /* @__PURE__ */ append(/* @__PURE__ */ semigroupReaderT(applyEither)(semigroupUnit));
-  var map110 = /* @__PURE__ */ map(functorMaybe);
+  var map19 = /* @__PURE__ */ map(functorMaybe);
   var put2 = /* @__PURE__ */ put(monadStateStateT2);
   var $$void6 = /* @__PURE__ */ $$void(functorParserT);
   var applySecond2 = /* @__PURE__ */ applySecond(applyEither);
-  var apply4 = /* @__PURE__ */ apply(applyEither);
+  var apply3 = /* @__PURE__ */ apply(applyEither);
   var map22 = /* @__PURE__ */ map(functorEither);
   var toEnum9 = /* @__PURE__ */ toEnum(boundedEnumYear);
   var toEnum12 = /* @__PURE__ */ toEnum(boundedEnumMonth);
@@ -25956,8 +25954,8 @@
     return function(maxLength3) {
       return function(validators) {
         return function(errMsg) {
-          return bind12(map19(isJust)(optionMaybe($$char("-"))))(function(isNegative) {
-            return map19((function() {
+          return bind12(map18(isJust)(optionMaybe($$char("-"))))(function(isNegative) {
+            return map18((function() {
               if (isNegative) {
                 return negate2;
               }
@@ -26121,7 +26119,7 @@
       }
       ;
       if (v1 instanceof DayOfWeekNameShort) {
-        return take2(3)(show23(weekday(v.value0)));
+        return take3(3)(show23(weekday(v.value0)));
       }
       ;
       if (v1 instanceof Hours24) {
@@ -26269,7 +26267,7 @@
               month: v2
             };
           };
-        })(map19(fromEnum12)(parseMonth1));
+        })(map18(fromEnum12)(parseMonth1));
       }
       ;
       if (v instanceof MonthShort) {
@@ -26286,7 +26284,7 @@
               month: v2
             };
           };
-        })(map19(fromEnum12)(parseShortMonth1));
+        })(map18(fromEnum12)(parseShortMonth1));
       }
       ;
       if (v instanceof MonthTwoDigits) {
@@ -26341,8 +26339,8 @@
       }
       ;
       if (v instanceof UnixTimestamp) {
-        return bind12(map19(foldDigits2)(some3(parseDigit2)))(function(s) {
-          var v1 = map110(toDateTime)(instant(1e3 * toNumber(s)));
+        return bind12(map18(foldDigits2)(some3(parseDigit2)))(function(s) {
+          var v1 = map19(toDateTime)(instant(1e3 * toNumber(s)));
           if (v1 instanceof Nothing) {
             return fail3("Incorrect timestamp");
           }
@@ -26382,7 +26380,7 @@
               day: v2
             };
           };
-        })(map19(fromEnum33)(parseDayOfWeekName1));
+        })(map18(fromEnum33)(parseDayOfWeekName1));
       }
       ;
       if (v instanceof DayOfWeekNameShort) {
@@ -26399,7 +26397,7 @@
               day: v2
             };
           };
-        })(map19(fromEnum33)(parseDayOfWeekNameShort1));
+        })(map18(fromEnum33)(parseDayOfWeekNameShort1));
       }
       ;
       if (v instanceof Hours24) {
@@ -26622,7 +26620,7 @@
     };
   };
   var unformatAccumToDateTime = function(a2) {
-    return applySecond2(validAccum(a2))(apply4(map22(DateTime.create)(apply4(apply4(map22(canonicalDate)(maybe(new Left("Incorrect year"))(pure7)(toEnum9(fromMaybe(0)(a2.year)))))(maybe(new Left("Incorrect month"))(pure7)(toEnum12(fromMaybe(1)(a2.month)))))(maybe(new Left("Incorrect day"))(pure7)(toEnum24(adjustDay(a2.hour)(fromMaybe(1)(a2.day)))))))(apply4(apply4(apply4(map22(Time.create)(maybe(new Left("Incorrect hour"))(pure7)(toEnum33(fromMaybe(0)(map110(adjustMeridiem(a2.meridiem))(a2.hour))))))(maybe(new Left("Incorrect minute"))(pure7)(toEnum42(fromMaybe(0)(a2.minute)))))(maybe(new Left("Incorrect second"))(pure7)(toEnum52(fromMaybe(0)(a2.second)))))(maybe(new Left("Incorrect millisecond"))(pure7)(toEnum62(fromMaybe(0)(a2.millisecond))))));
+    return applySecond2(validAccum(a2))(apply3(map22(DateTime.create)(apply3(apply3(map22(canonicalDate)(maybe(new Left("Incorrect year"))(pure7)(toEnum9(fromMaybe(0)(a2.year)))))(maybe(new Left("Incorrect month"))(pure7)(toEnum12(fromMaybe(1)(a2.month)))))(maybe(new Left("Incorrect day"))(pure7)(toEnum24(adjustDay(a2.hour)(fromMaybe(1)(a2.day)))))))(apply3(apply3(apply3(map22(Time.create)(maybe(new Left("Incorrect hour"))(pure7)(toEnum33(fromMaybe(0)(map19(adjustMeridiem(a2.meridiem))(a2.hour))))))(maybe(new Left("Incorrect minute"))(pure7)(toEnum42(fromMaybe(0)(a2.minute)))))(maybe(new Left("Incorrect second"))(pure7)(toEnum52(fromMaybe(0)(a2.second)))))(maybe(new Left("Incorrect millisecond"))(pure7)(toEnum62(fromMaybe(0)(a2.millisecond))))));
   };
   var unformatParser = function(dictMonad) {
     var mapParserT1 = mapParserT2(dictMonad.Bind1().Apply0().Functor0());
@@ -27557,22 +27555,22 @@
   var bitraversableTuple = {
     bitraverse: function(dictApplicative) {
       var Apply0 = dictApplicative.Apply0();
-      var apply7 = apply(Apply0);
+      var apply6 = apply(Apply0);
       var map49 = map(Apply0.Functor0());
       return function(f) {
         return function(g) {
           return function(v) {
-            return apply7(map49(Tuple.create)(f(v.value0)))(g(v.value1));
+            return apply6(map49(Tuple.create)(f(v.value0)))(g(v.value1));
           };
         };
       };
     },
     bisequence: function(dictApplicative) {
       var Apply0 = dictApplicative.Apply0();
-      var apply7 = apply(Apply0);
+      var apply6 = apply(Apply0);
       var map49 = map(Apply0.Functor0());
       return function(v) {
-        return apply7(map49(Tuple.create)(v.value0))(v.value1);
+        return apply6(map49(Tuple.create)(v.value0))(v.value1);
       };
     },
     Bifunctor0: function() {
@@ -27636,7 +27634,7 @@
   var traverse2 = /* @__PURE__ */ traverse(traversableArray)(applicativeEither);
   var lookup6 = /* @__PURE__ */ lookup(foldableArray)(eqString);
   var map26 = /* @__PURE__ */ map(functorNonEmptyArray);
-  var map111 = /* @__PURE__ */ map(functorFn);
+  var map110 = /* @__PURE__ */ map(functorFn);
   var foldl4 = /* @__PURE__ */ foldl(foldableNonEmptyArray);
   var composeKleisli2 = /* @__PURE__ */ composeKleisli(bindEither);
   var append4 = /* @__PURE__ */ append(semigroupNonEmptyArray);
@@ -27785,7 +27783,7 @@
         return function(str) {
           var v = indexOf(p2)(str);
           if (v instanceof Just) {
-            return new Tuple(take(v.value0)(str), drop2(v.value0 + length3(p2) | 0)(str));
+            return new Tuple(take2(v.value0)(str), drop2(v.value0 + length3(p2) | 0)(str));
           }
           ;
           if (v instanceof Nothing) {
@@ -27888,7 +27886,7 @@
         }
         ;
         if (m instanceof Chomp) {
-          return new Chomp(map111(map27(f))(m.value0));
+          return new Chomp(map110(map27(f))(m.value0));
         }
         ;
         if (m instanceof Prefix) {
@@ -28300,12 +28298,12 @@
   var applyFirst3 = /* @__PURE__ */ applyFirst(applyRouteParser);
   var pure17 = /* @__PURE__ */ pure(applicativeRouteParser);
   var identity11 = /* @__PURE__ */ identity(categoryFn);
-  var apply5 = /* @__PURE__ */ apply(applyRouteParser);
+  var apply4 = /* @__PURE__ */ apply(applyRouteParser);
   var map28 = /* @__PURE__ */ map(functorRouteParser);
   var foldMap4 = /* @__PURE__ */ foldMap(foldableMaybe)(monoidRoutePRinter);
   var mempty3 = /* @__PURE__ */ mempty(monoidRoutePRinter);
   var apply1 = /* @__PURE__ */ apply(applyFn);
-  var map112 = /* @__PURE__ */ map(functorFn);
+  var map111 = /* @__PURE__ */ map(functorFn);
   var RouteDuplex = /* @__PURE__ */ (function() {
     function RouteDuplex2(value0, value1) {
       this.value0 = value0;
@@ -28337,7 +28335,7 @@
               return function(v1) {
                 return new RouteDuplex(function(r) {
                   return append6(v1.value0(r))(v.value0(get7(sym)(r)));
-                }, apply5(map28(flip(insert8(sym)))(v1.value1))(v.value1));
+                }, apply4(map28(flip(insert8(sym)))(v1.value1))(v.value1));
               };
             };
           };
@@ -28457,7 +28455,7 @@
   var applyRouteDuplex = {
     apply: function(v) {
       return function(v1) {
-        return new RouteDuplex(apply1(map112(append6)(v.value0))(v1.value0), apply5(v.value1)(v1.value1));
+        return new RouteDuplex(apply1(map111(append6)(v.value0))(v1.value0), apply4(v.value1)(v1.value1));
       };
     },
     Functor0: function() {
@@ -28479,7 +28477,7 @@
   // output/Routing.Duplex.Generic/index.js
   var identity12 = /* @__PURE__ */ identity(categoryFn);
   var append7 = /* @__PURE__ */ append(semigroupRoutePrinter);
-  var apply6 = /* @__PURE__ */ apply(applyRouteParser);
+  var apply5 = /* @__PURE__ */ apply(applyRouteParser);
   var map29 = /* @__PURE__ */ map(functorRouteParser);
   var alt10 = /* @__PURE__ */ alt(altRouteParser);
   var dimap3 = /* @__PURE__ */ dimap(profunctorRouteDuplex);
@@ -28503,7 +28501,7 @@
         var enc = function(v2) {
           return append7(v.value0(v2.value0))(v1.value0(v2.value1));
         };
-        var dec = apply6(map29(Product.create)(map29(Argument)(v.value1)))(v1.value1);
+        var dec = apply5(map29(Product.create)(map29(Argument)(v.value1)))(v1.value1);
         return new RouteDuplex(enc, dec);
       };
     };
@@ -29466,7 +29464,7 @@
     }
     ;
     if (v instanceof ParseError2) {
-      return "Parse error: " + (v.value0.message + ("\nResponse: " + take2(500)(v.value0.raw)));
+      return "Parse error: " + (v.value0.message + ("\nResponse: " + take3(500)(v.value0.raw)));
     }
     ;
     throw new Error("Failed pattern match at Dashboard.API (line 50, column 17 - line 54, column 72): " + [v.constructor.name]);
@@ -30371,7 +30369,7 @@
 
   // output/Halogen.VDom.Types/index.js
   var map34 = /* @__PURE__ */ map(functorArray);
-  var map113 = /* @__PURE__ */ map(functorTuple);
+  var map112 = /* @__PURE__ */ map(functorTuple);
   var Text = /* @__PURE__ */ (function() {
     function Text2(value0) {
       this.value0 = value0;
@@ -30487,7 +30485,7 @@
       }
       ;
       if (v2 instanceof Keyed) {
-        return new Keyed(v2.value0, v2.value1, v.value0(v2.value2), map34(map113(go2))(v2.value3));
+        return new Keyed(v2.value0, v2.value1, v.value0(v2.value2), map34(map112(go2))(v2.value3));
       }
       ;
       if (v2 instanceof Widget) {
@@ -31427,7 +31425,7 @@
     };
   };
   var goApply = function(dictApplicative) {
-    var apply7 = apply(dictApplicative.Apply0());
+    var apply6 = apply(dictApplicative.Apply0());
     return function(fStack) {
       return function(vals) {
         return function(gVal) {
@@ -31436,7 +31434,7 @@
           }
           ;
           if (fStack instanceof Cons) {
-            var gRes = apply7(fStack.value0.func)(gVal);
+            var gRes = apply6(fStack.value0.func)(gVal);
             var $31 = fStack.value0.count === 1;
             if ($31) {
               if (fStack.value1 instanceof Nil) {
@@ -31906,18 +31904,18 @@
   };
   var foldFree = function(dictMonadRec) {
     var Monad0 = dictMonadRec.Monad0();
-    var map116 = map(Monad0.Bind1().Apply0().Functor0());
+    var map115 = map(Monad0.Bind1().Apply0().Functor0());
     var pure112 = pure(Monad0.Applicative0());
     var tailRecM5 = tailRecM(dictMonadRec);
     return function(k) {
       var go2 = function(f) {
         var v = toView(f);
         if (v instanceof Return) {
-          return map116(Done.create)(pure112(v.value0));
+          return map115(Done.create)(pure112(v.value0));
         }
         ;
         if (v instanceof Bind) {
-          return map116(function($199) {
+          return map115(function($199) {
             return Loop.create(v.value1($199));
           })(k(v.value0));
         }
@@ -32520,6 +32518,7 @@
   var eq16 = /* @__PURE__ */ eq(eqSortOrder);
   var type_4 = /* @__PURE__ */ type_3(isPropInputType);
   var greaterThan2 = /* @__PURE__ */ greaterThan(ordDateTime);
+  var unwrap10 = /* @__PURE__ */ unwrap();
   var pure21 = /* @__PURE__ */ pure(applicativeHalogenM);
   var append15 = /* @__PURE__ */ append(semigroupArray);
   var unless2 = /* @__PURE__ */ unless(applicativeHalogenM);
@@ -32530,7 +32529,6 @@
       return "baseUrl";
     }
   })(eqString)));
-  var unwrap10 = /* @__PURE__ */ unwrap();
   var NavigateBack = /* @__PURE__ */ (function() {
     function NavigateBack2() {
     }
@@ -32842,14 +32840,6 @@
       return " refresh-indicator--inactive";
     })())])([])])])]), renderLogEntries(state3)]);
   };
-  var keepNewestLogs = function(logs) {
-    var $111 = length(logs) <= maxLogEntries;
-    if ($111) {
-      return logs;
-    }
-    ;
-    return drop(length(logs) - maxLogEntries | 0)(logs);
-  };
   var isNewerThan = function(mTs) {
     return function(logLine) {
       if (mTs instanceof Nothing) {
@@ -32860,7 +32850,7 @@
         return greaterThan2(logLine.timestamp)(mTs.value0);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 562, column 27 - line 564, column 36): " + [mTs.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 566, column 27 - line 568, column 36): " + [mTs.constructor.name]);
     };
   };
   var initialState = function(input3) {
@@ -32903,7 +32893,7 @@
       return printIndented(encode2(packageSetOperationCodec)(v.value0.payload));
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 568, column 18 - line 573, column 97): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 572, column 18 - line 577, column 97): " + [v.constructor.name]);
   };
   var renderPayloadSection = function(state3) {
     return function(job) {
@@ -32924,501 +32914,6 @@
       })()]);
     };
   };
-  var fetchAllRemainingLogs = function(dictMonadAff) {
-    var liftAff2 = liftAff(monadAffHalogenM(dictMonadAff));
-    var go2 = function(iteration) {
-      return when5(iteration < maxPaginationIterations)(bind19(get4)(function(state3) {
-        return when5(length(state3.allLogs) < maxLogEntries)((function() {
-          if (state3.lastLogTimestamp instanceof Nothing) {
-            return pure21(unit);
-          }
-          ;
-          if (state3.lastLogTimestamp instanceof Just) {
-            return bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
-              level: new Just(state3.logLevel),
-              since: new Just(state3.lastLogTimestamp.value0),
-              until: Nothing.value,
-              order: new Just(ASC.value)
-            })))(function(result) {
-              if (result instanceof Left) {
-                return pure21(unit);
-              }
-              ;
-              if (result instanceof Right) {
-                var newLogs = filter(isNewerThan(new Just(state3.lastLogTimestamp.value0)))(jobInfo(result.value0).logs);
-                var $125 = $$null(newLogs);
-                if ($125) {
-                  return pure21(unit);
-                }
-                ;
-                return bind19(get4)(function(currentState) {
-                  var combined = keepNewestLogs(append15(currentState.allLogs)(newLogs));
-                  var lastTs = map38(function(v) {
-                    return v.timestamp;
-                  })(last(combined));
-                  return discard5(modify_4(function(v) {
-                    var $126 = {};
-                    for (var $127 in v) {
-                      if ({}.hasOwnProperty.call(v, $127)) {
-                        $126[$127] = v[$127];
-                      }
-                      ;
-                    }
-                    ;
-                    $126.allLogs = combined;
-                    $126.lastLogTimestamp = lastTs;
-                    return $126;
-                  }))(function() {
-                    return go2(iteration + 1 | 0);
-                  });
-                });
-              }
-              ;
-              throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 602, column 13 - line 613, column 37): " + [result.constructor.name]);
-            });
-          }
-          ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 597, column 9 - line 613, column 37): " + [state3.lastLogTimestamp.constructor.name]);
-        })());
-      }));
-    };
-    return go2(0);
-  };
-  var handleAction = function(dictMonadAff) {
-    var liftEffect11 = liftEffect(monadEffectHalogenM(dictMonadAff.MonadEffect0()));
-    var liftAff2 = liftAff(monadAffHalogenM(dictMonadAff));
-    var fetchAllRemainingLogs1 = fetchAllRemainingLogs(dictMonadAff);
-    return function(v) {
-      if (v instanceof Initialize2) {
-        return bind19(liftEffect11(nowDateTime))(function(now2) {
-          return discard5(modify_4(function(v1) {
-            var $132 = {};
-            for (var $133 in v1) {
-              if ({}.hasOwnProperty.call(v1, $133)) {
-                $132[$133] = v1[$133];
-              }
-              ;
-            }
-            ;
-            $132.currentTime = new Just(now2);
-            return $132;
-          }))(function() {
-            return discard5(handleAction(dictMonadAff)(FetchJob.value))(function() {
-              return bind19(get4)(function(state3) {
-                var finished = (function() {
-                  if (state3.job instanceof Just) {
-                    return isJust(jobInfo(state3.job.value0).finishedAt);
-                  }
-                  ;
-                  if (state3.job instanceof Nothing) {
-                    return false;
-                  }
-                  ;
-                  throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 394, column 18 - line 396, column 25): " + [state3.job.constructor.name]);
-                })();
-                return unless2(finished)(bind19(bindFlipped6(subscribe2)(timerEmitter2(logRefreshInterval)(LogRefreshTick.value)))(function(subId) {
-                  return modify_4(function(v1) {
-                    var $137 = {};
-                    for (var $138 in v1) {
-                      if ({}.hasOwnProperty.call(v1, $138)) {
-                        $137[$138] = v1[$138];
-                      }
-                      ;
-                    }
-                    ;
-                    $137.logRefreshSubId = new Just(subId);
-                    return $137;
-                  });
-                }));
-              });
-            });
-          });
-        });
-      }
-      ;
-      if (v instanceof Receive2) {
-        return bind19(get4)(function(state3) {
-          return when5(state3.jobId !== v.value0.jobId || notEq1(state3.apiConfig)(v.value0.apiConfig))(discard5(modify_4(function(v1) {
-            var $140 = {};
-            for (var $141 in v1) {
-              if ({}.hasOwnProperty.call(v1, $141)) {
-                $140[$141] = v1[$141];
-              }
-              ;
-            }
-            ;
-            $140.jobId = v.value0.jobId;
-            $140.apiConfig = v.value0.apiConfig;
-            return $140;
-          }))(function() {
-            return handleAction(dictMonadAff)(FetchJob.value);
-          }));
-        });
-      }
-      ;
-      if (v instanceof FetchJob) {
-        return discard5(modify_4(function(v1) {
-          var $144 = {};
-          for (var $145 in v1) {
-            if ({}.hasOwnProperty.call(v1, $145)) {
-              $144[$145] = v1[$145];
-            }
-            ;
-          }
-          ;
-          $144.loading = true;
-          $144.error = Nothing.value;
-          return $144;
-        }))(function() {
-          return bind19(get4)(function(state3) {
-            return bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
-              level: new Just(state3.logLevel),
-              since: Nothing.value,
-              until: Nothing.value,
-              order: new Just(ASC.value)
-            })))(function(result) {
-              return handleAction(dictMonadAff)(new HandleFetchResult(result));
-            });
-          });
-        });
-      }
-      ;
-      if (v instanceof HandleFetchResult) {
-        if (v.value0 instanceof Left) {
-          var msg = printApiError(v.value0.value0);
-          return modify_4(function(v1) {
-            var $148 = {};
-            for (var $149 in v1) {
-              if ({}.hasOwnProperty.call(v1, $149)) {
-                $148[$149] = v1[$149];
-              }
-              ;
-            }
-            ;
-            $148.loading = false;
-            $148.error = new Just(msg);
-            $148.job = Nothing.value;
-            return $148;
-          });
-        }
-        ;
-        if (v.value0 instanceof Right) {
-          return bind19(liftEffect11(nowDateTime))(function(now2) {
-            var info2 = jobInfo(v.value0.value0);
-            var lastTs2 = map38(function(v1) {
-              return v1.timestamp;
-            })(last(info2.logs));
-            return discard5(modify_4(function(v1) {
-              var $152 = {};
-              for (var $153 in v1) {
-                if ({}.hasOwnProperty.call(v1, $153)) {
-                  $152[$153] = v1[$153];
-                }
-                ;
-              }
-              ;
-              $152.loading = false;
-              $152.error = Nothing.value;
-              $152.job = new Just(v.value0.value0);
-              $152.allLogs = info2.logs;
-              $152.lastLogTimestamp = lastTs2;
-              $152.logUntil = info2.finishedAt;
-              $152.logPage = 0;
-              $152.currentTime = new Just(now2);
-              return $152;
-            }))(function() {
-              return discard5(fetchAllRemainingLogs1)(function() {
-                return stopAutoRefreshIfFinished(info2);
-              });
-            });
-          });
-        }
-        ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 414, column 31 - line 434, column 37): " + [v.value0.constructor.name]);
-      }
-      ;
-      if (v instanceof SetLogLevel) {
-        var level = parseLogLevel2(v.value0);
-        return discard5(modify_4(function(v1) {
-          var $157 = {};
-          for (var $158 in v1) {
-            if ({}.hasOwnProperty.call(v1, $158)) {
-              $157[$158] = v1[$158];
-            }
-            ;
-          }
-          ;
-          $157.logLevel = level;
-          $157.allLogs = [];
-          $157.lastLogTimestamp = Nothing.value;
-          $157.logPage = 0;
-          return $157;
-        }))(function() {
-          return bind19(get4)(function(state3) {
-            return bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
-              level: new Just(level),
-              since: Nothing.value,
-              until: state3.logUntil,
-              order: new Just(ASC.value)
-            })))(function(result) {
-              return handleAction(dictMonadAff)(new HandleLogLevelResult(result));
-            });
-          });
-        });
-      }
-      ;
-      if (v instanceof HandleLogLevelResult) {
-        if (v.value0 instanceof Left) {
-          return modify_4(function(v1) {
-            var $162 = {};
-            for (var $163 in v1) {
-              if ({}.hasOwnProperty.call(v1, $163)) {
-                $162[$163] = v1[$163];
-              }
-              ;
-            }
-            ;
-            $162.allLogs = [];
-            $162.lastLogTimestamp = Nothing.value;
-            return $162;
-          });
-        }
-        ;
-        if (v.value0 instanceof Right) {
-          var logs = jobInfo(v.value0.value0).logs;
-          var lastTs = map38(function(v1) {
-            return v1.timestamp;
-          })(last(logs));
-          return discard5(modify_4(function(v1) {
-            var $166 = {};
-            for (var $167 in v1) {
-              if ({}.hasOwnProperty.call(v1, $167)) {
-                $166[$167] = v1[$167];
-              }
-              ;
-            }
-            ;
-            $166.allLogs = logs;
-            $166.lastLogTimestamp = lastTs;
-            return $166;
-          }))(function() {
-            return fetchAllRemainingLogs1;
-          });
-        }
-        ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 444, column 34 - line 451, column 28): " + [v.value0.constructor.name]);
-      }
-      ;
-      if (v instanceof ToggleLogAutoRefresh) {
-        return bind19(get4)(function(state3) {
-          return discard5(for_3(state3.logRefreshSubId)(unsubscribe2))(function() {
-            if (v.value0) {
-              return bind19(bindFlipped6(subscribe2)(timerEmitter2(logRefreshInterval)(LogRefreshTick.value)))(function(subId) {
-                return modify_4(function(v1) {
-                  var $172 = {};
-                  for (var $173 in v1) {
-                    if ({}.hasOwnProperty.call(v1, $173)) {
-                      $172[$173] = v1[$173];
-                    }
-                    ;
-                  }
-                  ;
-                  $172.logAutoRefresh = true;
-                  $172.logRefreshSubId = new Just(subId);
-                  return $172;
-                });
-              });
-            }
-            ;
-            return modify_4(function(v1) {
-              var $175 = {};
-              for (var $176 in v1) {
-                if ({}.hasOwnProperty.call(v1, $176)) {
-                  $175[$176] = v1[$176];
-                }
-                ;
-              }
-              ;
-              $175.logAutoRefresh = false;
-              $175.logRefreshSubId = Nothing.value;
-              return $175;
-            });
-          });
-        });
-      }
-      ;
-      if (v instanceof ToggleLogSortOrder) {
-        return modify_4(function(s) {
-          var $180 = {};
-          for (var $181 in s) {
-            if ({}.hasOwnProperty.call(s, $181)) {
-              $180[$181] = s[$181];
-            }
-            ;
-          }
-          ;
-          $180.logSortOrder = (function() {
-            var $179 = eq16(s.logSortOrder)(ASC.value);
-            if ($179) {
-              return DESC.value;
-            }
-            ;
-            return ASC.value;
-          })();
-          $180.logPage = 0;
-          return $180;
-        });
-      }
-      ;
-      if (v instanceof LogRefreshTick) {
-        return bind19(liftEffect11(nowDateTime))(function(now2) {
-          return discard5(modify_4(function(v1) {
-            var $183 = {};
-            for (var $184 in v1) {
-              if ({}.hasOwnProperty.call(v1, $184)) {
-                $183[$184] = v1[$184];
-              }
-              ;
-            }
-            ;
-            $183.currentTime = new Just(now2);
-            return $183;
-          }))(function() {
-            return bind19(get4)(function(state3) {
-              var finished = (function() {
-                if (state3.job instanceof Just) {
-                  return isJust(jobInfo(state3.job.value0).finishedAt);
-                }
-                ;
-                if (state3.job instanceof Nothing) {
-                  return false;
-                }
-                ;
-                throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 474, column 18 - line 476, column 25): " + [state3.job.constructor.name]);
-              })();
-              return unless2(finished)(bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
-                level: new Just(state3.logLevel),
-                since: state3.lastLogTimestamp,
-                until: Nothing.value,
-                order: new Just(ASC.value)
-              })))(function(result) {
-                return handleAction(dictMonadAff)(new HandleLogRefreshResult(result));
-              }));
-            });
-          });
-        });
-      }
-      ;
-      if (v instanceof HandleLogRefreshResult) {
-        if (v.value0 instanceof Left) {
-          return pure21(unit);
-        }
-        ;
-        if (v.value0 instanceof Right) {
-          return bind19(liftEffect11(nowDateTime))(function(now2) {
-            return bind19(get4)(function(state3) {
-              var info2 = jobInfo(v.value0.value0);
-              var newLogs = filter(isNewerThan(state3.lastLogTimestamp))(info2.logs);
-              return discard5(when5(!$$null(newLogs))((function() {
-                var lastTs2 = map38(function(v1) {
-                  return v1.timestamp;
-                })(last(newLogs));
-                var combined = keepNewestLogs(append15(state3.allLogs)(newLogs));
-                return modify_4(function(v1) {
-                  var $190 = {};
-                  for (var $191 in v1) {
-                    if ({}.hasOwnProperty.call(v1, $191)) {
-                      $190[$191] = v1[$191];
-                    }
-                    ;
-                  }
-                  ;
-                  $190.allLogs = combined;
-                  $190.lastLogTimestamp = lastTs2;
-                  return $190;
-                });
-              })()))(function() {
-                return discard5(modify_4(function(v1) {
-                  var $193 = {};
-                  for (var $194 in v1) {
-                    if ({}.hasOwnProperty.call(v1, $194)) {
-                      $193[$194] = v1[$194];
-                    }
-                    ;
-                  }
-                  ;
-                  $193.job = new Just(v.value0.value0);
-                  $193.logUntil = info2.finishedAt;
-                  $193.currentTime = new Just(now2);
-                  return $193;
-                }))(function() {
-                  return stopAutoRefreshIfFinished(info2);
-                });
-              });
-            });
-          });
-        }
-        ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 482, column 36 - line 497, column 37): " + [v.value0.constructor.name]);
-      }
-      ;
-      if (v instanceof TogglePayload) {
-        return modify_4(function(s) {
-          var $198 = {};
-          for (var $199 in s) {
-            if ({}.hasOwnProperty.call(s, $199)) {
-              $198[$199] = s[$199];
-            }
-            ;
-          }
-          ;
-          $198.payloadCollapsed = !s.payloadCollapsed;
-          return $198;
-        });
-      }
-      ;
-      if (v instanceof LogPrevPage) {
-        return modify_4(function(s) {
-          var $201 = {};
-          for (var $202 in s) {
-            if ({}.hasOwnProperty.call(s, $202)) {
-              $201[$202] = s[$202];
-            }
-            ;
-          }
-          ;
-          $201.logPage = max4(0)(s.logPage - 1 | 0);
-          return $201;
-        });
-      }
-      ;
-      if (v instanceof LogNextPage) {
-        return bind19(get4)(function(state3) {
-          var totalPages = logTotalPages(length(state3.allLogs));
-          return modify_4(function(s) {
-            var $204 = {};
-            for (var $205 in s) {
-              if ({}.hasOwnProperty.call(s, $205)) {
-                $204[$205] = s[$205];
-              }
-              ;
-            }
-            ;
-            $204.logPage = min4(totalPages - 1 | 0)(s.logPage + 1 | 0);
-            return $204;
-          });
-        });
-      }
-      ;
-      if (v instanceof GoBack) {
-        return discard5(liftEffect11(preventDefault(toEvent(v.value0))))(function() {
-          return raise(NavigateBack.value);
-        });
-      }
-      ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 387, column 16 - line 512, column 25): " + [v.constructor.name]);
-    };
-  };
   var computeDurationBetween = function(mNow) {
     return function(start2) {
       return function(v) {
@@ -33435,10 +32930,10 @@
             return "ongoing";
           }
           ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 581, column 14 - line 583, column 25): " + [mNow.constructor.name]);
+          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 585, column 14 - line 587, column 25): " + [mNow.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 579, column 37 - line 583, column 25): " + [v.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 583, column 37 - line 587, column 25): " + [v.constructor.name]);
       };
     };
   };
@@ -33453,8 +32948,8 @@
           return div4([class_("job-detail__timestamps")])(catMaybes([new Just(renderInfoRow("Job ID")(code([class_("job-detail__ts-value")])([text3(unwrap10(info2.jobId))]))), new Just(renderInfoRow("Status")(span3([class_("job-status job-status--" + statusName)])([text3(statusName)]))), map38(function(c) {
             return renderInfoRow("Compiler")(tsValue(print5(c)));
           })(compiler), new Just(renderInfoRow("Created")(tsValue(formatTimestamp(info2.createdAt)))), new Just(renderInfoRow("Started")(tsValue(fromMaybe("\u2014")(map38(formatTimestamp)(info2.startedAt))))), new Just(renderInfoRow("Finished")(tsValue(fromMaybe("\u2014")(map38(formatTimestamp)(info2.finishedAt))))), (function() {
-            var $212 = isJust(info2.startedAt);
-            if ($212) {
+            var $125 = isJust(info2.startedAt);
+            if ($125) {
               return new Just(renderInfoRow("Wait time")(tsValue(waitDuration)));
             }
             ;
@@ -33501,6 +32996,519 @@
   var render = function(state3) {
     return div_([renderBreadcrumb(state3), renderPageTitle(state3), renderContent(state3)]);
   };
+  var capLogs = function(sortOrder) {
+    return function(logs) {
+      var $134 = length(logs) <= maxLogEntries;
+      if ($134) {
+        return logs;
+      }
+      ;
+      if (sortOrder instanceof ASC) {
+        return take(maxLogEntries)(logs);
+      }
+      ;
+      if (sortOrder instanceof DESC) {
+        return drop(length(logs) - maxLogEntries | 0)(logs);
+      }
+      ;
+      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 544, column 8 - line 546, column 64): " + [sortOrder.constructor.name]);
+    };
+  };
+  var fetchAllRemainingLogs = function(dictMonadAff) {
+    var liftAff2 = liftAff(monadAffHalogenM(dictMonadAff));
+    var go2 = function(iteration) {
+      return when5(iteration < maxPaginationIterations)(bind19(get4)(function(state3) {
+        return when5(length(state3.allLogs) < maxLogEntries)((function() {
+          if (state3.lastLogTimestamp instanceof Nothing) {
+            return pure21(unit);
+          }
+          ;
+          if (state3.lastLogTimestamp instanceof Just) {
+            return bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
+              level: new Just(state3.logLevel),
+              since: new Just(state3.lastLogTimestamp.value0),
+              until: Nothing.value,
+              order: new Just(ASC.value)
+            })))(function(result) {
+              if (result instanceof Left) {
+                return pure21(unit);
+              }
+              ;
+              if (result instanceof Right) {
+                var newLogs = filter(isNewerThan(new Just(state3.lastLogTimestamp.value0)))(jobInfo(result.value0).logs);
+                var $139 = $$null(newLogs);
+                if ($139) {
+                  return pure21(unit);
+                }
+                ;
+                return bind19(get4)(function(currentState) {
+                  var combined = capLogs(currentState.logSortOrder)(append15(currentState.allLogs)(newLogs));
+                  var lastTs = map38(function(v) {
+                    return v.timestamp;
+                  })(last(combined));
+                  return discard5(modify_4(function(v) {
+                    var $140 = {};
+                    for (var $141 in v) {
+                      if ({}.hasOwnProperty.call(v, $141)) {
+                        $140[$141] = v[$141];
+                      }
+                      ;
+                    }
+                    ;
+                    $140.allLogs = combined;
+                    $140.lastLogTimestamp = lastTs;
+                    return $140;
+                  }))(function() {
+                    return go2(iteration + 1 | 0);
+                  });
+                });
+              }
+              ;
+              throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 606, column 13 - line 617, column 37): " + [result.constructor.name]);
+            });
+          }
+          ;
+          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 601, column 9 - line 617, column 37): " + [state3.lastLogTimestamp.constructor.name]);
+        })());
+      }));
+    };
+    return go2(0);
+  };
+  var handleAction = function(dictMonadAff) {
+    var liftEffect11 = liftEffect(monadEffectHalogenM(dictMonadAff.MonadEffect0()));
+    var liftAff2 = liftAff(monadAffHalogenM(dictMonadAff));
+    var fetchAllRemainingLogs1 = fetchAllRemainingLogs(dictMonadAff);
+    return function(v) {
+      if (v instanceof Initialize2) {
+        return bind19(liftEffect11(nowDateTime))(function(now2) {
+          return discard5(modify_4(function(v1) {
+            var $146 = {};
+            for (var $147 in v1) {
+              if ({}.hasOwnProperty.call(v1, $147)) {
+                $146[$147] = v1[$147];
+              }
+              ;
+            }
+            ;
+            $146.currentTime = new Just(now2);
+            return $146;
+          }))(function() {
+            return discard5(handleAction(dictMonadAff)(FetchJob.value))(function() {
+              return bind19(get4)(function(state3) {
+                var finished = (function() {
+                  if (state3.job instanceof Just) {
+                    return isJust(jobInfo(state3.job.value0).finishedAt);
+                  }
+                  ;
+                  if (state3.job instanceof Nothing) {
+                    return false;
+                  }
+                  ;
+                  throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 394, column 18 - line 396, column 25): " + [state3.job.constructor.name]);
+                })();
+                return unless2(finished)(bind19(bindFlipped6(subscribe2)(timerEmitter2(logRefreshInterval)(LogRefreshTick.value)))(function(subId) {
+                  return modify_4(function(v1) {
+                    var $151 = {};
+                    for (var $152 in v1) {
+                      if ({}.hasOwnProperty.call(v1, $152)) {
+                        $151[$152] = v1[$152];
+                      }
+                      ;
+                    }
+                    ;
+                    $151.logRefreshSubId = new Just(subId);
+                    return $151;
+                  });
+                }));
+              });
+            });
+          });
+        });
+      }
+      ;
+      if (v instanceof Receive2) {
+        return bind19(get4)(function(state3) {
+          return when5(state3.jobId !== v.value0.jobId || notEq1(state3.apiConfig)(v.value0.apiConfig))(discard5(modify_4(function(v1) {
+            var $154 = {};
+            for (var $155 in v1) {
+              if ({}.hasOwnProperty.call(v1, $155)) {
+                $154[$155] = v1[$155];
+              }
+              ;
+            }
+            ;
+            $154.jobId = v.value0.jobId;
+            $154.apiConfig = v.value0.apiConfig;
+            return $154;
+          }))(function() {
+            return handleAction(dictMonadAff)(FetchJob.value);
+          }));
+        });
+      }
+      ;
+      if (v instanceof FetchJob) {
+        return discard5(modify_4(function(v1) {
+          var $158 = {};
+          for (var $159 in v1) {
+            if ({}.hasOwnProperty.call(v1, $159)) {
+              $158[$159] = v1[$159];
+            }
+            ;
+          }
+          ;
+          $158.loading = true;
+          $158.error = Nothing.value;
+          return $158;
+        }))(function() {
+          return bind19(get4)(function(state3) {
+            return bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
+              level: new Just(state3.logLevel),
+              since: Nothing.value,
+              until: Nothing.value,
+              order: new Just(ASC.value)
+            })))(function(result) {
+              return handleAction(dictMonadAff)(new HandleFetchResult(result));
+            });
+          });
+        });
+      }
+      ;
+      if (v instanceof HandleFetchResult) {
+        if (v.value0 instanceof Left) {
+          var msg = printApiError(v.value0.value0);
+          return modify_4(function(v1) {
+            var $162 = {};
+            for (var $163 in v1) {
+              if ({}.hasOwnProperty.call(v1, $163)) {
+                $162[$163] = v1[$163];
+              }
+              ;
+            }
+            ;
+            $162.loading = false;
+            $162.error = new Just(msg);
+            $162.job = Nothing.value;
+            return $162;
+          });
+        }
+        ;
+        if (v.value0 instanceof Right) {
+          return bind19(liftEffect11(nowDateTime))(function(now2) {
+            var info2 = jobInfo(v.value0.value0);
+            var lastTs2 = map38(function(v1) {
+              return v1.timestamp;
+            })(last(info2.logs));
+            return discard5(modify_4(function(v1) {
+              var $166 = {};
+              for (var $167 in v1) {
+                if ({}.hasOwnProperty.call(v1, $167)) {
+                  $166[$167] = v1[$167];
+                }
+                ;
+              }
+              ;
+              $166.loading = false;
+              $166.error = Nothing.value;
+              $166.job = new Just(v.value0.value0);
+              $166.allLogs = info2.logs;
+              $166.lastLogTimestamp = lastTs2;
+              $166.logUntil = info2.finishedAt;
+              $166.logPage = 0;
+              $166.currentTime = new Just(now2);
+              return $166;
+            }))(function() {
+              return discard5(fetchAllRemainingLogs1)(function() {
+                return stopAutoRefreshIfFinished(info2);
+              });
+            });
+          });
+        }
+        ;
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 414, column 31 - line 434, column 37): " + [v.value0.constructor.name]);
+      }
+      ;
+      if (v instanceof SetLogLevel) {
+        var level = parseLogLevel2(v.value0);
+        return discard5(modify_4(function(v1) {
+          var $171 = {};
+          for (var $172 in v1) {
+            if ({}.hasOwnProperty.call(v1, $172)) {
+              $171[$172] = v1[$172];
+            }
+            ;
+          }
+          ;
+          $171.logLevel = level;
+          $171.allLogs = [];
+          $171.lastLogTimestamp = Nothing.value;
+          $171.logPage = 0;
+          return $171;
+        }))(function() {
+          return bind19(get4)(function(state3) {
+            return bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
+              level: new Just(level),
+              since: Nothing.value,
+              until: state3.logUntil,
+              order: new Just(ASC.value)
+            })))(function(result) {
+              return handleAction(dictMonadAff)(new HandleLogLevelResult(result));
+            });
+          });
+        });
+      }
+      ;
+      if (v instanceof HandleLogLevelResult) {
+        if (v.value0 instanceof Left) {
+          return modify_4(function(v1) {
+            var $176 = {};
+            for (var $177 in v1) {
+              if ({}.hasOwnProperty.call(v1, $177)) {
+                $176[$177] = v1[$177];
+              }
+              ;
+            }
+            ;
+            $176.allLogs = [];
+            $176.lastLogTimestamp = Nothing.value;
+            return $176;
+          });
+        }
+        ;
+        if (v.value0 instanceof Right) {
+          var logs = jobInfo(v.value0.value0).logs;
+          var lastTs = map38(function(v1) {
+            return v1.timestamp;
+          })(last(logs));
+          return discard5(modify_4(function(v1) {
+            var $180 = {};
+            for (var $181 in v1) {
+              if ({}.hasOwnProperty.call(v1, $181)) {
+                $180[$181] = v1[$181];
+              }
+              ;
+            }
+            ;
+            $180.allLogs = logs;
+            $180.lastLogTimestamp = lastTs;
+            return $180;
+          }))(function() {
+            return fetchAllRemainingLogs1;
+          });
+        }
+        ;
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 444, column 34 - line 451, column 28): " + [v.value0.constructor.name]);
+      }
+      ;
+      if (v instanceof ToggleLogAutoRefresh) {
+        return bind19(get4)(function(state3) {
+          return discard5(for_3(state3.logRefreshSubId)(unsubscribe2))(function() {
+            if (v.value0) {
+              return bind19(bindFlipped6(subscribe2)(timerEmitter2(logRefreshInterval)(LogRefreshTick.value)))(function(subId) {
+                return modify_4(function(v1) {
+                  var $186 = {};
+                  for (var $187 in v1) {
+                    if ({}.hasOwnProperty.call(v1, $187)) {
+                      $186[$187] = v1[$187];
+                    }
+                    ;
+                  }
+                  ;
+                  $186.logAutoRefresh = true;
+                  $186.logRefreshSubId = new Just(subId);
+                  return $186;
+                });
+              });
+            }
+            ;
+            return modify_4(function(v1) {
+              var $189 = {};
+              for (var $190 in v1) {
+                if ({}.hasOwnProperty.call(v1, $190)) {
+                  $189[$190] = v1[$190];
+                }
+                ;
+              }
+              ;
+              $189.logAutoRefresh = false;
+              $189.logRefreshSubId = Nothing.value;
+              return $189;
+            });
+          });
+        });
+      }
+      ;
+      if (v instanceof ToggleLogSortOrder) {
+        return modify_4(function(s) {
+          var $194 = {};
+          for (var $195 in s) {
+            if ({}.hasOwnProperty.call(s, $195)) {
+              $194[$195] = s[$195];
+            }
+            ;
+          }
+          ;
+          $194.logSortOrder = (function() {
+            var $193 = eq16(s.logSortOrder)(ASC.value);
+            if ($193) {
+              return DESC.value;
+            }
+            ;
+            return ASC.value;
+          })();
+          $194.logPage = 0;
+          return $194;
+        });
+      }
+      ;
+      if (v instanceof LogRefreshTick) {
+        return bind19(liftEffect11(nowDateTime))(function(now2) {
+          return discard5(modify_4(function(v1) {
+            var $197 = {};
+            for (var $198 in v1) {
+              if ({}.hasOwnProperty.call(v1, $198)) {
+                $197[$198] = v1[$198];
+              }
+              ;
+            }
+            ;
+            $197.currentTime = new Just(now2);
+            return $197;
+          }))(function() {
+            return bind19(get4)(function(state3) {
+              var finished = (function() {
+                if (state3.job instanceof Just) {
+                  return isJust(jobInfo(state3.job.value0).finishedAt);
+                }
+                ;
+                if (state3.job instanceof Nothing) {
+                  return false;
+                }
+                ;
+                throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 474, column 18 - line 476, column 25): " + [state3.job.constructor.name]);
+              })();
+              return unless2(finished)(bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
+                level: new Just(state3.logLevel),
+                since: state3.lastLogTimestamp,
+                until: Nothing.value,
+                order: new Just(ASC.value)
+              })))(function(result) {
+                return handleAction(dictMonadAff)(new HandleLogRefreshResult(result));
+              }));
+            });
+          });
+        });
+      }
+      ;
+      if (v instanceof HandleLogRefreshResult) {
+        if (v.value0 instanceof Left) {
+          return pure21(unit);
+        }
+        ;
+        if (v.value0 instanceof Right) {
+          return bind19(liftEffect11(nowDateTime))(function(now2) {
+            return bind19(get4)(function(state3) {
+              var info2 = jobInfo(v.value0.value0);
+              var newLogs = filter(isNewerThan(state3.lastLogTimestamp))(info2.logs);
+              return discard5(when5(!$$null(newLogs))((function() {
+                var lastTs2 = map38(function(v1) {
+                  return v1.timestamp;
+                })(last(newLogs));
+                var combined = capLogs(state3.logSortOrder)(append15(state3.allLogs)(newLogs));
+                return modify_4(function(v1) {
+                  var $204 = {};
+                  for (var $205 in v1) {
+                    if ({}.hasOwnProperty.call(v1, $205)) {
+                      $204[$205] = v1[$205];
+                    }
+                    ;
+                  }
+                  ;
+                  $204.allLogs = combined;
+                  $204.lastLogTimestamp = lastTs2;
+                  return $204;
+                });
+              })()))(function() {
+                return discard5(modify_4(function(v1) {
+                  var $207 = {};
+                  for (var $208 in v1) {
+                    if ({}.hasOwnProperty.call(v1, $208)) {
+                      $207[$208] = v1[$208];
+                    }
+                    ;
+                  }
+                  ;
+                  $207.job = new Just(v.value0.value0);
+                  $207.logUntil = info2.finishedAt;
+                  $207.currentTime = new Just(now2);
+                  return $207;
+                }))(function() {
+                  return stopAutoRefreshIfFinished(info2);
+                });
+              });
+            });
+          });
+        }
+        ;
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 482, column 36 - line 498, column 37): " + [v.value0.constructor.name]);
+      }
+      ;
+      if (v instanceof TogglePayload) {
+        return modify_4(function(s) {
+          var $212 = {};
+          for (var $213 in s) {
+            if ({}.hasOwnProperty.call(s, $213)) {
+              $212[$213] = s[$213];
+            }
+            ;
+          }
+          ;
+          $212.payloadCollapsed = !s.payloadCollapsed;
+          return $212;
+        });
+      }
+      ;
+      if (v instanceof LogPrevPage) {
+        return modify_4(function(s) {
+          var $215 = {};
+          for (var $216 in s) {
+            if ({}.hasOwnProperty.call(s, $216)) {
+              $215[$216] = s[$216];
+            }
+            ;
+          }
+          ;
+          $215.logPage = max4(0)(s.logPage - 1 | 0);
+          return $215;
+        });
+      }
+      ;
+      if (v instanceof LogNextPage) {
+        return bind19(get4)(function(state3) {
+          var totalPages = logTotalPages(length(state3.allLogs));
+          return modify_4(function(s) {
+            var $218 = {};
+            for (var $219 in s) {
+              if ({}.hasOwnProperty.call(s, $219)) {
+                $218[$219] = s[$219];
+              }
+              ;
+            }
+            ;
+            $218.logPage = min4(totalPages - 1 | 0)(s.logPage + 1 | 0);
+            return $218;
+          });
+        });
+      }
+      ;
+      if (v instanceof GoBack) {
+        return discard5(liftEffect11(preventDefault(toEvent(v.value0))))(function() {
+          return raise(NavigateBack.value);
+        });
+      }
+      ;
+      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 387, column 16 - line 513, column 25): " + [v.constructor.name]);
+    };
+  };
   var component = function(dictMonadAff) {
     return mkComponent({
       initialState,
@@ -33510,8 +33518,8 @@
         finalize: defaultEval.finalize,
         handleAction: handleAction(dictMonadAff),
         initialize: new Just(Initialize2.value),
-        receive: function($221) {
-          return Just.create(Receive2.create($221));
+        receive: function($222) {
+          return Just.create(Receive2.create($222));
         }
       })
     });
@@ -33534,16 +33542,10 @@
   var map39 = /* @__PURE__ */ map(functorMaybe);
   var unwrap11 = /* @__PURE__ */ unwrap();
   var type_5 = /* @__PURE__ */ type_3(isPropInputType);
-  var min5 = /* @__PURE__ */ min(ordDateTime);
-  var max5 = /* @__PURE__ */ max(ordDateTime);
-  var eq24 = /* @__PURE__ */ eq(eqDateTime);
-  var bind110 = /* @__PURE__ */ bind(bindMaybe);
-  var eq33 = /* @__PURE__ */ eq(eqJobType);
-  var eq42 = /* @__PURE__ */ eq(eqJobStatus);
-  var identity15 = /* @__PURE__ */ identity(categoryFn);
   var alt14 = /* @__PURE__ */ alt(altMaybe);
   var pure24 = /* @__PURE__ */ pure(applicativeHalogenM);
-  var map114 = /* @__PURE__ */ map(functorEither);
+  var map113 = /* @__PURE__ */ map(functorEither);
+  var bind110 = /* @__PURE__ */ bind(bindMaybe);
   var when6 = /* @__PURE__ */ when(applicativeHalogenM);
   var eqRec2 = /* @__PURE__ */ eqRec();
   var eqRowCons2 = /* @__PURE__ */ eqRowCons(eqRowNil)();
@@ -33599,7 +33601,7 @@
   })(/* @__PURE__ */ eqMaybe(eqBoolean))));
   var map210 = /* @__PURE__ */ map(functorArray);
   var unless3 = /* @__PURE__ */ unless(applicativeHalogenM);
-  var eq52 = /* @__PURE__ */ eq(/* @__PURE__ */ eqArray(/* @__PURE__ */ eqRec2(/* @__PURE__ */ eqRowCons(/* @__PURE__ */ eqRowCons(/* @__PURE__ */ eqRowCons2({
+  var eq24 = /* @__PURE__ */ eq(/* @__PURE__ */ eqArray(/* @__PURE__ */ eqRec2(/* @__PURE__ */ eqRowCons(/* @__PURE__ */ eqRowCons(/* @__PURE__ */ eqRowCons2({
     reflectSymbol: function() {
       return "success";
     }
@@ -33612,6 +33614,10 @@
       return "finishedAt";
     }
   })(/* @__PURE__ */ eqMaybe(eqDateTime)))));
+  var min5 = /* @__PURE__ */ min(ordDateTime);
+  var max5 = /* @__PURE__ */ max(ordDateTime);
+  var eq42 = /* @__PURE__ */ eq(eqJobType);
+  var eq52 = /* @__PURE__ */ eq(eqJobStatus);
   var UntilNow = /* @__PURE__ */ (function() {
     function UntilNow2() {
     }
@@ -33956,7 +33962,7 @@
       };
     }
   };
-  var eq82 = /* @__PURE__ */ eq(eqTimeRange);
+  var eq62 = /* @__PURE__ */ eq(eqTimeRange);
   var eqStatusFilter = {
     eq: function(x) {
       return function(y) {
@@ -33988,7 +33994,7 @@
       };
     }
   };
-  var eq9 = /* @__PURE__ */ eq(eqStatusFilter);
+  var eq72 = /* @__PURE__ */ eq(eqStatusFilter);
   var notEq3 = /* @__PURE__ */ notEq(eqStatusFilter);
   var eqSortField = {
     eq: function(x) {
@@ -33997,7 +34003,7 @@
       };
     }
   };
-  var eq10 = /* @__PURE__ */ eq(eqSortField);
+  var eq82 = /* @__PURE__ */ eq(eqSortField);
   var timeRangeHours = function(v) {
     if (v instanceof UntilNow) {
       return 24;
@@ -34030,7 +34036,7 @@
   };
   var statusFilterNeedsRefetch = function(old) {
     return function($$new5) {
-      return eq9(old)(ActiveOnly.value) !== eq9($$new5)(ActiveOnly.value);
+      return eq72(old)(ActiveOnly.value) !== eq72($$new5)(ActiveOnly.value);
     };
   };
   var sortableHeader = function(state3) {
@@ -34039,11 +34045,11 @@
         return th([class_("jobs-table__th jobs-table__th--sortable"), onClick(function(v) {
           return new SetSort(field);
         })])(append11([text3(label5 + " ")])((function() {
-          var $256 = eq10(state3.sortField)(field);
-          if ($256) {
+          var $236 = eq82(state3.sortField)(field);
+          if ($236) {
             return [span3([class_("sort-indicator")])([text3((function() {
-              var $257 = eq8(state3.sortOrder)(DESC.value);
-              if ($257) {
+              var $237 = eq8(state3.sortOrder)(DESC.value);
+              if ($237) {
                 return "\u25BC";
               }
               ;
@@ -34081,7 +34087,7 @@
         return UntilNow.value;
       })());
     };
-    return select([class_("toolbar-select"), onValueChange(handleChange)])([option2([value4("all"), selected(eq82(state3.timeRange)(UntilNow.value))])([text3("Until now")]), option2([value4("1"), selected(eq82(state3.timeRange)(LastHour.value))])([text3("Last hour")]), option2([value4("24"), selected(eq82(state3.timeRange)(Last24Hours.value))])([text3("Last 24 hours")]), option2([value4("168"), selected(eq82(state3.timeRange)(LastWeek.value))])([text3("Last week")]), option2([value4("custom"), selected(eq82(state3.timeRange)(Custom.value))])([text3("Custom")])]);
+    return select([class_("toolbar-select"), onValueChange(handleChange)])([option2([value4("all"), selected(eq62(state3.timeRange)(UntilNow.value))])([text3("Until now")]), option2([value4("1"), selected(eq62(state3.timeRange)(LastHour.value))])([text3("Last hour")]), option2([value4("24"), selected(eq62(state3.timeRange)(Last24Hours.value))])([text3("Last 24 hours")]), option2([value4("168"), selected(eq62(state3.timeRange)(LastWeek.value))])([text3("Last week")]), option2([value4("custom"), selected(eq62(state3.timeRange)(Custom.value))])([text3("Custom")])]);
   };
   var renderTextFilter = function(placeholder4) {
     return function(current) {
@@ -34091,7 +34097,7 @@
     };
   };
   var renderStatusSelect = function(current) {
-    return select([class_("toolbar-select"), onValueChange(SetFilterStatus.create)])([option2([value4("active"), selected(eq9(current)(ActiveOnly.value))])([text3("Active")]), option2([value4("all"), selected(eq9(current)(AllStatuses.value))])([text3("All")]), option2([value4("pending"), selected(eq9(current)(OnlyPending.value))])([text3("Pending")]), option2([value4("running"), selected(eq9(current)(OnlyRunning.value))])([text3("Running")]), option2([value4("succeeded"), selected(eq9(current)(OnlySucceeded.value))])([text3("Succeeded")]), option2([value4("failed"), selected(eq9(current)(OnlyFailed.value))])([text3("Failed")])]);
+    return select([class_("toolbar-select"), onValueChange(SetFilterStatus.create)])([option2([value4("active"), selected(eq72(current)(ActiveOnly.value))])([text3("Active")]), option2([value4("all"), selected(eq72(current)(AllStatuses.value))])([text3("All")]), option2([value4("pending"), selected(eq72(current)(OnlyPending.value))])([text3("Pending")]), option2([value4("running"), selected(eq72(current)(OnlyRunning.value))])([text3("Running")]), option2([value4("succeeded"), selected(eq72(current)(OnlySucceeded.value))])([text3("Succeeded")]), option2([value4("failed"), selected(eq72(current)(OnlyFailed.value))])([text3("Failed")])]);
   };
   var renderPagination = function(state3) {
     if (state3.loading || $$null(state3.jobs)) {
@@ -34106,7 +34112,7 @@
       })])([text3("\u25B6")])]);
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 610, column 1 - line 610, column 67): " + [state3.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 605, column 1 - line 605, column 67): " + [state3.constructor.name]);
   };
   var renderPageTitle2 = /* @__PURE__ */ div4([/* @__PURE__ */ class_("page-title")])([/* @__PURE__ */ h1([/* @__PURE__ */ class_("page-title__title")])([/* @__PURE__ */ text3("Jobs")])]);
   var renderField = function(label5) {
@@ -34122,33 +34128,33 @@
           if (enabled) {
             return bind20(bindFlipped7(subscribe2)(timerEmitter3(refreshInterval)(Tick.value)))(function(subId) {
               return modify_5(function(v) {
-                var $261 = {};
-                for (var $262 in v) {
-                  if ({}.hasOwnProperty.call(v, $262)) {
-                    $261[$262] = v[$262];
+                var $241 = {};
+                for (var $242 in v) {
+                  if ({}.hasOwnProperty.call(v, $242)) {
+                    $241[$242] = v[$242];
                   }
                   ;
                 }
                 ;
-                $261.autoRefresh = true;
-                $261.refreshSubId = new Just(subId);
-                return $261;
+                $241.autoRefresh = true;
+                $241.refreshSubId = new Just(subId);
+                return $241;
               });
             });
           }
           ;
           return modify_5(function(v) {
-            var $264 = {};
-            for (var $265 in v) {
-              if ({}.hasOwnProperty.call(v, $265)) {
-                $264[$265] = v[$265];
+            var $244 = {};
+            for (var $245 in v) {
+              if ({}.hasOwnProperty.call(v, $245)) {
+                $244[$245] = v[$245];
               }
               ;
             }
             ;
-            $264.autoRefresh = false;
-            $264.refreshSubId = Nothing.value;
-            return $264;
+            $244.autoRefresh = false;
+            $244.refreshSubId = Nothing.value;
+            return $244;
           });
         });
       });
@@ -34175,7 +34181,7 @@
       return "custom";
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 288, column 18 - line 293, column 21): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 283, column 18 - line 288, column 21): " + [v.constructor.name]);
   };
   var printStatusFilter = function(v) {
     if (v instanceof ActiveOnly) {
@@ -34202,7 +34208,7 @@
       return "failed";
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 309, column 21 - line 315, column 25): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 304, column 21 - line 310, column 25): " + [v.constructor.name]);
   };
   var printJobType2 = function(v) {
     if (v instanceof PublishJobType) {
@@ -34225,7 +34231,7 @@
       return "packageset";
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 322, column 16 - line 327, column 36): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 317, column 16 - line 322, column 36): " + [v.constructor.name]);
   };
   var printCursorParam = function(v) {
     return (function() {
@@ -34237,7 +34243,7 @@
         return "b:";
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 160, column 5 - line 162, column 23): " + [v.dir.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 155, column 5 - line 157, column 23): " + [v.dir.constructor.name]);
     })() + formatCursorTimestamp(v.timestamp);
   };
   var parseTimeRange = function(v) {
@@ -34314,7 +34320,7 @@
     return Nothing.value;
   };
   var parseCursorParam = function(s) {
-    var v = take2(2)(s);
+    var v = take3(2)(s);
     if (v === "f:") {
       return map39(function(dt2) {
         return {
@@ -34348,11 +34354,11 @@
   };
   var renderToolbar = function(state3) {
     var customRangeRow = (function() {
-      if (eq82(state3.timeRange)(Custom.value)) {
+      if (eq62(state3.timeRange)(Custom.value)) {
         var untilTimePart = drop3(11)(state3.untilStr);
-        var untilDatePart = take2(10)(state3.untilStr);
+        var untilDatePart = take3(10)(state3.untilStr);
         var sinceTimePart = drop3(11)(state3.sinceStr);
-        var sinceDatePart = take2(10)(state3.sinceStr);
+        var sinceDatePart = take3(10)(state3.sinceStr);
         return [div4([class_("jobs-toolbar__custom-range")])([label([class_("toolbar-field__label")])([text3("FROM")]), input([type_5(InputDate.value), class_("toolbar-input"), value4(sinceDatePart), onValueChange(SetCustomSinceDate.create)]), input([type_5(InputTime.value), class_("toolbar-input"), value4(sinceTimePart), onValueChange(SetCustomSinceTime.create)]), label([class_("toolbar-field__label")])([text3("TO")]), input([type_5(InputDate.value), class_("toolbar-input"), value4(untilDatePart), onValueChange(SetCustomUntilDate.create)]), input([type_5(InputTime.value), class_("toolbar-input"), value4(untilTimePart), onValueChange(SetCustomUntilTime.create)])])];
       }
       ;
@@ -34360,7 +34366,7 @@
         return [];
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 402, column 3 - line 439, column 21): ");
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 397, column 3 - line 434, column 21): ");
     })();
     var clearLink = (function() {
       if (hasActiveFilters(state3.filters)) {
@@ -34373,7 +34379,7 @@
         return [];
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 392, column 3 - line 400, column 21): ");
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 387, column 3 - line 395, column 21): ");
     })();
     return div4([class_("jobs-toolbar")])(append11([div4([class_("jobs-toolbar__zone jobs-toolbar__zone--query")])([renderField("TIME RANGE")(renderTimeRangeSelect(state3))]), div4([class_("jobs-toolbar__divider")])([]), div4([class_("jobs-toolbar__zone jobs-toolbar__zone--filters")])(append11([renderField("STATUS")(renderStatusSelect(state3.filters.statusFilter)), renderField("TYPE")(renderTypeSelect(state3.filters.jobType)), renderField("PACKAGE")(renderTextFilter("Package name")(state3.filters.packageName)(SetFilterPackageName.create)), renderField("VERSION")(renderTextFilter("Version")(state3.filters.packageVersion)(SetFilterPackageVersion.create)), renderField("COMPILER")(renderTextFilter("Compiler")(state3.filters.compilerVersion)(SetFilterCompilerVersion.create))])(clearLink)), div4([class_("jobs-toolbar__divider")])([]), div4([class_("jobs-toolbar__zone jobs-toolbar__zone--actions")])([renderField("REFRESH")(label([class_("toolbar-toggle")])([input([type_5(InputCheckbox.value), checked2(state3.autoRefresh), onChecked(ToggleAutoRefresh.create)]), text3(" Auto "), span3([class_("refresh-indicator" + (function() {
       if (state3.autoRefresh) {
@@ -34383,84 +34389,27 @@
       return " refresh-indicator--inactive";
     })())])([])]))])])(customRangeRow));
   };
-  var extremeCreatedAtBy = function(getCreatedAt) {
-    return function(pick) {
-      var maybe2 = function(fallback) {
-        return function(f) {
-          return function(v) {
-            if (v instanceof Nothing) {
-              return fallback;
-            }
-            ;
-            if (v instanceof Just) {
-              return f(v.value0);
-            }
-            ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 940, column 22 - line 942, column 18): " + [v.constructor.name]);
-          };
+  var extremeCreatedAt = function(pick) {
+    var maybe2 = function(fallback) {
+      return function(f) {
+        return function(v) {
+          if (v instanceof Nothing) {
+            return fallback;
+          }
+          ;
+          if (v instanceof Just) {
+            return f(v.value0);
+          }
+          ;
+          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 904, column 22 - line 906, column 18): " + [v.constructor.name]);
         };
       };
-      return foldl2(function(acc) {
-        return function(row) {
-          return new Just(maybe2(getCreatedAt(row))(pick(getCreatedAt(row)))(acc));
-        };
-      })(Nothing.value);
     };
-  };
-  var nextPageCursor = function(sortOrder) {
-    return function(jobs) {
-      if (sortOrder instanceof DESC) {
-        return extremeCreatedAtBy(function(v) {
-          return v.createdAt;
-        })(min5)(jobs);
-      }
-      ;
-      if (sortOrder instanceof ASC) {
-        return extremeCreatedAtBy(function(v) {
-          return v.createdAt;
-        })(max5)(jobs);
-      }
-      ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 945, column 33 - line 947, column 49): " + [sortOrder.constructor.name]);
-    };
-  };
-  var nextPageCursorForJobs = function(sortOrder) {
-    return function(jobs) {
-      if (sortOrder instanceof DESC) {
-        return extremeCreatedAtBy(function($469) {
-          return (function(v) {
-            return v.createdAt;
-          })(jobInfo($469));
-        })(min5)(jobs);
-      }
-      ;
-      if (sortOrder instanceof ASC) {
-        return extremeCreatedAtBy(function($470) {
-          return (function(v) {
-            return v.createdAt;
-          })(jobInfo($470));
-        })(max5)(jobs);
-      }
-      ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 955, column 40 - line 957, column 66): " + [sortOrder.constructor.name]);
-    };
-  };
-  var prevPageCursor = function(sortOrder) {
-    return function(jobs) {
-      if (sortOrder instanceof DESC) {
-        return extremeCreatedAtBy(function(v) {
-          return v.createdAt;
-        })(max5)(jobs);
-      }
-      ;
-      if (sortOrder instanceof ASC) {
-        return extremeCreatedAtBy(function(v) {
-          return v.createdAt;
-        })(min5)(jobs);
-      }
-      ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 950, column 33 - line 952, column 49): " + [sortOrder.constructor.name]);
-    };
+    return foldl2(function(acc) {
+      return function(s) {
+        return new Just(maybe2(s.createdAt)(pick(s.createdAt))(acc));
+      };
+    })(Nothing.value);
   };
   var emptyFilters = /* @__PURE__ */ (function() {
     return {
@@ -34471,40 +34420,108 @@
       statusFilter: AllStatuses.value
     };
   })();
-  var dropBoundaryFromStart = function(timestamp) {
-    return function(jobs) {
-      var v = uncons(jobs);
-      if (v instanceof Just && eq24(jobInfo(v.value0.head).createdAt)(timestamp)) {
-        return v.value0.tail;
-      }
-      ;
-      return jobs;
-    };
-  };
-  var dropBoundaryFromEnd = function(timestamp) {
-    return function(jobs) {
-      var v = unsnoc(jobs);
-      if (v instanceof Just && eq24(jobInfo(v.value0.last).createdAt)(timestamp)) {
-        return v.value0.init;
-      }
-      ;
-      return jobs;
-    };
-  };
-  var normalizeFetchedJobs = function(sortOrder) {
-    return function(cursor) {
-      return function(jobs) {
-        if (cursor instanceof Just && (cursor.value0.dir instanceof Forward && eq8(sortOrder)(ASC.value))) {
-          return dropBoundaryFromStart(cursor.value0.timestamp)(jobs);
-        }
-        ;
-        if (cursor instanceof Just && (cursor.value0.dir instanceof Backward && eq8(sortOrder)(DESC.value))) {
-          return dropBoundaryFromEnd(cursor.value0.timestamp)(jobs);
-        }
-        ;
-        return jobs;
-      };
-    };
+  var doFetchJobs = function(dictMonadAff) {
+    var liftEffect11 = liftEffect(monadEffectHalogenM(dictMonadAff.MonadEffect0()));
+    var liftAff2 = liftAff(monadAffHalogenM(dictMonadAff));
+    return bind20(get5)(function(state3) {
+      return bind20(liftEffect11(nowDateTime))(function(now2) {
+        var customUntil = parseDateTimeLocal(state3.untilStr);
+        var customSince = parseDateTimeLocal(state3.sinceStr);
+        var baseUntil = alt14(state3.until)((function() {
+          if (state3.timeRange instanceof Custom) {
+            return customUntil;
+          }
+          ;
+          if (state3.timeRange instanceof UntilNow) {
+            return new Just(now2);
+          }
+          ;
+          return Nothing.value;
+        })());
+        var baseSince = alt14(state3.since)((function() {
+          if (state3.timeRange instanceof Custom) {
+            return customSince;
+          }
+          ;
+          if (state3.timeRange instanceof UntilNow) {
+            return Nothing.value;
+          }
+          ;
+          return new Just(subtractHours(timeRangeHours(state3.timeRange))(now2));
+        })());
+        var v = (function() {
+          if (state3.pageCursor instanceof Nothing) {
+            return {
+              since: baseSince,
+              until: baseUntil,
+              fetchOrder: state3.sortOrder,
+              needsReverse: false
+            };
+          }
+          ;
+          if (state3.pageCursor instanceof Just && state3.pageCursor.value0.dir instanceof Forward) {
+            if (state3.sortOrder instanceof DESC) {
+              return {
+                since: baseSince,
+                until: new Just(state3.pageCursor.value0.timestamp),
+                fetchOrder: DESC.value,
+                needsReverse: false
+              };
+            }
+            ;
+            if (state3.sortOrder instanceof ASC) {
+              return {
+                since: new Just(state3.pageCursor.value0.timestamp),
+                until: baseUntil,
+                fetchOrder: ASC.value,
+                needsReverse: false
+              };
+            }
+            ;
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 848, column 43 - line 850, column 97): " + [state3.sortOrder.constructor.name]);
+          }
+          ;
+          if (state3.pageCursor instanceof Just && state3.pageCursor.value0.dir instanceof Backward) {
+            if (state3.sortOrder instanceof DESC) {
+              return {
+                since: new Just(state3.pageCursor.value0.timestamp),
+                until: baseUntil,
+                fetchOrder: ASC.value,
+                needsReverse: true
+              };
+            }
+            ;
+            if (state3.sortOrder instanceof ASC) {
+              return {
+                since: baseSince,
+                until: new Just(state3.pageCursor.value0.timestamp),
+                fetchOrder: DESC.value,
+                needsReverse: true
+              };
+            }
+            ;
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 851, column 44 - line 853, column 97): " + [state3.sortOrder.constructor.name]);
+          }
+          ;
+          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 845, column 50 - line 853, column 97): " + [state3.pageCursor.constructor.name]);
+        })();
+        var includeCompleted = new Just(notEq3(state3.filters.statusFilter)(ActiveOnly.value));
+        return bind20(liftAff2(fetchJobs(state3.apiConfig)({
+          since: v.since,
+          until: v.until,
+          order: new Just(v.fetchOrder),
+          includeCompleted
+        })))(function(result) {
+          return pure24((function() {
+            if (v.needsReverse) {
+              return map113(reverse)(result);
+            }
+            ;
+            return result;
+          })());
+        });
+      });
+    });
   };
   var defaultSortOrder = /* @__PURE__ */ (function() {
     return DESC.value;
@@ -34599,7 +34616,7 @@
           return new Just(true);
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 263, column 18 - line 265, column 24): " + [s.autoRefresh.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 258, column 18 - line 260, column 24): " + [s.autoRefresh.constructor.name]);
       })(),
       since: (function() {
         if (s.timeRange instanceof Custom && s.sinceStr !== "") {
@@ -34616,14 +34633,14 @@
         return Nothing.value;
       })(),
       order: (function() {
-        var $313 = eq8(s.sortOrder)(defaultSortOrder);
-        if ($313) {
+        var $292 = eq8(s.sortOrder)(defaultSortOrder);
+        if ($292) {
           return Nothing.value;
         }
         ;
         return new Just((function() {
-          var $314 = eq8(s.sortOrder)(ASC.value);
-          if ($314) {
+          var $293 = eq8(s.sortOrder)(ASC.value);
+          if ($293) {
             return "asc";
           }
           ;
@@ -34631,8 +34648,8 @@
         })());
       })(),
       page: (function() {
-        var $315 = s.currentPage <= 1;
-        if ($315) {
+        var $294 = s.currentPage <= 1;
+        if ($294) {
           return Nothing.value;
         }
         ;
@@ -34656,394 +34673,40 @@
     var notifyFiltersChanged1 = notifyFiltersChanged(dictMonadAff);
     return function(f) {
       return discard6(modify_5(function(s) {
-        var $318 = {};
-        for (var $319 in s) {
-          if ({}.hasOwnProperty.call(s, $319)) {
-            $318[$319] = s[$319];
+        var $297 = {};
+        for (var $298 in s) {
+          if ({}.hasOwnProperty.call(s, $298)) {
+            $297[$298] = s[$298];
           }
           ;
         }
         ;
-        $318.filters = f(s.filters);
-        return $318;
+        $297.filters = f(s.filters);
+        return $297;
       }))(function() {
         return notifyFiltersChanged1;
       });
     };
   };
-  var computeDuration = function(job) {
-    if (job.startedAt instanceof Nothing) {
-      return "\u2014";
-    }
-    ;
-    if (job.startedAt instanceof Just) {
-      if (job.finishedAt instanceof Nothing) {
-        return "running...";
-      }
-      ;
-      if (job.finishedAt instanceof Just) {
-        return formatDurationBetween(job.startedAt.value0)(job.finishedAt.value0);
-      }
-      ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 1078, column 19 - line 1080, column 64): " + [job.finishedAt.constructor.name]);
-    }
-    ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 1076, column 23 - line 1080, column 64): " + [job.startedAt.constructor.name]);
-  };
-  var renderJobRow = function(index5) {
-    return function(summary2) {
-      var jobIdStr = unwrap11(summary2.jobId);
-      var jobTypeName = printJobType(summary2.jobType);
-      var statusName = printStatus(deriveStatus(summary2));
-      return tr([class_("jobs-table__row"), onClick(function(v) {
-        return new NavigateToJobDetail(jobIdStr);
-      })])([td([class_("jobs-table__td jobs-table__td--rownum")])([text3(show11(index5 + 1 | 0))]), td([class_("jobs-table__td")])([span3([class_("job-type-badge job-type-badge--" + jobTypeName)])([text3(jobTypeName)])]), td([class_("jobs-table__td")])([span3([class_("job-package")])([text3(fromMaybe("\u2014")(map39(print4)(summary2.packageName)))]), (function() {
-        if (summary2.packageVersion instanceof Just) {
-          return span3([class_("job-version")])([text3("@" + print5(summary2.packageVersion.value0))]);
-        }
-        ;
-        if (summary2.packageVersion instanceof Nothing) {
-          return text3("");
-        }
-        ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 591, column 11 - line 593, column 34): " + [summary2.packageVersion.constructor.name]);
-      })()]), td([class_("jobs-table__td")])([span3([class_("job-status job-status--" + statusName)])([text3(statusName)])]), td([class_("jobs-table__td")])([text3(formatTimestamp(summary2.createdAt))]), td([class_("jobs-table__td")])([text3(fromMaybe("\u2014")(map39(formatTimestamp)(summary2.startedAt)))]), td([class_("jobs-table__td")])([text3(fromMaybe("\u2014")(map39(print5)(summary2.compilerVersion)))]), td([class_("jobs-table__td")])([text3(computeDuration(summary2))])]);
-    };
-  };
-  var renderContent2 = function(state3) {
-    return function(filteredJobs) {
-      if (state3.loading) {
-        return div4([class_("loading-state")])([div4([class_("spinner")])([]), p_([text3("Loading jobs...")])]);
-      }
-      ;
-      var v = function(v1) {
-        if ($$null(state3.jobs)) {
-          return div4([class_("empty-state")])([p_([text3("No jobs found for the selected time range.")])]);
-        }
-        ;
-        if ($$null(filteredJobs)) {
-          return div4([class_("empty-state")])([p_([text3("No jobs match the current filters. "), button([class_("jobs-toolbar__clear"), onClick(function(v2) {
-            return ClearFilters.value;
-          })])([text3("Clear filters")])])]);
-        }
-        ;
-        if (otherwise) {
-          return div_([renderPagination(state3), table([class_("jobs-table")])([thead_([tr_([th([class_("jobs-table__th jobs-table__th--rownum")])([text3("#")]), th([class_("jobs-table__th")])([text3("Type")]), th([class_("jobs-table__th")])([text3("Package")]), th([class_("jobs-table__th")])([text3("Status")]), sortableHeader(state3)(SortByCreated.value)("Created"), th([class_("jobs-table__th")])([text3("Started")]), th([class_("jobs-table__th")])([text3("Compiler")]), th([class_("jobs-table__th")])([text3("Duration")])])]), tbody_(mapWithIndex2(renderJobRow)(filteredJobs))])]);
-        }
-        ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 523, column 1 - line 523, column 84): " + [state3.constructor.name, filteredJobs.constructor.name]);
-      };
-      if (state3.error instanceof Just) {
-        return div4([class_("error-state")])([p([class_("error-message")])([text3(state3.error.value0)]), button([class_("toolbar-btn"), onClick(function(v1) {
-          return FetchJobs.value;
-        })])([text3("Retry")])]);
-      }
-      ;
-      return v(true);
-    };
-  };
-  var applyFilters = function(filters) {
-    var matchesType = function(summary2) {
-      if (filters.jobType instanceof Nothing) {
-        return true;
-      }
-      ;
-      if (filters.jobType instanceof Just) {
-        return eq33(summary2.jobType)(filters.jobType.value0);
-      }
-      ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 1001, column 25 - line 1003, column 37): " + [filters.jobType.constructor.name]);
-    };
-    var matchesStatusFilter = function(summary2) {
-      var s = deriveStatus(summary2);
-      if (filters.statusFilter instanceof ActiveOnly) {
-        return eq42(s)(Pending.value) || eq42(s)(Running.value);
-      }
-      ;
-      if (filters.statusFilter instanceof AllStatuses) {
-        return true;
-      }
-      ;
-      if (filters.statusFilter instanceof OnlyPending) {
-        return eq42(s)(Pending.value);
-      }
-      ;
-      if (filters.statusFilter instanceof OnlyRunning) {
-        return eq42(s)(Running.value);
-      }
-      ;
-      if (filters.statusFilter instanceof OnlySucceeded) {
-        return eq42(s)(Succeeded.value);
-      }
-      ;
-      if (filters.statusFilter instanceof OnlyFailed) {
-        return eq42(s)(Failed.value);
-      }
-      ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 1025, column 5 - line 1031, column 32): " + [filters.statusFilter.constructor.name]);
-    };
-    var matchesPackageVersion = function(summary2) {
-      var v = trim(filters.packageVersion);
-      if (v === "") {
-        return true;
-      }
-      ;
-      if (summary2.packageVersion instanceof Nothing) {
-        return false;
-      }
-      ;
-      if (summary2.packageVersion instanceof Just) {
-        return contains(toLower(v))(toLower(print5(summary2.packageVersion.value0)));
-      }
-      ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 1013, column 15 - line 1015, column 112): " + [summary2.packageVersion.constructor.name]);
-    };
-    var matchesPackageName = function(summary2) {
-      var v = trim(filters.packageName);
-      if (v === "") {
-        return true;
-      }
-      ;
-      if (summary2.packageName instanceof Nothing) {
-        return false;
-      }
-      ;
-      if (summary2.packageName instanceof Just) {
-        return contains(toLower(v))(toLower(print4(summary2.packageName.value0)));
-      }
-      ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 1007, column 15 - line 1009, column 118): " + [summary2.packageName.constructor.name]);
-    };
-    var matchesCompilerVersion = function(summary2) {
-      var v = trim(filters.compilerVersion);
-      if (v === "") {
-        return true;
-      }
-      ;
-      if (summary2.compilerVersion instanceof Nothing) {
-        return false;
-      }
-      ;
-      if (summary2.compilerVersion instanceof Just) {
-        return contains(toLower(v))(toLower(print5(summary2.compilerVersion.value0)));
-      }
-      ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 1019, column 15 - line 1021, column 112): " + [summary2.compilerVersion.constructor.name]);
-    };
-    var matchesAll = function(summary2) {
-      return matchesType(summary2) && (matchesPackageName(summary2) && (matchesPackageVersion(summary2) && (matchesCompilerVersion(summary2) && matchesStatusFilter(summary2))));
-    };
-    return filter(matchesAll);
-  };
-  var render2 = function(state3) {
-    var filteredJobs = applyFilters(state3.filters)(state3.jobs);
-    return div_([renderPageTitle2, renderToolbar(state3), renderContent2(state3)(filteredJobs), renderPagination(state3)]);
-  };
-  var applyFetchedOrder = function(needsReverse) {
-    if (needsReverse) {
-      return reverse;
-    }
-    ;
-    return identity15;
-  };
-  var fetchJobsPage = function(dictMonadAff) {
-    var liftAff2 = liftAff(monadAffHalogenM(dictMonadAff));
-    return function(state3) {
-      return function(now2) {
-        return function(cursor) {
-          var customUntil = parseDateTimeLocal(state3.untilStr);
-          var customSince = parseDateTimeLocal(state3.sinceStr);
-          var baseUntil = alt14(state3.until)((function() {
-            if (state3.timeRange instanceof Custom) {
-              return customUntil;
-            }
-            ;
-            if (state3.timeRange instanceof UntilNow) {
-              return new Just(now2);
-            }
-            ;
-            return Nothing.value;
-          })());
-          var baseSince = alt14(state3.since)((function() {
-            if (state3.timeRange instanceof Custom) {
-              return customSince;
-            }
-            ;
-            if (state3.timeRange instanceof UntilNow) {
-              return Nothing.value;
-            }
-            ;
-            return new Just(subtractHours(timeRangeHours(state3.timeRange))(now2));
-          })());
-          var v = (function() {
-            if (cursor instanceof Nothing) {
-              return {
-                since: baseSince,
-                until: baseUntil,
-                fetchOrder: state3.sortOrder,
-                needsReverse: false
-              };
-            }
-            ;
-            if (cursor instanceof Just && cursor.value0.dir instanceof Forward) {
-              if (state3.sortOrder instanceof DESC) {
-                return {
-                  since: baseSince,
-                  until: new Just(cursor.value0.timestamp),
-                  fetchOrder: DESC.value,
-                  needsReverse: false
-                };
-              }
-              ;
-              if (state3.sortOrder instanceof ASC) {
-                return {
-                  since: new Just(cursor.value0.timestamp),
-                  until: baseUntil,
-                  fetchOrder: ASC.value,
-                  needsReverse: false
-                };
-              }
-              ;
-              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 857, column 43 - line 859, column 97): " + [state3.sortOrder.constructor.name]);
-            }
-            ;
-            if (cursor instanceof Just && cursor.value0.dir instanceof Backward) {
-              if (state3.sortOrder instanceof DESC) {
-                return {
-                  since: new Just(cursor.value0.timestamp),
-                  until: baseUntil,
-                  fetchOrder: ASC.value,
-                  needsReverse: true
-                };
-              }
-              ;
-              if (state3.sortOrder instanceof ASC) {
-                return {
-                  since: baseSince,
-                  until: new Just(cursor.value0.timestamp),
-                  fetchOrder: DESC.value,
-                  needsReverse: true
-                };
-              }
-              ;
-              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 860, column 44 - line 862, column 97): " + [state3.sortOrder.constructor.name]);
-            }
-            ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 854, column 50 - line 862, column 97): " + [cursor.constructor.name]);
-          })();
-          var includeCompleted = new Just(notEq3(state3.filters.statusFilter)(ActiveOnly.value));
-          return bind20(liftAff2(fetchJobs(state3.apiConfig)({
-            since: v.since,
-            until: v.until,
-            order: new Just(v.fetchOrder),
-            includeCompleted
-          })))(function(result) {
-            return pure24(map114((function() {
-              var $471 = normalizeFetchedJobs(state3.sortOrder)(cursor);
-              var $472 = applyFetchedOrder(v.needsReverse);
-              return function($473) {
-                return $471($472($473));
-              };
-            })())(result));
-          });
-        };
-      };
-    };
-  };
-  var determineHasNextPage = function(dictMonadAff) {
-    var fetchJobsPage1 = fetchJobsPage(dictMonadAff);
-    return function(state3) {
-      return function(now2) {
-        return function(jobs) {
-          var isBackward = (function() {
-            if (state3.pageCursor instanceof Just && state3.pageCursor.value0.dir instanceof Backward) {
-              return true;
-            }
-            ;
-            return false;
-          })();
-          if (isBackward) {
-            return pure24(true);
-          }
-          ;
-          var $368 = length(jobs) < pageSize;
-          if ($368) {
-            return pure24(false);
-          }
-          ;
-          var v = nextPageCursorForJobs(state3.sortOrder)(jobs);
-          if (v instanceof Nothing) {
-            return pure24(false);
-          }
-          ;
-          if (v instanceof Just) {
-            return bind20(fetchJobsPage1(state3)(now2)(new Just({
-              timestamp: v.value0,
-              dir: Forward.value
-            })))(function(probe) {
-              return pure24((function() {
-                if (probe instanceof Left) {
-                  return true;
-                }
-                ;
-                if (probe instanceof Right) {
-                  return !$$null(probe.value0);
-                }
-                ;
-                throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 890, column 12 - line 892, column 52): " + [probe.constructor.name]);
-              })());
-            });
-          }
-          ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 885, column 8 - line 892, column 52): " + [v.constructor.name]);
-        };
-      };
-    };
-  };
-  var doFetchJobs = function(dictMonadAff) {
-    var liftEffect11 = liftEffect(monadEffectHalogenM(dictMonadAff.MonadEffect0()));
-    var fetchJobsPage1 = fetchJobsPage(dictMonadAff);
-    var determineHasNextPage1 = determineHasNextPage(dictMonadAff);
-    return bind20(get5)(function(state3) {
-      return bind20(liftEffect11(nowDateTime))(function(now2) {
-        return bind20(fetchJobsPage1(state3)(now2)(state3.pageCursor))(function(jobsResult) {
-          if (jobsResult instanceof Left) {
-            return pure24(new Left(jobsResult.value0));
-          }
-          ;
-          if (jobsResult instanceof Right) {
-            return bind20(determineHasNextPage1(state3)(now2)(jobsResult.value0))(function(hasNextPage) {
-              return pure24(new Right({
-                jobs: jobsResult.value0,
-                hasNextPage
-              }));
-            });
-          }
-          ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 827, column 3 - line 832, column 41): " + [jobsResult.constructor.name]);
-        });
-      });
-    });
-  };
   var updateCustomUntil = function(dictMonadAff) {
     var notifyFiltersChanged1 = notifyFiltersChanged(dictMonadAff);
     return function(newUntil) {
       return discard6(modify_5(function(v) {
-        var $377 = {};
-        for (var $378 in v) {
-          if ({}.hasOwnProperty.call(v, $378)) {
-            $377[$378] = v[$378];
+        var $300 = {};
+        for (var $301 in v) {
+          if ({}.hasOwnProperty.call(v, $301)) {
+            $300[$301] = v[$301];
           }
           ;
         }
         ;
-        $377.untilStr = newUntil;
-        $377.since = Nothing.value;
-        $377.until = Nothing.value;
-        $377.currentPage = 1;
-        $377.pageCursor = Nothing.value;
-        $377.hasNextPage = true;
-        return $377;
+        $300.untilStr = newUntil;
+        $300.since = Nothing.value;
+        $300.until = Nothing.value;
+        $300.currentPage = 1;
+        $300.pageCursor = Nothing.value;
+        $300.hasNextPage = true;
+        return $300;
       }))(function() {
         return bind20(get5)(function(state3) {
           return discard6((function() {
@@ -35065,21 +34728,21 @@
     var notifyFiltersChanged1 = notifyFiltersChanged(dictMonadAff);
     return function(newSince) {
       return discard6(modify_5(function(v) {
-        var $384 = {};
-        for (var $385 in v) {
-          if ({}.hasOwnProperty.call(v, $385)) {
-            $384[$385] = v[$385];
+        var $307 = {};
+        for (var $308 in v) {
+          if ({}.hasOwnProperty.call(v, $308)) {
+            $307[$308] = v[$308];
           }
           ;
         }
         ;
-        $384.sinceStr = newSince;
-        $384.since = Nothing.value;
-        $384.until = Nothing.value;
-        $384.currentPage = 1;
-        $384.pageCursor = Nothing.value;
-        $384.hasNextPage = true;
-        return $384;
+        $307.sinceStr = newSince;
+        $307.since = Nothing.value;
+        $307.until = Nothing.value;
+        $307.currentPage = 1;
+        $307.pageCursor = Nothing.value;
+        $307.hasNextPage = true;
+        return $307;
       }))(function() {
         return bind20(get5)(function(state3) {
           return discard6((function() {
@@ -35116,48 +34779,48 @@
         return bind20(get5)(function(state3) {
           var currentParams = stateToParams(state3);
           return discard6(modify_5(function(v1) {
-            var $392 = {};
-            for (var $393 in v1) {
-              if ({}.hasOwnProperty.call(v1, $393)) {
-                $392[$393] = v1[$393];
+            var $315 = {};
+            for (var $316 in v1) {
+              if ({}.hasOwnProperty.call(v1, $316)) {
+                $315[$316] = v1[$316];
               }
               ;
             }
             ;
-            $392.apiConfig = v.value0.apiConfig;
-            return $392;
+            $315.apiConfig = v.value0.apiConfig;
+            return $315;
           }))(function() {
             return when6(notEq2(v.value0.params)(currentParams))(discard6(modify_5(function(v1) {
-              var $401 = {};
-              for (var $402 in v1) {
-                if ({}.hasOwnProperty.call(v1, $402)) {
-                  $401[$402] = v1[$402];
+              var $324 = {};
+              for (var $325 in v1) {
+                if ({}.hasOwnProperty.call(v1, $325)) {
+                  $324[$325] = v1[$325];
                 }
                 ;
               }
               ;
-              $401.timeRange = parseTimeRange(fromMaybe("")(v.value0.params.range));
-              $401.autoRefresh = fromMaybe(false)(v.value0.params.autoRefresh);
-              $401.filters = {
+              $324.timeRange = parseTimeRange(fromMaybe("")(v.value0.params.range));
+              $324.autoRefresh = fromMaybe(false)(v.value0.params.autoRefresh);
+              $324.filters = {
                 jobType: bind110(v.value0.params.jobType)(parseJobType),
                 packageName: fromMaybe("")(v["value0"]["params"]["package"]),
                 packageVersion: fromMaybe("")(v.value0.params.version),
                 compilerVersion: fromMaybe("")(v.value0.params.compiler),
                 statusFilter: parseStatusFilter(fromMaybe("")(v.value0.params.status))
               };
-              $401.sortOrder = (function() {
+              $324.sortOrder = (function() {
                 if (v.value0.params.order instanceof Just && v.value0.params.order.value0 === "asc") {
                   return ASC.value;
                 }
                 ;
                 return defaultSortOrder;
               })();
-              $401.sinceStr = fromMaybe("")(v.value0.params.since);
-              $401.untilStr = fromMaybe("")(v.value0.params.until);
-              $401.currentPage = fromMaybe(1)(v.value0.params.page);
-              $401.since = Nothing.value;
-              $401.until = Nothing.value;
-              $401.pageCursor = (function() {
+              $324.sinceStr = fromMaybe("")(v.value0.params.since);
+              $324.untilStr = fromMaybe("")(v.value0.params.until);
+              $324.currentPage = fromMaybe(1)(v.value0.params.page);
+              $324.since = Nothing.value;
+              $324.until = Nothing.value;
+              $324.pageCursor = (function() {
                 var v2 = bind110(v.value0.params.cursor)(parseCursorParam);
                 if (v.value0.params.page instanceof Just && (v2 instanceof Just && v.value0.params.page.value0 > 1)) {
                   return new Just(v2.value0);
@@ -35165,8 +34828,8 @@
                 ;
                 return Nothing.value;
               })();
-              $401.hasNextPage = true;
-              return $401;
+              $324.hasNextPage = true;
+              return $324;
             }))(function() {
               return discard6(syncAutoRefresh1(fromMaybe(false)(v.value0.params.autoRefresh)))(function() {
                 return handleAction2(dictMonadAff)(FetchJobs.value);
@@ -35178,17 +34841,17 @@
       ;
       if (v instanceof FetchJobs) {
         return discard6(modify_5(function(v1) {
-          var $405 = {};
-          for (var $406 in v1) {
-            if ({}.hasOwnProperty.call(v1, $406)) {
-              $405[$406] = v1[$406];
+          var $328 = {};
+          for (var $329 in v1) {
+            if ({}.hasOwnProperty.call(v1, $329)) {
+              $328[$329] = v1[$329];
             }
             ;
           }
           ;
-          $405.loading = true;
-          $405.error = Nothing.value;
-          return $405;
+          $328.loading = true;
+          $328.error = Nothing.value;
+          return $328;
         }))(function() {
           return bind20(doFetchJobs1)(function(result) {
             return handleAction2(dictMonadAff)(new HandleFetchResult2(result));
@@ -35206,88 +34869,98 @@
         if (v.value0 instanceof Left) {
           var msg = printApiError(v.value0.value0);
           var displayMsg = (function() {
-            var $409 = contains("Failed to fetch")(msg);
-            if ($409) {
+            var $332 = contains("Failed to fetch")(msg);
+            if ($332) {
               return "Unable to reach the registry API. This may be a CORS configuration issue.";
             }
             ;
             return msg;
           })();
           return modify_5(function(v1) {
-            var $410 = {};
-            for (var $411 in v1) {
-              if ({}.hasOwnProperty.call(v1, $411)) {
-                $410[$411] = v1[$411];
+            var $333 = {};
+            for (var $334 in v1) {
+              if ({}.hasOwnProperty.call(v1, $334)) {
+                $333[$334] = v1[$334];
               }
               ;
             }
             ;
-            $410.loading = false;
-            $410.error = new Just(displayMsg);
-            $410.jobs = [];
-            return $410;
+            $333.loading = false;
+            $333.error = new Just(displayMsg);
+            $333.jobs = [];
+            return $333;
           });
         }
         ;
         if (v.value0 instanceof Right) {
           return bind20(get5)(function(state3) {
-            var summaries = map210(toJobSummary)(v.value0.value0.jobs);
+            var summaries = map210(toJobSummary)(v.value0.value0);
             var newFingerprints = map210(jobFingerprint)(summaries);
             var oldFingerprints = map210(jobFingerprint)(state3.jobs);
-            return unless3(!state3.loading && (eq52(newFingerprints)(oldFingerprints) && state3.hasNextPage === v.value0.value0.hasNextPage))(modify_5(function(v1) {
-              var $414 = {};
-              for (var $415 in v1) {
-                if ({}.hasOwnProperty.call(v1, $415)) {
-                  $414[$415] = v1[$415];
+            return unless3(!state3.loading && eq24(newFingerprints)(oldFingerprints))((function() {
+              var isBackward = (function() {
+                if (state3.pageCursor instanceof Just && state3.pageCursor.value0.dir instanceof Backward) {
+                  return true;
                 }
                 ;
-              }
-              ;
-              $414.loading = false;
-              $414.error = Nothing.value;
-              $414.jobs = summaries;
-              $414.hasNextPage = v.value0.value0.hasNextPage;
-              return $414;
-            }));
+                return false;
+              })();
+              var hasNext = isBackward || length(v.value0.value0) >= pageSize;
+              return modify_5(function(v1) {
+                var $340 = {};
+                for (var $341 in v1) {
+                  if ({}.hasOwnProperty.call(v1, $341)) {
+                    $340[$341] = v1[$341];
+                  }
+                  ;
+                }
+                ;
+                $340.loading = false;
+                $340.error = Nothing.value;
+                $340.jobs = summaries;
+                $340.hasNextPage = hasNext;
+                return $340;
+              });
+            })());
           });
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 685, column 31 - line 704, column 102): " + [v.value0.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 680, column 31 - line 704, column 98): " + [v.value0.constructor.name]);
       }
       ;
       if (v instanceof SetTimeRange) {
-        return discard6(when6(eq82(v.value0)(Custom.value))(bind20(liftEffect11(nowDateTime))(function(now2) {
+        return discard6(when6(eq62(v.value0)(Custom.value))(bind20(liftEffect11(nowDateTime))(function(now2) {
           var sinceDefault = subtractHours(24)(now2);
           return modify_5(function(v1) {
-            var $421 = {};
-            for (var $422 in v1) {
-              if ({}.hasOwnProperty.call(v1, $422)) {
-                $421[$422] = v1[$422];
+            var $345 = {};
+            for (var $346 in v1) {
+              if ({}.hasOwnProperty.call(v1, $346)) {
+                $345[$346] = v1[$346];
               }
               ;
             }
             ;
-            $421.sinceStr = formatDateTimeLocal(sinceDefault);
-            $421.untilStr = formatDateTimeLocal(now2);
-            return $421;
+            $345.sinceStr = formatDateTimeLocal(sinceDefault);
+            $345.untilStr = formatDateTimeLocal(now2);
+            return $345;
           });
         })))(function() {
           return discard6(modify_5(function(v1) {
-            var $424 = {};
-            for (var $425 in v1) {
-              if ({}.hasOwnProperty.call(v1, $425)) {
-                $424[$425] = v1[$425];
+            var $348 = {};
+            for (var $349 in v1) {
+              if ({}.hasOwnProperty.call(v1, $349)) {
+                $348[$349] = v1[$349];
               }
               ;
             }
             ;
-            $424.timeRange = v.value0;
-            $424.since = Nothing.value;
-            $424.until = Nothing.value;
-            $424.currentPage = 1;
-            $424.pageCursor = Nothing.value;
-            $424.hasNextPage = true;
-            return $424;
+            $348.timeRange = v.value0;
+            $348.since = Nothing.value;
+            $348.until = Nothing.value;
+            $348.currentPage = 1;
+            $348.pageCursor = Nothing.value;
+            $348.hasNextPage = true;
+            return $348;
           }))(function() {
             return discard6(handleAction2(dictMonadAff)(FetchJobs.value))(function() {
               return notifyFiltersChanged1;
@@ -35300,8 +34973,8 @@
         return bind20(get5)(function(state3) {
           var timePart = drop3(11)(state3.sinceStr);
           var newSince = v.value0 + ("T" + (function() {
-            var $428 = timePart === "";
-            if ($428) {
+            var $352 = timePart === "";
+            if ($352) {
               return "00:00";
             }
             ;
@@ -35313,10 +34986,10 @@
       ;
       if (v instanceof SetCustomSinceTime) {
         return bind20(get5)(function(state3) {
-          var datePart = take2(10)(state3.sinceStr);
+          var datePart = take3(10)(state3.sinceStr);
           var newSince = (function() {
-            var $430 = datePart === "";
-            if ($430) {
+            var $354 = datePart === "";
+            if ($354) {
               return "1970-01-01";
             }
             ;
@@ -35330,8 +35003,8 @@
         return bind20(get5)(function(state3) {
           var timePart = drop3(11)(state3.untilStr);
           var newUntil = v.value0 + ("T" + (function() {
-            var $432 = timePart === "";
-            if ($432) {
+            var $356 = timePart === "";
+            if ($356) {
               return "00:00";
             }
             ;
@@ -35343,10 +35016,10 @@
       ;
       if (v instanceof SetCustomUntilTime) {
         return bind20(get5)(function(state3) {
-          var datePart = take2(10)(state3.untilStr);
+          var datePart = take3(10)(state3.untilStr);
           var newUntil = (function() {
-            var $434 = datePart === "";
-            if ($434) {
+            var $358 = datePart === "";
+            if ($358) {
               return "1970-01-01";
             }
             ;
@@ -35426,18 +35099,18 @@
             };
           }))(function() {
             return when6(needsRefetch(state3))(discard6(modify_5(function(v1) {
-              var $441 = {};
-              for (var $442 in v1) {
-                if ({}.hasOwnProperty.call(v1, $442)) {
-                  $441[$442] = v1[$442];
+              var $365 = {};
+              for (var $366 in v1) {
+                if ({}.hasOwnProperty.call(v1, $366)) {
+                  $365[$366] = v1[$366];
                 }
                 ;
               }
               ;
-              $441.currentPage = 1;
-              $441.pageCursor = Nothing.value;
-              $441.hasNextPage = true;
-              return $441;
+              $365.currentPage = 1;
+              $365.pageCursor = Nothing.value;
+              $365.hasNextPage = true;
+              return $365;
             }))(function() {
               return handleAction2(dictMonadAff)(FetchJobs.value);
             }));
@@ -35447,20 +35120,20 @@
       ;
       if (v instanceof ClearFilters) {
         return discard6(modify_5(function(v1) {
-          var $445 = {};
-          for (var $446 in v1) {
-            if ({}.hasOwnProperty.call(v1, $446)) {
-              $445[$446] = v1[$446];
+          var $369 = {};
+          for (var $370 in v1) {
+            if ({}.hasOwnProperty.call(v1, $370)) {
+              $369[$370] = v1[$370];
             }
             ;
           }
           ;
-          $445.filters = emptyFilters;
-          $445.sortOrder = defaultSortOrder;
-          $445.currentPage = 1;
-          $445.pageCursor = Nothing.value;
-          $445.hasNextPage = true;
-          return $445;
+          $369.filters = emptyFilters;
+          $369.sortOrder = defaultSortOrder;
+          $369.currentPage = 1;
+          $369.pageCursor = Nothing.value;
+          $369.hasNextPage = true;
+          return $369;
         }))(function() {
           return notifyFiltersChanged1;
         });
@@ -35469,10 +35142,10 @@
       if (v instanceof SetSort) {
         return discard6(modify_5(function(s) {
           var newOrder = (function() {
-            var $448 = eq10(s.sortField)(v.value0);
-            if ($448) {
-              var $449 = eq8(s.sortOrder)(DESC.value);
-              if ($449) {
+            var $372 = eq82(s.sortField)(v.value0);
+            if ($372) {
+              var $373 = eq8(s.sortOrder)(DESC.value);
+              if ($373) {
                 return ASC.value;
               }
               ;
@@ -35481,20 +35154,20 @@
             ;
             return DESC.value;
           })();
-          var $450 = {};
-          for (var $451 in s) {
-            if ({}.hasOwnProperty.call(s, $451)) {
-              $450[$451] = s[$451];
+          var $374 = {};
+          for (var $375 in s) {
+            if ({}.hasOwnProperty.call(s, $375)) {
+              $374[$375] = s[$375];
             }
             ;
           }
           ;
-          $450.sortField = v.value0;
-          $450.sortOrder = newOrder;
-          $450.currentPage = 1;
-          $450.pageCursor = Nothing.value;
-          $450.hasNextPage = true;
-          return $450;
+          $374.sortField = v.value0;
+          $374.sortOrder = newOrder;
+          $374.currentPage = 1;
+          $374.pageCursor = Nothing.value;
+          $374.hasNextPage = true;
+          return $374;
         }))(function() {
           return discard6(handleAction2(dictMonadAff)(FetchJobs.value))(function() {
             return notifyFiltersChanged1;
@@ -35509,27 +35182,37 @@
       if (v instanceof NextPage) {
         return bind20(get5)(function(state3) {
           return when6(state3.hasNextPage && !state3.loading)((function() {
-            var v1 = nextPageCursor(state3.sortOrder)(state3.jobs);
-            if (v1 instanceof Nothing) {
+            var cursor = (function() {
+              if (state3.sortOrder instanceof DESC) {
+                return extremeCreatedAt(min5)(state3.jobs);
+              }
+              ;
+              if (state3.sortOrder instanceof ASC) {
+                return extremeCreatedAt(max5)(state3.jobs);
+              }
+              ;
+              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 777, column 18 - line 779, column 49): " + [state3.sortOrder.constructor.name]);
+            })();
+            if (cursor instanceof Nothing) {
               return pure24(unit);
             }
             ;
-            if (v1 instanceof Just) {
-              return discard6(modify_5(function(v2) {
-                var $456 = {};
-                for (var $457 in v2) {
-                  if ({}.hasOwnProperty.call(v2, $457)) {
-                    $456[$457] = v2[$457];
+            if (cursor instanceof Just) {
+              return discard6(modify_5(function(v1) {
+                var $381 = {};
+                for (var $382 in v1) {
+                  if ({}.hasOwnProperty.call(v1, $382)) {
+                    $381[$382] = v1[$382];
                   }
                   ;
                 }
                 ;
-                $456.currentPage = state3.currentPage + 1 | 0;
-                $456.pageCursor = new Just({
-                  timestamp: v1.value0,
+                $381.currentPage = state3.currentPage + 1 | 0;
+                $381.pageCursor = new Just({
+                  timestamp: cursor.value0,
                   dir: Forward.value
                 });
-                return $456;
+                return $381;
               }))(function() {
                 return discard6(handleAction2(dictMonadAff)(FetchJobs.value))(function() {
                   return notifyFiltersChanged1;
@@ -35537,7 +35220,7 @@
               });
             }
             ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 776, column 7 - line 781, column 31): " + [v1.constructor.name]);
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 780, column 7 - line 785, column 31): " + [cursor.constructor.name]);
           })());
         });
       }
@@ -35546,21 +35229,21 @@
         return bind20(get5)(function(state3) {
           return when6(state3.currentPage > 1)((function() {
             var targetPage = state3.currentPage - 1 | 0;
-            var $460 = targetPage <= 1;
-            if ($460) {
-              return discard6(modify_5(function(v12) {
-                var $461 = {};
-                for (var $462 in v12) {
-                  if ({}.hasOwnProperty.call(v12, $462)) {
-                    $461[$462] = v12[$462];
+            var $385 = targetPage <= 1;
+            if ($385) {
+              return discard6(modify_5(function(v1) {
+                var $386 = {};
+                for (var $387 in v1) {
+                  if ({}.hasOwnProperty.call(v1, $387)) {
+                    $386[$387] = v1[$387];
                   }
                   ;
                 }
                 ;
-                $461.currentPage = 1;
-                $461.pageCursor = Nothing.value;
-                $461.hasNextPage = true;
-                return $461;
+                $386.currentPage = 1;
+                $386.pageCursor = Nothing.value;
+                $386.hasNextPage = true;
+                return $386;
               }))(function() {
                 return discard6(handleAction2(dictMonadAff)(FetchJobs.value))(function() {
                   return notifyFiltersChanged1;
@@ -35568,28 +35251,38 @@
               });
             }
             ;
-            var v1 = prevPageCursor(state3.sortOrder)(state3.jobs);
-            if (v1 instanceof Nothing) {
+            var cursor = (function() {
+              if (state3.sortOrder instanceof DESC) {
+                return extremeCreatedAt(max5)(state3.jobs);
+              }
+              ;
+              if (state3.sortOrder instanceof ASC) {
+                return extremeCreatedAt(min5)(state3.jobs);
+              }
+              ;
+              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 798, column 20 - line 800, column 51): " + [state3.sortOrder.constructor.name]);
+            })();
+            if (cursor instanceof Nothing) {
               return pure24(unit);
             }
             ;
-            if (v1 instanceof Just) {
-              return discard6(modify_5(function(v2) {
-                var $465 = {};
-                for (var $466 in v2) {
-                  if ({}.hasOwnProperty.call(v2, $466)) {
-                    $465[$466] = v2[$466];
+            if (cursor instanceof Just) {
+              return discard6(modify_5(function(v1) {
+                var $391 = {};
+                for (var $392 in v1) {
+                  if ({}.hasOwnProperty.call(v1, $392)) {
+                    $391[$392] = v1[$392];
                   }
                   ;
                 }
                 ;
-                $465.currentPage = targetPage;
-                $465.pageCursor = new Just({
-                  timestamp: v1.value0,
+                $391.currentPage = targetPage;
+                $391.pageCursor = new Just({
+                  timestamp: cursor.value0,
                   dir: Backward.value
                 });
-                $465.hasNextPage = true;
-                return $465;
+                $391.hasNextPage = true;
+                return $391;
               }))(function() {
                 return discard6(handleAction2(dictMonadAff)(FetchJobs.value))(function() {
                   return notifyFiltersChanged1;
@@ -35597,7 +35290,7 @@
               });
             }
             ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 793, column 9 - line 798, column 33): " + [v1.constructor.name]);
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 801, column 9 - line 806, column 33): " + [cursor.constructor.name]);
           })());
         });
       }
@@ -35606,8 +35299,176 @@
         return handleAction2(dictMonadAff)(FetchJobsSilent.value);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 636, column 16 - line 801, column 33): " + [v.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 631, column 16 - line 809, column 33): " + [v.constructor.name]);
     };
+  };
+  var computeDuration = function(job) {
+    if (job.startedAt instanceof Nothing) {
+      return "\u2014";
+    }
+    ;
+    if (job.startedAt instanceof Just) {
+      if (job.finishedAt instanceof Nothing) {
+        return "running...";
+      }
+      ;
+      if (job.finishedAt instanceof Just) {
+        return formatDurationBetween(job.startedAt.value0)(job.finishedAt.value0);
+      }
+      ;
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 996, column 19 - line 998, column 64): " + [job.finishedAt.constructor.name]);
+    }
+    ;
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 994, column 23 - line 998, column 64): " + [job.startedAt.constructor.name]);
+  };
+  var renderJobRow = function(index5) {
+    return function(summary2) {
+      var jobIdStr = unwrap11(summary2.jobId);
+      var jobTypeName = printJobType(summary2.jobType);
+      var statusName = printStatus(deriveStatus(summary2));
+      return tr([class_("jobs-table__row"), onClick(function(v) {
+        return new NavigateToJobDetail(jobIdStr);
+      })])([td([class_("jobs-table__td jobs-table__td--rownum")])([text3(show11(index5 + 1 | 0))]), td([class_("jobs-table__td")])([span3([class_("job-type-badge job-type-badge--" + jobTypeName)])([text3(jobTypeName)])]), td([class_("jobs-table__td")])([span3([class_("job-package")])([text3(fromMaybe("\u2014")(map39(print4)(summary2.packageName)))]), (function() {
+        if (summary2.packageVersion instanceof Just) {
+          return span3([class_("job-version")])([text3("@" + print5(summary2.packageVersion.value0))]);
+        }
+        ;
+        if (summary2.packageVersion instanceof Nothing) {
+          return text3("");
+        }
+        ;
+        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 586, column 11 - line 588, column 34): " + [summary2.packageVersion.constructor.name]);
+      })()]), td([class_("jobs-table__td")])([span3([class_("job-status job-status--" + statusName)])([text3(statusName)])]), td([class_("jobs-table__td")])([text3(formatTimestamp(summary2.createdAt))]), td([class_("jobs-table__td")])([text3(fromMaybe("\u2014")(map39(formatTimestamp)(summary2.startedAt)))]), td([class_("jobs-table__td")])([text3(fromMaybe("\u2014")(map39(print5)(summary2.compilerVersion)))]), td([class_("jobs-table__td")])([text3(computeDuration(summary2))])]);
+    };
+  };
+  var renderContent2 = function(state3) {
+    return function(filteredJobs) {
+      if (state3.loading) {
+        return div4([class_("loading-state")])([div4([class_("spinner")])([]), p_([text3("Loading jobs...")])]);
+      }
+      ;
+      var v = function(v1) {
+        if ($$null(state3.jobs)) {
+          return div4([class_("empty-state")])([p_([text3("No jobs found for the selected time range.")])]);
+        }
+        ;
+        if ($$null(filteredJobs)) {
+          return div4([class_("empty-state")])([p_([text3("No jobs match the current filters. "), button([class_("jobs-toolbar__clear"), onClick(function(v2) {
+            return ClearFilters.value;
+          })])([text3("Clear filters")])])]);
+        }
+        ;
+        if (otherwise) {
+          return div_([renderPagination(state3), table([class_("jobs-table")])([thead_([tr_([th([class_("jobs-table__th jobs-table__th--rownum")])([text3("#")]), th([class_("jobs-table__th")])([text3("Type")]), th([class_("jobs-table__th")])([text3("Package")]), th([class_("jobs-table__th")])([text3("Status")]), sortableHeader(state3)(SortByCreated.value)("Created"), th([class_("jobs-table__th")])([text3("Started")]), th([class_("jobs-table__th")])([text3("Compiler")]), th([class_("jobs-table__th")])([text3("Duration")])])]), tbody_(mapWithIndex2(renderJobRow)(filteredJobs))])]);
+        }
+        ;
+        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 518, column 1 - line 518, column 84): " + [state3.constructor.name, filteredJobs.constructor.name]);
+      };
+      if (state3.error instanceof Just) {
+        return div4([class_("error-state")])([p([class_("error-message")])([text3(state3.error.value0)]), button([class_("toolbar-btn"), onClick(function(v1) {
+          return FetchJobs.value;
+        })])([text3("Retry")])]);
+      }
+      ;
+      return v(true);
+    };
+  };
+  var applyFilters = function(filters) {
+    var matchesType = function(summary2) {
+      if (filters.jobType instanceof Nothing) {
+        return true;
+      }
+      ;
+      if (filters.jobType instanceof Just) {
+        return eq42(summary2.jobType)(filters.jobType.value0);
+      }
+      ;
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 919, column 25 - line 921, column 37): " + [filters.jobType.constructor.name]);
+    };
+    var matchesStatusFilter = function(summary2) {
+      var s = deriveStatus(summary2);
+      if (filters.statusFilter instanceof ActiveOnly) {
+        return eq52(s)(Pending.value) || eq52(s)(Running.value);
+      }
+      ;
+      if (filters.statusFilter instanceof AllStatuses) {
+        return true;
+      }
+      ;
+      if (filters.statusFilter instanceof OnlyPending) {
+        return eq52(s)(Pending.value);
+      }
+      ;
+      if (filters.statusFilter instanceof OnlyRunning) {
+        return eq52(s)(Running.value);
+      }
+      ;
+      if (filters.statusFilter instanceof OnlySucceeded) {
+        return eq52(s)(Succeeded.value);
+      }
+      ;
+      if (filters.statusFilter instanceof OnlyFailed) {
+        return eq52(s)(Failed.value);
+      }
+      ;
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 943, column 5 - line 949, column 32): " + [filters.statusFilter.constructor.name]);
+    };
+    var matchesPackageVersion = function(summary2) {
+      var v = trim(filters.packageVersion);
+      if (v === "") {
+        return true;
+      }
+      ;
+      if (summary2.packageVersion instanceof Nothing) {
+        return false;
+      }
+      ;
+      if (summary2.packageVersion instanceof Just) {
+        return contains(toLower(v))(toLower(print5(summary2.packageVersion.value0)));
+      }
+      ;
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 931, column 15 - line 933, column 112): " + [summary2.packageVersion.constructor.name]);
+    };
+    var matchesPackageName = function(summary2) {
+      var v = trim(filters.packageName);
+      if (v === "") {
+        return true;
+      }
+      ;
+      if (summary2.packageName instanceof Nothing) {
+        return false;
+      }
+      ;
+      if (summary2.packageName instanceof Just) {
+        return contains(toLower(v))(toLower(print4(summary2.packageName.value0)));
+      }
+      ;
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 925, column 15 - line 927, column 118): " + [summary2.packageName.constructor.name]);
+    };
+    var matchesCompilerVersion = function(summary2) {
+      var v = trim(filters.compilerVersion);
+      if (v === "") {
+        return true;
+      }
+      ;
+      if (summary2.compilerVersion instanceof Nothing) {
+        return false;
+      }
+      ;
+      if (summary2.compilerVersion instanceof Just) {
+        return contains(toLower(v))(toLower(print5(summary2.compilerVersion.value0)));
+      }
+      ;
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 937, column 15 - line 939, column 112): " + [summary2.compilerVersion.constructor.name]);
+    };
+    var matchesAll = function(summary2) {
+      return matchesType(summary2) && (matchesPackageName(summary2) && (matchesPackageVersion(summary2) && (matchesCompilerVersion(summary2) && matchesStatusFilter(summary2))));
+    };
+    return filter(matchesAll);
+  };
+  var render2 = function(state3) {
+    var filteredJobs = applyFilters(state3.filters)(state3.jobs);
+    return div_([renderPageTitle2, renderToolbar(state3), renderContent2(state3)(filteredJobs), renderPagination(state3)]);
   };
   var component2 = function(dictMonadAff) {
     return mkComponent({
@@ -35618,8 +35479,8 @@
         finalize: defaultEval.finalize,
         handleAction: handleAction2(dictMonadAff),
         initialize: new Just(Initialize3.value),
-        receive: function($474) {
-          return Just.create(Receive3.create($474));
+        receive: function($421) {
+          return Just.create(Receive3.create($421));
         }
       })
     });
@@ -36366,7 +36227,7 @@
   var pure26 = /* @__PURE__ */ pure(applicativeAff);
   var map45 = /* @__PURE__ */ map(functorCoyoneda);
   var parallel4 = /* @__PURE__ */ parallel(parallelAff);
-  var map115 = /* @__PURE__ */ map(functorAff);
+  var map114 = /* @__PURE__ */ map(functorAff);
   var sequential3 = /* @__PURE__ */ sequential(parallelAff);
   var map211 = /* @__PURE__ */ map(functorMaybe);
   var insert7 = /* @__PURE__ */ insert(ordSubscriptionId);
@@ -36457,7 +36318,7 @@
                     })(dsx);
                   }));
                 };
-                return map115(v2.value2)(sequential3(v2.value0(applicativeParAff)(evalChild)(v1.children)));
+                return map114(v2.value2)(sequential3(v2.value0(applicativeParAff)(evalChild)(v1.children)));
               })(cqb);
             });
           };
@@ -37028,7 +36889,7 @@
   var unwrap12 = /* @__PURE__ */ unwrap();
   var when8 = /* @__PURE__ */ when(applicativeEffect);
   var not2 = /* @__PURE__ */ not(/* @__PURE__ */ heytingAlgebraFunction(/* @__PURE__ */ heytingAlgebraFunction(heytingAlgebraBoolean)));
-  var identity16 = /* @__PURE__ */ identity(categoryFn);
+  var identity15 = /* @__PURE__ */ identity(categoryFn);
   var bind114 = /* @__PURE__ */ bind(bindAff);
   var liftEffect9 = /* @__PURE__ */ liftEffect(monadEffectAff);
   var map48 = /* @__PURE__ */ map(functorEffect);
@@ -37170,7 +37031,7 @@
       };
       return {
         render: render4,
-        renderChild: identity16,
+        renderChild: identity15,
         removeChild: removeChild3,
         dispose: removeChild3
       };
