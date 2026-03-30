@@ -33532,17 +33532,20 @@
   var value4 = /* @__PURE__ */ value2(isPropString);
   var eq17 = /* @__PURE__ */ eq(/* @__PURE__ */ eqMaybe(eqJobType));
   var show11 = /* @__PURE__ */ show(showInt);
+  var bind20 = /* @__PURE__ */ bind(bindHalogenM);
+  var get5 = /* @__PURE__ */ get(monadStateHalogenM);
+  var discard6 = /* @__PURE__ */ discard(discardUnit)(bindHalogenM);
+  var for_4 = /* @__PURE__ */ for_(applicativeHalogenM)(foldableMaybe);
+  var bindFlipped7 = /* @__PURE__ */ bindFlipped(bindHalogenM);
+  var timerEmitter3 = /* @__PURE__ */ timerEmitter(applicativeHalogenM);
+  var modify_5 = /* @__PURE__ */ modify_(monadStateHalogenM);
   var map39 = /* @__PURE__ */ map(functorMaybe);
   var unwrap11 = /* @__PURE__ */ unwrap();
   var type_5 = /* @__PURE__ */ type_3(isPropInputType);
-  var bind20 = /* @__PURE__ */ bind(bindHalogenM);
-  var get5 = /* @__PURE__ */ get(monadStateHalogenM);
   var alt14 = /* @__PURE__ */ alt(altMaybe);
   var pure24 = /* @__PURE__ */ pure(applicativeHalogenM);
   var map113 = /* @__PURE__ */ map(functorEither);
   var bind110 = /* @__PURE__ */ bind(bindMaybe);
-  var discard6 = /* @__PURE__ */ discard(discardUnit)(bindHalogenM);
-  var modify_5 = /* @__PURE__ */ modify_(monadStateHalogenM);
   var when6 = /* @__PURE__ */ when(applicativeHalogenM);
   var eqRec2 = /* @__PURE__ */ eqRec();
   var eqRowCons2 = /* @__PURE__ */ eqRowCons(eqRowNil)();
@@ -33611,9 +33614,6 @@
       return "finishedAt";
     }
   })(/* @__PURE__ */ eqMaybe(eqDateTime)))));
-  var for_4 = /* @__PURE__ */ for_(applicativeHalogenM)(foldableMaybe);
-  var bindFlipped7 = /* @__PURE__ */ bindFlipped(bindHalogenM);
-  var timerEmitter3 = /* @__PURE__ */ timerEmitter(applicativeHalogenM);
   var min5 = /* @__PURE__ */ min(ordDateTime);
   var max5 = /* @__PURE__ */ max(ordDateTime);
   var eq42 = /* @__PURE__ */ eq(eqJobType);
@@ -34045,11 +34045,11 @@
         return th([class_("jobs-table__th jobs-table__th--sortable"), onClick(function(v) {
           return new SetSort(field);
         })])(append11([text3(label5 + " ")])((function() {
-          var $234 = eq82(state3.sortField)(field);
-          if ($234) {
+          var $236 = eq82(state3.sortField)(field);
+          if ($236) {
             return [span3([class_("sort-indicator")])([text3((function() {
-              var $235 = eq8(state3.sortOrder)(DESC.value);
-              if ($235) {
+              var $237 = eq8(state3.sortOrder)(DESC.value);
+              if ($237) {
                 return "\u25BC";
               }
               ;
@@ -34121,6 +34121,45 @@
     };
   };
   var refreshInterval = 5e3;
+  var syncAutoRefresh = function(dictMonadAff) {
+    return function(enabled) {
+      return bind20(get5)(function(state3) {
+        return discard6(for_4(state3.refreshSubId)(unsubscribe2))(function() {
+          if (enabled) {
+            return bind20(bindFlipped7(subscribe2)(timerEmitter3(refreshInterval)(Tick.value)))(function(subId) {
+              return modify_5(function(v) {
+                var $241 = {};
+                for (var $242 in v) {
+                  if ({}.hasOwnProperty.call(v, $242)) {
+                    $241[$242] = v[$242];
+                  }
+                  ;
+                }
+                ;
+                $241.autoRefresh = true;
+                $241.refreshSubId = new Just(subId);
+                return $241;
+              });
+            });
+          }
+          ;
+          return modify_5(function(v) {
+            var $244 = {};
+            for (var $245 in v) {
+              if ({}.hasOwnProperty.call(v, $245)) {
+                $244[$245] = v[$245];
+              }
+              ;
+            }
+            ;
+            $244.autoRefresh = false;
+            $244.refreshSubId = Nothing.value;
+            return $244;
+          });
+        });
+      });
+    };
+  };
   var printTimeRange = function(v) {
     if (v instanceof UntilNow) {
       return "all";
@@ -34362,7 +34401,7 @@
             return f(v.value0);
           }
           ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 896, column 22 - line 898, column 18): " + [v.constructor.name]);
+          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 904, column 22 - line 906, column 18): " + [v.constructor.name]);
         };
       };
     };
@@ -34439,7 +34478,7 @@
               };
             }
             ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 850, column 43 - line 852, column 97): " + [state3.sortOrder.constructor.name]);
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 848, column 43 - line 850, column 97): " + [state3.sortOrder.constructor.name]);
           }
           ;
           if (state3.pageCursor instanceof Just && state3.pageCursor.value0.dir instanceof Backward) {
@@ -34461,10 +34500,10 @@
               };
             }
             ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 853, column 44 - line 855, column 97): " + [state3.sortOrder.constructor.name]);
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 851, column 44 - line 853, column 97): " + [state3.sortOrder.constructor.name]);
           }
           ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 847, column 50 - line 855, column 97): " + [state3.pageCursor.constructor.name]);
+          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 845, column 50 - line 853, column 97): " + [state3.pageCursor.constructor.name]);
         })();
         var includeCompleted = new Just(notEq3(state3.filters.statusFilter)(ActiveOnly.value));
         return bind20(liftAff2(fetchJobs(state3.apiConfig)({
@@ -34594,14 +34633,14 @@
         return Nothing.value;
       })(),
       order: (function() {
-        var $283 = eq8(s.sortOrder)(defaultSortOrder);
-        if ($283) {
+        var $292 = eq8(s.sortOrder)(defaultSortOrder);
+        if ($292) {
           return Nothing.value;
         }
         ;
         return new Just((function() {
-          var $284 = eq8(s.sortOrder)(ASC.value);
-          if ($284) {
+          var $293 = eq8(s.sortOrder)(ASC.value);
+          if ($293) {
             return "asc";
           }
           ;
@@ -34609,8 +34648,8 @@
         })());
       })(),
       page: (function() {
-        var $285 = s.currentPage <= 1;
-        if ($285) {
+        var $294 = s.currentPage <= 1;
+        if ($294) {
           return Nothing.value;
         }
         ;
@@ -34634,16 +34673,16 @@
     var notifyFiltersChanged1 = notifyFiltersChanged(dictMonadAff);
     return function(f) {
       return discard6(modify_5(function(s) {
-        var $288 = {};
-        for (var $289 in s) {
-          if ({}.hasOwnProperty.call(s, $289)) {
-            $288[$289] = s[$289];
+        var $297 = {};
+        for (var $298 in s) {
+          if ({}.hasOwnProperty.call(s, $298)) {
+            $297[$298] = s[$298];
           }
           ;
         }
         ;
-        $288.filters = f(s.filters);
-        return $288;
+        $297.filters = f(s.filters);
+        return $297;
       }))(function() {
         return notifyFiltersChanged1;
       });
@@ -34653,21 +34692,21 @@
     var notifyFiltersChanged1 = notifyFiltersChanged(dictMonadAff);
     return function(newUntil) {
       return discard6(modify_5(function(v) {
-        var $291 = {};
-        for (var $292 in v) {
-          if ({}.hasOwnProperty.call(v, $292)) {
-            $291[$292] = v[$292];
+        var $300 = {};
+        for (var $301 in v) {
+          if ({}.hasOwnProperty.call(v, $301)) {
+            $300[$301] = v[$301];
           }
           ;
         }
         ;
-        $291.untilStr = newUntil;
-        $291.since = Nothing.value;
-        $291.until = Nothing.value;
-        $291.currentPage = 1;
-        $291.pageCursor = Nothing.value;
-        $291.hasNextPage = true;
-        return $291;
+        $300.untilStr = newUntil;
+        $300.since = Nothing.value;
+        $300.until = Nothing.value;
+        $300.currentPage = 1;
+        $300.pageCursor = Nothing.value;
+        $300.hasNextPage = true;
+        return $300;
       }))(function() {
         return bind20(get5)(function(state3) {
           return discard6((function() {
@@ -34689,21 +34728,21 @@
     var notifyFiltersChanged1 = notifyFiltersChanged(dictMonadAff);
     return function(newSince) {
       return discard6(modify_5(function(v) {
-        var $298 = {};
-        for (var $299 in v) {
-          if ({}.hasOwnProperty.call(v, $299)) {
-            $298[$299] = v[$299];
+        var $307 = {};
+        for (var $308 in v) {
+          if ({}.hasOwnProperty.call(v, $308)) {
+            $307[$308] = v[$308];
           }
           ;
         }
         ;
-        $298.sinceStr = newSince;
-        $298.since = Nothing.value;
-        $298.until = Nothing.value;
-        $298.currentPage = 1;
-        $298.pageCursor = Nothing.value;
-        $298.hasNextPage = true;
-        return $298;
+        $307.sinceStr = newSince;
+        $307.since = Nothing.value;
+        $307.until = Nothing.value;
+        $307.currentPage = 1;
+        $307.pageCursor = Nothing.value;
+        $307.hasNextPage = true;
+        return $307;
       }))(function() {
         return bind20(get5)(function(state3) {
           return discard6((function() {
@@ -34722,60 +34761,66 @@
     };
   };
   var handleAction2 = function(dictMonadAff) {
+    var syncAutoRefresh1 = syncAutoRefresh(dictMonadAff);
     var doFetchJobs1 = doFetchJobs(dictMonadAff);
     var liftEffect11 = liftEffect(monadEffectHalogenM(dictMonadAff.MonadEffect0()));
     var notifyFiltersChanged1 = notifyFiltersChanged(dictMonadAff);
     var updateFilter1 = updateFilter(dictMonadAff);
     return function(v) {
       if (v instanceof Initialize3) {
-        return handleAction2(dictMonadAff)(FetchJobs.value);
+        return bind20(get5)(function(state3) {
+          return discard6(syncAutoRefresh1(state3.autoRefresh))(function() {
+            return handleAction2(dictMonadAff)(FetchJobs.value);
+          });
+        });
       }
       ;
       if (v instanceof Receive3) {
         return bind20(get5)(function(state3) {
           var currentParams = stateToParams(state3);
           return discard6(modify_5(function(v1) {
-            var $306 = {};
-            for (var $307 in v1) {
-              if ({}.hasOwnProperty.call(v1, $307)) {
-                $306[$307] = v1[$307];
+            var $315 = {};
+            for (var $316 in v1) {
+              if ({}.hasOwnProperty.call(v1, $316)) {
+                $315[$316] = v1[$316];
               }
               ;
             }
             ;
-            $306.apiConfig = v.value0.apiConfig;
-            return $306;
+            $315.apiConfig = v.value0.apiConfig;
+            return $315;
           }))(function() {
             return when6(notEq2(v.value0.params)(currentParams))(discard6(modify_5(function(v1) {
-              var $315 = {};
-              for (var $316 in v1) {
-                if ({}.hasOwnProperty.call(v1, $316)) {
-                  $315[$316] = v1[$316];
+              var $324 = {};
+              for (var $325 in v1) {
+                if ({}.hasOwnProperty.call(v1, $325)) {
+                  $324[$325] = v1[$325];
                 }
                 ;
               }
               ;
-              $315.timeRange = parseTimeRange(fromMaybe("")(v.value0.params.range));
-              $315.filters = {
+              $324.timeRange = parseTimeRange(fromMaybe("")(v.value0.params.range));
+              $324.autoRefresh = fromMaybe(false)(v.value0.params.autoRefresh);
+              $324.filters = {
                 jobType: bind110(v.value0.params.jobType)(parseJobType),
                 packageName: fromMaybe("")(v["value0"]["params"]["package"]),
                 packageVersion: fromMaybe("")(v.value0.params.version),
                 compilerVersion: fromMaybe("")(v.value0.params.compiler),
                 statusFilter: parseStatusFilter(fromMaybe("")(v.value0.params.status))
               };
-              $315.sortOrder = (function() {
+              $324.sortOrder = (function() {
                 if (v.value0.params.order instanceof Just && v.value0.params.order.value0 === "asc") {
                   return ASC.value;
                 }
                 ;
                 return defaultSortOrder;
               })();
-              $315.sinceStr = fromMaybe("")(v.value0.params.since);
-              $315.untilStr = fromMaybe("")(v.value0.params.until);
-              $315.currentPage = fromMaybe(1)(v.value0.params.page);
-              $315.since = Nothing.value;
-              $315.until = Nothing.value;
-              $315.pageCursor = (function() {
+              $324.sinceStr = fromMaybe("")(v.value0.params.since);
+              $324.untilStr = fromMaybe("")(v.value0.params.until);
+              $324.currentPage = fromMaybe(1)(v.value0.params.page);
+              $324.since = Nothing.value;
+              $324.until = Nothing.value;
+              $324.pageCursor = (function() {
                 var v2 = bind110(v.value0.params.cursor)(parseCursorParam);
                 if (v.value0.params.page instanceof Just && (v2 instanceof Just && v.value0.params.page.value0 > 1)) {
                   return new Just(v2.value0);
@@ -34783,10 +34828,12 @@
                 ;
                 return Nothing.value;
               })();
-              $315.hasNextPage = true;
-              return $315;
+              $324.hasNextPage = true;
+              return $324;
             }))(function() {
-              return handleAction2(dictMonadAff)(FetchJobs.value);
+              return discard6(syncAutoRefresh1(fromMaybe(false)(v.value0.params.autoRefresh)))(function() {
+                return handleAction2(dictMonadAff)(FetchJobs.value);
+              });
             }));
           });
         });
@@ -34794,17 +34841,17 @@
       ;
       if (v instanceof FetchJobs) {
         return discard6(modify_5(function(v1) {
-          var $319 = {};
-          for (var $320 in v1) {
-            if ({}.hasOwnProperty.call(v1, $320)) {
-              $319[$320] = v1[$320];
+          var $328 = {};
+          for (var $329 in v1) {
+            if ({}.hasOwnProperty.call(v1, $329)) {
+              $328[$329] = v1[$329];
             }
             ;
           }
           ;
-          $319.loading = true;
-          $319.error = Nothing.value;
-          return $319;
+          $328.loading = true;
+          $328.error = Nothing.value;
+          return $328;
         }))(function() {
           return bind20(doFetchJobs1)(function(result) {
             return handleAction2(dictMonadAff)(new HandleFetchResult2(result));
@@ -34822,26 +34869,26 @@
         if (v.value0 instanceof Left) {
           var msg = printApiError(v.value0.value0);
           var displayMsg = (function() {
-            var $323 = contains("Failed to fetch")(msg);
-            if ($323) {
+            var $332 = contains("Failed to fetch")(msg);
+            if ($332) {
               return "Unable to reach the registry API. This may be a CORS configuration issue.";
             }
             ;
             return msg;
           })();
           return modify_5(function(v1) {
-            var $324 = {};
-            for (var $325 in v1) {
-              if ({}.hasOwnProperty.call(v1, $325)) {
-                $324[$325] = v1[$325];
+            var $333 = {};
+            for (var $334 in v1) {
+              if ({}.hasOwnProperty.call(v1, $334)) {
+                $333[$334] = v1[$334];
               }
               ;
             }
             ;
-            $324.loading = false;
-            $324.error = new Just(displayMsg);
-            $324.jobs = [];
-            return $324;
+            $333.loading = false;
+            $333.error = new Just(displayMsg);
+            $333.jobs = [];
+            return $333;
           });
         }
         ;
@@ -34860,60 +34907,60 @@
               })();
               var hasNext = isBackward || length(v.value0.value0) >= pageSize;
               return modify_5(function(v1) {
-                var $331 = {};
-                for (var $332 in v1) {
-                  if ({}.hasOwnProperty.call(v1, $332)) {
-                    $331[$332] = v1[$332];
+                var $340 = {};
+                for (var $341 in v1) {
+                  if ({}.hasOwnProperty.call(v1, $341)) {
+                    $340[$341] = v1[$341];
                   }
                   ;
                 }
                 ;
-                $331.loading = false;
-                $331.error = Nothing.value;
-                $331.jobs = summaries;
-                $331.hasNextPage = hasNext;
-                return $331;
+                $340.loading = false;
+                $340.error = Nothing.value;
+                $340.jobs = summaries;
+                $340.hasNextPage = hasNext;
+                return $340;
               });
             })());
           });
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 676, column 31 - line 700, column 98): " + [v.value0.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 680, column 31 - line 704, column 98): " + [v.value0.constructor.name]);
       }
       ;
       if (v instanceof SetTimeRange) {
         return discard6(when6(eq62(v.value0)(Custom.value))(bind20(liftEffect11(nowDateTime))(function(now2) {
           var sinceDefault = subtractHours(24)(now2);
           return modify_5(function(v1) {
-            var $336 = {};
-            for (var $337 in v1) {
-              if ({}.hasOwnProperty.call(v1, $337)) {
-                $336[$337] = v1[$337];
+            var $345 = {};
+            for (var $346 in v1) {
+              if ({}.hasOwnProperty.call(v1, $346)) {
+                $345[$346] = v1[$346];
               }
               ;
             }
             ;
-            $336.sinceStr = formatDateTimeLocal(sinceDefault);
-            $336.untilStr = formatDateTimeLocal(now2);
-            return $336;
+            $345.sinceStr = formatDateTimeLocal(sinceDefault);
+            $345.untilStr = formatDateTimeLocal(now2);
+            return $345;
           });
         })))(function() {
           return discard6(modify_5(function(v1) {
-            var $339 = {};
-            for (var $340 in v1) {
-              if ({}.hasOwnProperty.call(v1, $340)) {
-                $339[$340] = v1[$340];
+            var $348 = {};
+            for (var $349 in v1) {
+              if ({}.hasOwnProperty.call(v1, $349)) {
+                $348[$349] = v1[$349];
               }
               ;
             }
             ;
-            $339.timeRange = v.value0;
-            $339.since = Nothing.value;
-            $339.until = Nothing.value;
-            $339.currentPage = 1;
-            $339.pageCursor = Nothing.value;
-            $339.hasNextPage = true;
-            return $339;
+            $348.timeRange = v.value0;
+            $348.since = Nothing.value;
+            $348.until = Nothing.value;
+            $348.currentPage = 1;
+            $348.pageCursor = Nothing.value;
+            $348.hasNextPage = true;
+            return $348;
           }))(function() {
             return discard6(handleAction2(dictMonadAff)(FetchJobs.value))(function() {
               return notifyFiltersChanged1;
@@ -34926,8 +34973,8 @@
         return bind20(get5)(function(state3) {
           var timePart = drop3(11)(state3.sinceStr);
           var newSince = v.value0 + ("T" + (function() {
-            var $343 = timePart === "";
-            if ($343) {
+            var $352 = timePart === "";
+            if ($352) {
               return "00:00";
             }
             ;
@@ -34941,8 +34988,8 @@
         return bind20(get5)(function(state3) {
           var datePart = take3(10)(state3.sinceStr);
           var newSince = (function() {
-            var $345 = datePart === "";
-            if ($345) {
+            var $354 = datePart === "";
+            if ($354) {
               return "1970-01-01";
             }
             ;
@@ -34956,8 +35003,8 @@
         return bind20(get5)(function(state3) {
           var timePart = drop3(11)(state3.untilStr);
           var newUntil = v.value0 + ("T" + (function() {
-            var $347 = timePart === "";
-            if ($347) {
+            var $356 = timePart === "";
+            if ($356) {
               return "00:00";
             }
             ;
@@ -34971,8 +35018,8 @@
         return bind20(get5)(function(state3) {
           var datePart = take3(10)(state3.untilStr);
           var newUntil = (function() {
-            var $349 = datePart === "";
-            if ($349) {
+            var $358 = datePart === "";
+            if ($358) {
               return "1970-01-01";
             }
             ;
@@ -34983,44 +35030,8 @@
       }
       ;
       if (v instanceof ToggleAutoRefresh) {
-        return bind20(get5)(function(state3) {
-          return discard6(for_4(state3.refreshSubId)(unsubscribe2))(function() {
-            return discard6((function() {
-              if (v.value0) {
-                return bind20(bindFlipped7(subscribe2)(timerEmitter3(refreshInterval)(Tick.value)))(function(subId) {
-                  return modify_5(function(v1) {
-                    var $352 = {};
-                    for (var $353 in v1) {
-                      if ({}.hasOwnProperty.call(v1, $353)) {
-                        $352[$353] = v1[$353];
-                      }
-                      ;
-                    }
-                    ;
-                    $352.autoRefresh = true;
-                    $352.refreshSubId = new Just(subId);
-                    return $352;
-                  });
-                });
-              }
-              ;
-              return modify_5(function(v1) {
-                var $355 = {};
-                for (var $356 in v1) {
-                  if ({}.hasOwnProperty.call(v1, $356)) {
-                    $355[$356] = v1[$356];
-                  }
-                  ;
-                }
-                ;
-                $355.autoRefresh = false;
-                $355.refreshSubId = Nothing.value;
-                return $355;
-              });
-            })())(function() {
-              return notifyFiltersChanged1;
-            });
-          });
+        return discard6(syncAutoRefresh1(v.value0))(function() {
+          return notifyFiltersChanged1;
         });
       }
       ;
@@ -35088,18 +35099,18 @@
             };
           }))(function() {
             return when6(needsRefetch(state3))(discard6(modify_5(function(v1) {
-              var $363 = {};
-              for (var $364 in v1) {
-                if ({}.hasOwnProperty.call(v1, $364)) {
-                  $363[$364] = v1[$364];
+              var $365 = {};
+              for (var $366 in v1) {
+                if ({}.hasOwnProperty.call(v1, $366)) {
+                  $365[$366] = v1[$366];
                 }
                 ;
               }
               ;
-              $363.currentPage = 1;
-              $363.pageCursor = Nothing.value;
-              $363.hasNextPage = true;
-              return $363;
+              $365.currentPage = 1;
+              $365.pageCursor = Nothing.value;
+              $365.hasNextPage = true;
+              return $365;
             }))(function() {
               return handleAction2(dictMonadAff)(FetchJobs.value);
             }));
@@ -35109,20 +35120,20 @@
       ;
       if (v instanceof ClearFilters) {
         return discard6(modify_5(function(v1) {
-          var $367 = {};
-          for (var $368 in v1) {
-            if ({}.hasOwnProperty.call(v1, $368)) {
-              $367[$368] = v1[$368];
+          var $369 = {};
+          for (var $370 in v1) {
+            if ({}.hasOwnProperty.call(v1, $370)) {
+              $369[$370] = v1[$370];
             }
             ;
           }
           ;
-          $367.filters = emptyFilters;
-          $367.sortOrder = defaultSortOrder;
-          $367.currentPage = 1;
-          $367.pageCursor = Nothing.value;
-          $367.hasNextPage = true;
-          return $367;
+          $369.filters = emptyFilters;
+          $369.sortOrder = defaultSortOrder;
+          $369.currentPage = 1;
+          $369.pageCursor = Nothing.value;
+          $369.hasNextPage = true;
+          return $369;
         }))(function() {
           return notifyFiltersChanged1;
         });
@@ -35131,10 +35142,10 @@
       if (v instanceof SetSort) {
         return discard6(modify_5(function(s) {
           var newOrder = (function() {
-            var $370 = eq82(s.sortField)(v.value0);
-            if ($370) {
-              var $371 = eq8(s.sortOrder)(DESC.value);
-              if ($371) {
+            var $372 = eq82(s.sortField)(v.value0);
+            if ($372) {
+              var $373 = eq8(s.sortOrder)(DESC.value);
+              if ($373) {
                 return ASC.value;
               }
               ;
@@ -35143,20 +35154,20 @@
             ;
             return DESC.value;
           })();
-          var $372 = {};
-          for (var $373 in s) {
-            if ({}.hasOwnProperty.call(s, $373)) {
-              $372[$373] = s[$373];
+          var $374 = {};
+          for (var $375 in s) {
+            if ({}.hasOwnProperty.call(s, $375)) {
+              $374[$375] = s[$375];
             }
             ;
           }
           ;
-          $372.sortField = v.value0;
-          $372.sortOrder = newOrder;
-          $372.currentPage = 1;
-          $372.pageCursor = Nothing.value;
-          $372.hasNextPage = true;
-          return $372;
+          $374.sortField = v.value0;
+          $374.sortOrder = newOrder;
+          $374.currentPage = 1;
+          $374.pageCursor = Nothing.value;
+          $374.hasNextPage = true;
+          return $374;
         }))(function() {
           return discard6(handleAction2(dictMonadAff)(FetchJobs.value))(function() {
             return notifyFiltersChanged1;
@@ -35180,7 +35191,7 @@
                 return extremeCreatedAt(max5)(state3.jobs);
               }
               ;
-              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 779, column 18 - line 781, column 49): " + [state3.sortOrder.constructor.name]);
+              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 777, column 18 - line 779, column 49): " + [state3.sortOrder.constructor.name]);
             })();
             if (cursor instanceof Nothing) {
               return pure24(unit);
@@ -35188,20 +35199,20 @@
             ;
             if (cursor instanceof Just) {
               return discard6(modify_5(function(v1) {
-                var $379 = {};
-                for (var $380 in v1) {
-                  if ({}.hasOwnProperty.call(v1, $380)) {
-                    $379[$380] = v1[$380];
+                var $381 = {};
+                for (var $382 in v1) {
+                  if ({}.hasOwnProperty.call(v1, $382)) {
+                    $381[$382] = v1[$382];
                   }
                   ;
                 }
                 ;
-                $379.currentPage = state3.currentPage + 1 | 0;
-                $379.pageCursor = new Just({
+                $381.currentPage = state3.currentPage + 1 | 0;
+                $381.pageCursor = new Just({
                   timestamp: cursor.value0,
                   dir: Forward.value
                 });
-                return $379;
+                return $381;
               }))(function() {
                 return discard6(handleAction2(dictMonadAff)(FetchJobs.value))(function() {
                   return notifyFiltersChanged1;
@@ -35209,7 +35220,7 @@
               });
             }
             ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 782, column 7 - line 787, column 31): " + [cursor.constructor.name]);
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 780, column 7 - line 785, column 31): " + [cursor.constructor.name]);
           })());
         });
       }
@@ -35218,21 +35229,21 @@
         return bind20(get5)(function(state3) {
           return when6(state3.currentPage > 1)((function() {
             var targetPage = state3.currentPage - 1 | 0;
-            var $383 = targetPage <= 1;
-            if ($383) {
+            var $385 = targetPage <= 1;
+            if ($385) {
               return discard6(modify_5(function(v1) {
-                var $384 = {};
-                for (var $385 in v1) {
-                  if ({}.hasOwnProperty.call(v1, $385)) {
-                    $384[$385] = v1[$385];
+                var $386 = {};
+                for (var $387 in v1) {
+                  if ({}.hasOwnProperty.call(v1, $387)) {
+                    $386[$387] = v1[$387];
                   }
                   ;
                 }
                 ;
-                $384.currentPage = 1;
-                $384.pageCursor = Nothing.value;
-                $384.hasNextPage = true;
-                return $384;
+                $386.currentPage = 1;
+                $386.pageCursor = Nothing.value;
+                $386.hasNextPage = true;
+                return $386;
               }))(function() {
                 return discard6(handleAction2(dictMonadAff)(FetchJobs.value))(function() {
                   return notifyFiltersChanged1;
@@ -35249,7 +35260,7 @@
                 return extremeCreatedAt(min5)(state3.jobs);
               }
               ;
-              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 800, column 20 - line 802, column 51): " + [state3.sortOrder.constructor.name]);
+              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 798, column 20 - line 800, column 51): " + [state3.sortOrder.constructor.name]);
             })();
             if (cursor instanceof Nothing) {
               return pure24(unit);
@@ -35257,21 +35268,21 @@
             ;
             if (cursor instanceof Just) {
               return discard6(modify_5(function(v1) {
-                var $389 = {};
-                for (var $390 in v1) {
-                  if ({}.hasOwnProperty.call(v1, $390)) {
-                    $389[$390] = v1[$390];
+                var $391 = {};
+                for (var $392 in v1) {
+                  if ({}.hasOwnProperty.call(v1, $392)) {
+                    $391[$392] = v1[$392];
                   }
                   ;
                 }
                 ;
-                $389.currentPage = targetPage;
-                $389.pageCursor = new Just({
+                $391.currentPage = targetPage;
+                $391.pageCursor = new Just({
                   timestamp: cursor.value0,
                   dir: Backward.value
                 });
-                $389.hasNextPage = true;
-                return $389;
+                $391.hasNextPage = true;
+                return $391;
               }))(function() {
                 return discard6(handleAction2(dictMonadAff)(FetchJobs.value))(function() {
                   return notifyFiltersChanged1;
@@ -35279,7 +35290,7 @@
               });
             }
             ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 803, column 9 - line 808, column 33): " + [cursor.constructor.name]);
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 801, column 9 - line 806, column 33): " + [cursor.constructor.name]);
           })());
         });
       }
@@ -35288,7 +35299,7 @@
         return handleAction2(dictMonadAff)(FetchJobsSilent.value);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 631, column 16 - line 811, column 33): " + [v.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 631, column 16 - line 809, column 33): " + [v.constructor.name]);
     };
   };
   var computeDuration = function(job) {
@@ -35305,10 +35316,10 @@
         return formatDurationBetween(job.startedAt.value0)(job.finishedAt.value0);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 988, column 19 - line 990, column 64): " + [job.finishedAt.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 996, column 19 - line 998, column 64): " + [job.finishedAt.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 986, column 23 - line 990, column 64): " + [job.startedAt.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 994, column 23 - line 998, column 64): " + [job.startedAt.constructor.name]);
   };
   var renderJobRow = function(index5) {
     return function(summary2) {
@@ -35372,7 +35383,7 @@
         return eq42(summary2.jobType)(filters.jobType.value0);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 911, column 25 - line 913, column 37): " + [filters.jobType.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 919, column 25 - line 921, column 37): " + [filters.jobType.constructor.name]);
     };
     var matchesStatusFilter = function(summary2) {
       var s = deriveStatus(summary2);
@@ -35400,7 +35411,7 @@
         return eq52(s)(Failed.value);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 935, column 5 - line 941, column 32): " + [filters.statusFilter.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 943, column 5 - line 949, column 32): " + [filters.statusFilter.constructor.name]);
     };
     var matchesPackageVersion = function(summary2) {
       var v = trim(filters.packageVersion);
@@ -35416,7 +35427,7 @@
         return contains(toLower(v))(toLower(print5(summary2.packageVersion.value0)));
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 923, column 15 - line 925, column 112): " + [summary2.packageVersion.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 931, column 15 - line 933, column 112): " + [summary2.packageVersion.constructor.name]);
     };
     var matchesPackageName = function(summary2) {
       var v = trim(filters.packageName);
@@ -35432,7 +35443,7 @@
         return contains(toLower(v))(toLower(print4(summary2.packageName.value0)));
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 917, column 15 - line 919, column 118): " + [summary2.packageName.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 925, column 15 - line 927, column 118): " + [summary2.packageName.constructor.name]);
     };
     var matchesCompilerVersion = function(summary2) {
       var v = trim(filters.compilerVersion);
@@ -35448,7 +35459,7 @@
         return contains(toLower(v))(toLower(print5(summary2.compilerVersion.value0)));
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 929, column 15 - line 931, column 112): " + [summary2.compilerVersion.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 937, column 15 - line 939, column 112): " + [summary2.compilerVersion.constructor.name]);
     };
     var matchesAll = function(summary2) {
       return matchesType(summary2) && (matchesPackageName(summary2) && (matchesPackageVersion(summary2) && (matchesCompilerVersion(summary2) && matchesStatusFilter(summary2))));
@@ -35468,8 +35479,8 @@
         finalize: defaultEval.finalize,
         handleAction: handleAction2(dictMonadAff),
         initialize: new Just(Initialize3.value),
-        receive: function($419) {
-          return Just.create(Receive3.create($419));
+        receive: function($421) {
+          return Just.create(Receive3.create($421));
         }
       })
     });
