@@ -30082,7 +30082,7 @@
       return show9(mins) + ("m " + (show9(remSecs) + "s"));
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Job (line 180, column 1 - line 180, column 36): " + [totalSecs.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Job (line 205, column 1 - line 205, column 36): " + [totalSecs.constructor.name]);
   };
   var formatDurationBetween = function(start2) {
     return function(end3) {
@@ -32724,7 +32724,7 @@
           })])([text3("\u25B6")])]);
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 359, column 1 - line 359, column 82): " + [page.constructor.name, totalPages.constructor.name, totalLogs.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 361, column 1 - line 361, column 82): " + [page.constructor.name, totalPages.constructor.name, totalLogs.constructor.name]);
       };
     };
   };
@@ -32753,7 +32753,7 @@
                 return (totalLogs - offset | 0) - index5 | 0;
               }
               ;
-              throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 332, column 16 - line 334, column 43): " + [sortOrder.constructor.name]);
+              throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 334, column 14 - line 336, column 41): " + [sortOrder.constructor.name]);
             })();
             return tr([class_("log-entry log-entry--" + level)])([td([class_("log-entry__rownum")])([text3(show10(rowNum))]), td([class_("log-entry__time")])([text3(formatTimestamp(logLine.timestamp))]), td([class_("log-entry__message")])([pre([class_("log-entry__text")])([text3(logLine.message)])])]);
           };
@@ -32810,7 +32810,7 @@
           return reverse(state3.allLogs);
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 306, column 25 - line 308, column 48): " + [state3.logSortOrder.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 307, column 23 - line 309, column 46): " + [state3.logSortOrder.constructor.name]);
       })();
       var totalLogs = length(displayLogs);
       var totalPages = logTotalPages(totalLogs);
@@ -32850,7 +32850,7 @@
         return greaterThan2(logLine.timestamp)(mTs.value0);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 562, column 27 - line 564, column 36): " + [mTs.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 566, column 27 - line 568, column 36): " + [mTs.constructor.name]);
     };
   };
   var initialState = function(input3) {
@@ -32893,7 +32893,7 @@
       return printIndented(encode2(packageSetOperationCodec)(v.value0.payload));
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 568, column 18 - line 573, column 97): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 572, column 18 - line 577, column 97): " + [v.constructor.name]);
   };
   var renderPayloadSection = function(state3) {
     return function(job) {
@@ -32930,10 +32930,10 @@
             return "ongoing";
           }
           ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 581, column 14 - line 583, column 25): " + [mNow.constructor.name]);
+          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 585, column 14 - line 587, column 25): " + [mNow.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 579, column 37 - line 583, column 25): " + [v.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 583, column 37 - line 587, column 25): " + [v.constructor.name]);
       };
     };
   };
@@ -33011,7 +33011,7 @@
         return drop(length(logs) - maxLogEntries | 0)(logs);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 540, column 8 - line 542, column 64): " + [sortOrder.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 544, column 8 - line 546, column 64): " + [sortOrder.constructor.name]);
     };
   };
   var fetchAllRemainingLogs = function(dictMonadAff) {
@@ -33064,11 +33064,11 @@
                 });
               }
               ;
-              throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 602, column 13 - line 613, column 37): " + [result.constructor.name]);
+              throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 606, column 13 - line 617, column 37): " + [result.constructor.name]);
             });
           }
           ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 597, column 9 - line 613, column 37): " + [state3.lastLogTimestamp.constructor.name]);
+          throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 601, column 9 - line 617, column 37): " + [state3.lastLogTimestamp.constructor.name]);
         })());
       }));
     };
@@ -33104,7 +33104,7 @@
                     return false;
                   }
                   ;
-                  throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 391, column 20 - line 393, column 27): " + [state3.job.constructor.name]);
+                  throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 394, column 18 - line 396, column 25): " + [state3.job.constructor.name]);
                 })();
                 return unless2(finished)(bind19(bindFlipped6(subscribe2)(timerEmitter2(logRefreshInterval)(LogRefreshTick.value)))(function(subId) {
                   return modify_4(function(v1) {
@@ -33224,7 +33224,7 @@
           });
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 411, column 31 - line 431, column 37): " + [v.value0.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 414, column 31 - line 434, column 37): " + [v.value0.constructor.name]);
       }
       ;
       if (v instanceof SetLogLevel) {
@@ -33296,7 +33296,7 @@
           });
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 441, column 34 - line 448, column 28): " + [v.value0.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 444, column 34 - line 451, column 28): " + [v.value0.constructor.name]);
       }
       ;
       if (v instanceof ToggleLogAutoRefresh) {
@@ -33384,7 +33384,7 @@
                   return false;
                 }
                 ;
-                throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 470, column 20 - line 472, column 27): " + [state3.job.constructor.name]);
+                throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 474, column 18 - line 476, column 25): " + [state3.job.constructor.name]);
               })();
               return unless2(finished)(bind19(liftAff2(fetchJob(state3.apiConfig)(state3.jobId)({
                 level: new Just(state3.logLevel),
@@ -33449,7 +33449,7 @@
           });
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 478, column 36 - line 494, column 37): " + [v.value0.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 482, column 36 - line 498, column 37): " + [v.value0.constructor.name]);
       }
       ;
       if (v instanceof TogglePayload) {
@@ -33506,7 +33506,7 @@
         });
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 385, column 16 - line 509, column 25): " + [v.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobDetail (line 387, column 16 - line 513, column 25): " + [v.constructor.name]);
     };
   };
   var component = function(dictMonadAff) {
@@ -34112,7 +34112,7 @@
       })])([text3("\u25B6")])]);
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 604, column 1 - line 604, column 67): " + [state3.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 605, column 1 - line 605, column 67): " + [state3.constructor.name]);
   };
   var renderPageTitle2 = /* @__PURE__ */ div4([/* @__PURE__ */ class_("page-title")])([/* @__PURE__ */ h1([/* @__PURE__ */ class_("page-title__title")])([/* @__PURE__ */ text3("Jobs")])]);
   var renderField = function(label5) {
@@ -34142,7 +34142,7 @@
       return "custom";
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 282, column 18 - line 287, column 21): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 283, column 18 - line 288, column 21): " + [v.constructor.name]);
   };
   var printStatusFilter = function(v) {
     if (v instanceof ActiveOnly) {
@@ -34169,7 +34169,7 @@
       return "failed";
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 303, column 21 - line 309, column 25): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 304, column 21 - line 310, column 25): " + [v.constructor.name]);
   };
   var printJobType2 = function(v) {
     if (v instanceof PublishJobType) {
@@ -34192,7 +34192,7 @@
       return "packageset";
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 316, column 16 - line 321, column 36): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 317, column 16 - line 322, column 36): " + [v.constructor.name]);
   };
   var printCursorParam = function(v) {
     return (function() {
@@ -34204,7 +34204,7 @@
         return "b:";
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 155, column 4 - line 157, column 21): " + [v.dir.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 155, column 5 - line 157, column 23): " + [v.dir.constructor.name]);
     })() + formatCursorTimestamp(v.timestamp);
   };
   var parseTimeRange = function(v) {
@@ -34327,7 +34327,7 @@
         return [];
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 396, column 3 - line 433, column 21): ");
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 397, column 3 - line 434, column 21): ");
     })();
     var clearLink = (function() {
       if (hasActiveFilters(state3.filters)) {
@@ -34340,7 +34340,7 @@
         return [];
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 386, column 3 - line 394, column 21): ");
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 387, column 3 - line 395, column 21): ");
     })();
     return div4([class_("jobs-toolbar")])(append11([div4([class_("jobs-toolbar__zone jobs-toolbar__zone--query")])([renderField("TIME RANGE")(renderTimeRangeSelect(state3))]), div4([class_("jobs-toolbar__divider")])([]), div4([class_("jobs-toolbar__zone jobs-toolbar__zone--filters")])(append11([renderField("STATUS")(renderStatusSelect(state3.filters.statusFilter)), renderField("TYPE")(renderTypeSelect(state3.filters.jobType)), renderField("PACKAGE")(renderTextFilter("Package name")(state3.filters.packageName)(SetFilterPackageName.create)), renderField("VERSION")(renderTextFilter("Version")(state3.filters.packageVersion)(SetFilterPackageVersion.create)), renderField("COMPILER")(renderTextFilter("Compiler")(state3.filters.compilerVersion)(SetFilterCompilerVersion.create))])(clearLink)), div4([class_("jobs-toolbar__divider")])([]), div4([class_("jobs-toolbar__zone jobs-toolbar__zone--actions")])([renderField("REFRESH")(label([class_("toolbar-toggle")])([input([type_5(InputCheckbox.value), checked2(state3.autoRefresh), onChecked(ToggleAutoRefresh.create)]), text3(" Auto "), span3([class_("refresh-indicator" + (function() {
       if (state3.autoRefresh) {
@@ -34362,7 +34362,7 @@
             return f(v.value0);
           }
           ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 894, column 22 - line 896, column 18): " + [v.constructor.name]);
+          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 896, column 22 - line 898, column 18): " + [v.constructor.name]);
         };
       };
     };
@@ -34439,7 +34439,7 @@
               };
             }
             ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 848, column 43 - line 850, column 97): " + [state3.sortOrder.constructor.name]);
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 850, column 43 - line 852, column 97): " + [state3.sortOrder.constructor.name]);
           }
           ;
           if (state3.pageCursor instanceof Just && state3.pageCursor.value0.dir instanceof Backward) {
@@ -34461,10 +34461,10 @@
               };
             }
             ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 851, column 44 - line 853, column 97): " + [state3.sortOrder.constructor.name]);
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 853, column 44 - line 855, column 97): " + [state3.sortOrder.constructor.name]);
           }
           ;
-          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 845, column 50 - line 853, column 97): " + [state3.pageCursor.constructor.name]);
+          throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 847, column 50 - line 855, column 97): " + [state3.pageCursor.constructor.name]);
         })();
         var includeCompleted = new Just(notEq3(state3.filters.statusFilter)(ActiveOnly.value));
         return bind20(liftAff2(fetchJobs(state3.apiConfig)({
@@ -34577,7 +34577,7 @@
           return new Just(true);
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 257, column 18 - line 259, column 24): " + [s.autoRefresh.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 258, column 18 - line 260, column 24): " + [s.autoRefresh.constructor.name]);
       })(),
       since: (function() {
         if (s.timeRange instanceof Custom && s.sinceStr !== "") {
@@ -34878,7 +34878,7 @@
           });
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 675, column 31 - line 698, column 98): " + [v.value0.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 676, column 31 - line 700, column 98): " + [v.value0.constructor.name]);
       }
       ;
       if (v instanceof SetTimeRange) {
@@ -35180,7 +35180,7 @@
                 return extremeCreatedAt(max5)(state3.jobs);
               }
               ;
-              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 777, column 18 - line 779, column 49): " + [state3.sortOrder.constructor.name]);
+              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 779, column 18 - line 781, column 49): " + [state3.sortOrder.constructor.name]);
             })();
             if (cursor instanceof Nothing) {
               return pure24(unit);
@@ -35209,7 +35209,7 @@
               });
             }
             ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 780, column 7 - line 785, column 31): " + [cursor.constructor.name]);
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 782, column 7 - line 787, column 31): " + [cursor.constructor.name]);
           })());
         });
       }
@@ -35249,7 +35249,7 @@
                 return extremeCreatedAt(min5)(state3.jobs);
               }
               ;
-              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 798, column 20 - line 800, column 51): " + [state3.sortOrder.constructor.name]);
+              throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 800, column 20 - line 802, column 51): " + [state3.sortOrder.constructor.name]);
             })();
             if (cursor instanceof Nothing) {
               return pure24(unit);
@@ -35279,7 +35279,7 @@
               });
             }
             ;
-            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 801, column 9 - line 806, column 33): " + [cursor.constructor.name]);
+            throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 803, column 9 - line 808, column 33): " + [cursor.constructor.name]);
           })());
         });
       }
@@ -35288,7 +35288,7 @@
         return handleAction2(dictMonadAff)(FetchJobsSilent.value);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 630, column 16 - line 809, column 33): " + [v.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 631, column 16 - line 811, column 33): " + [v.constructor.name]);
     };
   };
   var computeDuration = function(job) {
@@ -35305,10 +35305,10 @@
         return formatDurationBetween(job.startedAt.value0)(job.finishedAt.value0);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 986, column 19 - line 988, column 64): " + [job.finishedAt.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 988, column 19 - line 990, column 64): " + [job.finishedAt.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 984, column 23 - line 988, column 64): " + [job.startedAt.constructor.name]);
+    throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 986, column 23 - line 990, column 64): " + [job.startedAt.constructor.name]);
   };
   var renderJobRow = function(index5) {
     return function(summary2) {
@@ -35326,7 +35326,7 @@
           return text3("");
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 585, column 11 - line 587, column 34): " + [summary2.packageVersion.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 586, column 11 - line 588, column 34): " + [summary2.packageVersion.constructor.name]);
       })()]), td([class_("jobs-table__td")])([span3([class_("job-status job-status--" + statusName)])([text3(statusName)])]), td([class_("jobs-table__td")])([text3(formatTimestamp(summary2.createdAt))]), td([class_("jobs-table__td")])([text3(fromMaybe("\u2014")(map39(formatTimestamp)(summary2.startedAt)))]), td([class_("jobs-table__td")])([text3(fromMaybe("\u2014")(map39(print5)(summary2.compilerVersion)))]), td([class_("jobs-table__td")])([text3(computeDuration(summary2))])]);
     };
   };
@@ -35351,7 +35351,7 @@
           return div_([renderPagination(state3), table([class_("jobs-table")])([thead_([tr_([th([class_("jobs-table__th jobs-table__th--rownum")])([text3("#")]), th([class_("jobs-table__th")])([text3("Type")]), th([class_("jobs-table__th")])([text3("Package")]), th([class_("jobs-table__th")])([text3("Status")]), sortableHeader(state3)(SortByCreated.value)("Created"), th([class_("jobs-table__th")])([text3("Started")]), th([class_("jobs-table__th")])([text3("Compiler")]), th([class_("jobs-table__th")])([text3("Duration")])])]), tbody_(mapWithIndex2(renderJobRow)(filteredJobs))])]);
         }
         ;
-        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 517, column 1 - line 517, column 84): " + [state3.constructor.name, filteredJobs.constructor.name]);
+        throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 518, column 1 - line 518, column 84): " + [state3.constructor.name, filteredJobs.constructor.name]);
       };
       if (state3.error instanceof Just) {
         return div4([class_("error-state")])([p([class_("error-message")])([text3(state3.error.value0)]), button([class_("toolbar-btn"), onClick(function(v1) {
@@ -35372,7 +35372,7 @@
         return eq42(summary2.jobType)(filters.jobType.value0);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 909, column 25 - line 911, column 37): " + [filters.jobType.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 911, column 25 - line 913, column 37): " + [filters.jobType.constructor.name]);
     };
     var matchesStatusFilter = function(summary2) {
       var s = deriveStatus(summary2);
@@ -35400,7 +35400,7 @@
         return eq52(s)(Failed.value);
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 933, column 5 - line 939, column 32): " + [filters.statusFilter.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 935, column 5 - line 941, column 32): " + [filters.statusFilter.constructor.name]);
     };
     var matchesPackageVersion = function(summary2) {
       var v = trim(filters.packageVersion);
@@ -35416,7 +35416,7 @@
         return contains(toLower(v))(toLower(print5(summary2.packageVersion.value0)));
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 921, column 15 - line 923, column 112): " + [summary2.packageVersion.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 923, column 15 - line 925, column 112): " + [summary2.packageVersion.constructor.name]);
     };
     var matchesPackageName = function(summary2) {
       var v = trim(filters.packageName);
@@ -35432,7 +35432,7 @@
         return contains(toLower(v))(toLower(print4(summary2.packageName.value0)));
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 915, column 15 - line 917, column 118): " + [summary2.packageName.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 917, column 15 - line 919, column 118): " + [summary2.packageName.constructor.name]);
     };
     var matchesCompilerVersion = function(summary2) {
       var v = trim(filters.compilerVersion);
@@ -35448,7 +35448,7 @@
         return contains(toLower(v))(toLower(print5(summary2.compilerVersion.value0)));
       }
       ;
-      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 927, column 15 - line 929, column 112): " + [summary2.compilerVersion.constructor.name]);
+      throw new Error("Failed pattern match at Dashboard.Component.JobsList (line 929, column 15 - line 931, column 112): " + [summary2.compilerVersion.constructor.name]);
     };
     var matchesAll = function(summary2) {
       return matchesType(summary2) && (matchesPackageName(summary2) && (matchesPackageVersion(summary2) && (matchesCompilerVersion(summary2) && matchesStatusFilter(summary2))));
