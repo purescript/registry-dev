@@ -629,7 +629,9 @@ renderPagination state
 
 handleAction :: forall m. MonadAff m => Action -> H.HalogenM State Action () Output m Unit
 handleAction = case _ of
-  Initialize ->
+  Initialize -> do
+    state <- H.get
+    syncAutoRefresh state.autoRefresh
     handleAction FetchJobs
 
   -- When the parent passes new params (e.g. the user clicked the title to
@@ -642,6 +644,7 @@ handleAction = case _ of
       let p = input.params
       H.modify_ _
         { timeRange = parseTimeRange (fromMaybe "" p.range)
+        , autoRefresh = fromMaybe false p.autoRefresh
         , filters =
             { jobType: p.jobType >>= parseJobType
             , packageName: fromMaybe "" p.package
@@ -662,6 +665,7 @@ handleAction = case _ of
             _, _ -> Nothing
         , hasNextPage = true
         }
+      syncAutoRefresh (fromMaybe false p.autoRefresh)
       handleAction FetchJobs
 
   FetchJobs -> do
@@ -733,13 +737,7 @@ handleAction = case _ of
     updateCustomUntil newUntil
 
   ToggleAutoRefresh enabled -> do
-    state <- H.get
-    for_ state.refreshSubId H.unsubscribe
-    if enabled then do
-      subId <- H.subscribe =<< Job.timerEmitter refreshInterval Tick
-      H.modify_ _ { autoRefresh = true, refreshSubId = Just subId }
-    else
-      H.modify_ _ { autoRefresh = false, refreshSubId = Nothing }
+    syncAutoRefresh enabled
     notifyFiltersChanged
 
   SetFilterJobType val -> updateFilter _ { jobType = parseJobType val }
@@ -885,6 +883,16 @@ notifyFiltersChanged :: forall m. MonadAff m => H.HalogenM State Action () Outpu
 notifyFiltersChanged = do
   state <- H.get
   H.raise (FiltersChanged (stateToParams state))
+
+syncAutoRefresh :: forall m. MonadAff m => Boolean -> H.HalogenM State Action () Output m Unit
+syncAutoRefresh enabled = do
+  state <- H.get
+  for_ state.refreshSubId H.unsubscribe
+  if enabled then do
+    subId <- H.subscribe =<< Job.timerEmitter refreshInterval Tick
+    H.modify_ _ { autoRefresh = true, refreshSubId = Just subId }
+  else
+    H.modify_ _ { autoRefresh = false, refreshSubId = Nothing }
 
 refreshInterval :: Milliseconds
 refreshInterval = Milliseconds 5000.0
