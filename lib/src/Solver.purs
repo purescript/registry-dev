@@ -1,5 +1,27 @@
 -- | # Public API
-module Registry.Solver where
+module Registry.Solver
+  ( CompilerIndex
+  , DependencyIndex
+  , buildCompilerIndex
+  , updateCompilerIndex
+  , solveWithCompiler
+  , solve
+  , SolverError(..)
+  , SolverErrors
+  , SolverPosition(..)
+  , LocalSolverPosition(..)
+  , Sourced(..)
+  , Intersection(..)
+  , MinSourced(..)
+  , MaxSourced(..)
+  , printSolverError
+  , initializeRegistry
+  , initializeRequired
+  , solveSeed
+  , solveSteps
+  , lowerBound
+  , upperBound
+  ) where
 
 import Prelude
 
@@ -54,40 +76,73 @@ import Safe.Coerce (coerce)
 newtype CompilerIndex = CompilerIndex DependencyIndex
 
 derive instance Newtype CompilerIndex _
+derive newtype instance Eq CompilerIndex
 
 -- | Associate the compiler versions supported by each package version by
 -- | inserting them as a range in the version's dependencies.
+-- |
+-- | Crashes if any package in the ManifestIndex is missing from `metadata`:
+-- | this is a registry invariant (publish writes metadata before indexing
+-- | the manifest), so a violation indicates registry-level data inconsistency.
 buildCompilerIndex :: NonEmptyArray Version -> ManifestIndex -> Map PackageName Metadata -> CompilerIndex
-buildCompilerIndex pursCompilers index metadata = CompilerIndex do
+buildCompilerIndex pursCompilers index metadata = do
   let
-    purs = Either.fromRight' (\_ -> Partial.unsafeCrashWith "Invalid package name!") (PackageName.parse "purs")
+    pursVersions = Map.singleton purs
+      (Map.fromFoldable $ map (\v -> Tuple v Map.empty) (NonEmptyArray.toArray pursCompilers))
+    seed = CompilerIndex pursVersions
 
-    getDependencies (Manifest manifest) = fromMaybe manifest.dependencies do
-      Metadata { published } <- Map.lookup manifest.name metadata
-      { compilers } <- Map.lookup manifest.version published
-      -- Construct a maximal range for the compilers the
-      -- indicated package version supports.
+  Array.foldl
+    ( \ci manifest@(Manifest m) -> case Map.lookup m.name metadata of
+        Nothing -> Partial.unsafeCrashWith
+          ("buildCompilerIndex: no metadata for " <> PackageName.print m.name <> " (present in ManifestIndex)")
+        Just meta -> updateCompilerIndex ci manifest meta
+    )
+    seed
+    (ManifestIndex.toArray index)
+
+-- | Incrementally update a CompilerIndex after a single package version has
+-- | been recompiled with a new compiler. Only recomputes the entry for the
+-- | (manifest.name, manifest.version) pair; other entries are untouched.
+-- |
+-- | If `manifest.version` is not in `metadata.published`, or the compilers
+-- | list produces no valid `Range`, the entry falls back to the raw manifest
+-- | dependencies (no purs range).
+-- |
+-- | TODO: use this to implement a cached CompilerIndex (see TODOs in
+-- | MatrixBuilder.readCompilerIndex and JobExecutor) so matrix jobs don't
+-- | rebuild from scratch.
+updateCompilerIndex :: CompilerIndex -> Manifest -> Metadata -> CompilerIndex
+updateCompilerIndex (CompilerIndex index) (Manifest m) (Metadata { published }) = CompilerIndex do
+  let
+    deps = fromMaybe m.dependencies do
+      { compilers } <- Map.lookup m.version published
       let
         min = Foldable1.minimum compilers
         max = Version.bumpPatch $ Foldable1.maximum compilers
       pursRange <- Range.mk min max
-      pure $ Map.insert purs pursRange manifest.dependencies
+      pure $ Map.insert purs pursRange m.dependencies
 
-    newPurs version = Map.singleton purs (Map.singleton version Map.empty)
-    pursVersions = Array.foldl (\acc compiler -> Map.unionWith Map.union (newPurs compiler) acc) Map.empty (NonEmptyArray.toArray pursCompilers)
-    dependencyIndex = map (map getDependencies) (ManifestIndex.toMap index)
-
-  Map.unionWith Map.union pursVersions dependencyIndex
+  Map.alter
+    ( Just <<< case _ of
+        Nothing -> Map.singleton m.version deps
+        Just versions -> Map.insert m.version deps versions
+    )
+    m.name
+    index
 
 -- | Solve the given dependencies using a dependency index that includes compiler
 -- | versions, such that the solution prunes results that would fall outside
 -- | a compiler range accepted by all dependencies.
 solveWithCompiler :: Range -> CompilerIndex -> Map PackageName Range -> Either SolverErrors (Tuple Version (Map PackageName Version))
 solveWithCompiler pursRange (CompilerIndex index) required = do
-  let purs = Either.fromRight' (\_ -> Partial.unsafeCrashWith "Invalid package name!") (PackageName.parse "purs")
   results <- solveFull { registry: initializeRegistry index, required: initializeRequired (Map.insert purs pursRange required) }
   let pursVersion = Maybe.fromMaybe' (\_ -> Partial.unsafeCrashWith "Produced a compiler-derived build plan with no compiler!") $ Map.lookup purs results
   pure $ Tuple pursVersion $ Map.delete purs results
+
+-- | The "purs" pseudo-package used to thread compiler version constraints
+-- | through the dependency index.
+purs :: PackageName
+purs = Either.fromRight' (\_ -> Partial.unsafeCrashWith "Invalid package name!") (PackageName.parse "purs")
 
 -- | Data from the registry index, listing dependencies for each version of
 -- | each package

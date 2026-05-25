@@ -1,0 +1,115 @@
+module Test.Registry.App.Effect.Registry (spec) where
+
+import Registry.App.Prelude
+
+import Data.Map as Map
+import Effect.Aff as Aff
+import Effect.Ref as Ref
+import Node.Path as Path
+import Registry.App.CLI.Git as Git
+import Registry.App.Effect.Cache as Cache
+import Registry.App.Effect.GitHub (GITHUB, GitHub)
+import Registry.App.Effect.GitHub as GitHub
+import Registry.App.Effect.Log (LOG, Log(..))
+import Registry.App.Effect.Log as Log
+import Registry.App.Effect.Registry (REGISTRY, RegistryEnv, WriteMode(..))
+import Registry.App.Effect.Registry as Registry
+import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.Tmp as Tmp
+import Registry.Metadata (Metadata(..))
+import Registry.Metadata as Metadata
+import Registry.Test.Assert as Assert
+import Registry.Test.Fixtures (defaultHash, defaultLocation)
+import Registry.Test.Utils (unsafeDateTime, unsafeNonEmptyArray, unsafePackageName, unsafeVersion)
+import Run (AFF, EFFECT, Run)
+import Run as Run
+import Run.Except (EXCEPT)
+import Run.Except as Except
+import Test.Spec as Spec
+
+spec :: Spec.Spec Unit
+spec = do
+  -- This test exercises the Registry.handle to verify that readMetadata does
+  -- not poison the AllMetadata cache: i.e. a single-package read must not seed
+  -- the cache with a singleton map that readAllMetadata would mistake for the
+  -- complete set.
+  Spec.it "readMetadata does not poison AllMetadata cache for readAllMetadata" do
+    Aff.bracket Tmp.mkTmpDir FS.Extra.remove \tmp -> do
+      let metadataDir = Path.concat [ tmp, "registry", "metadata" ]
+      FS.Extra.ensureDirectory metadataDir
+
+      -- Write 3 metadata files to disk
+      for_ packages \{ name, version, compilers } -> do
+        let
+          metadata = Metadata
+            { location: defaultLocation
+            , owners: Nothing
+            , published: Map.singleton (unsafeVersion version)
+                { bytes: 1000.0
+                , compilers: unsafeNonEmptyArray (map unsafeVersion compilers)
+                , hash: defaultHash
+                , publishedTime: unsafeDateTime "2024-01-01T00:00:00.000Z"
+                , ref: Nothing
+                }
+            , unpublished: Map.empty
+            }
+        liftAff $ writeJsonFile Metadata.codec (Path.concat [ metadataDir, name <> ".json" ]) metadata
+
+      -- Set up the RegistryEnv with a pre-populated debouncer so pull
+      -- returns NoChange without doing any git operations.
+      now <- nowUTC
+      let registryPath = Path.concat [ tmp, "registry" ]
+      debouncer <- liftEffect $ Ref.new (Map.singleton registryPath now)
+      cacheRef <- liftEffect Cache.newCacheRef
+      let
+        env =
+          { repos:
+              { registry: { owner: "test", repo: "test" }
+              , manifestIndex: { owner: "test", repo: "test" }
+              , legacyPackageSets: { owner: "test", repo: "test" }
+              }
+          , workdir: tmp
+          , pull: Git.ForceClean
+          , write: ReadOnly
+          , debouncer
+          , cacheRef
+          }
+
+      -- Step 1: readMetadata for one package.
+      -- Before the fix, resetFromDisk seeded the AllMetadata cache with
+      -- Map.singleton prelude metadata. After the fix, the cache is left alone.
+      _ <- runRealRegistry env $ Registry.readMetadata (unsafePackageName "prelude")
+
+      -- Step 2: readAllMetadata under Git.NoChange.
+      -- Before the fix, the singleton cache from step 1 was returned verbatim
+      -- and the assertion below would see size 1. After the fix, the handler
+      -- reads all three metadata files from disk.
+      allMetadata <- runRealRegistry env $ Registry.readAllMetadata
+
+      Map.size allMetadata `Assert.shouldEqual` 3
+
+  where
+  packages =
+    [ { name: "prelude", version: "6.0.1", compilers: [ "0.15.15" ] }
+    , { name: "effect", version: "4.0.0", compilers: [ "0.15.15" ] }
+    , { name: "control", version: "6.0.0", compilers: [ "0.15.15" ] }
+    ]
+
+  -- | Run the REGISTRY effect - can't use the mock here because the regression
+  -- | we are testing is in the caching code of the handle
+  runRealRegistry
+    :: forall a
+     . RegistryEnv
+    -> Run (REGISTRY + GITHUB + LOG + EXCEPT String + AFF + EFFECT + ()) a
+    -> Aff a
+  runRealRegistry env =
+    Registry.interpret (Registry.handle env)
+      >>> GitHub.interpret handleGitHubStub
+      >>> Log.interpret (\(Log _ _ next) -> pure next)
+      >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
+      >>> Run.runBaseAff'
+
+  -- | Stub GitHub handler — crashes if called. ReadMetadata and ReadAllMetadata
+  -- | don't use the GITHUB effect, so this should never be reached.
+  handleGitHubStub :: forall r a. GitHub a -> Run r a
+  handleGitHubStub _ = unsafeCrashWith "GITHUB effect should not be called in this test"
