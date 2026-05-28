@@ -333,26 +333,13 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
                 Log.debug $ "Successfully read metadata for " <> printedName <> " from path " <> path
                 pure (Just metadata)
 
-      -- Should be used when the cache may not be valid. Reads the metadata from
-      -- disk and replaces the cache with it.
-      resetFromDisk = readMetadataFromDisk >>= case _ of
-        Nothing -> do
-          Log.debug $ "Did not find " <> printedName <> " in memory cache or local registry repo checkout."
-          pure Nothing
-
-        Just metadata -> do
-          Log.debug $ "Successfully read metadata for " <> printedName <> " from path " <> path
-          Log.debug $ "Setting metadata cache to singleton entry (as cache was previously empty)."
-          Cache.put _registryCache AllMetadata (Map.singleton name metadata)
-          pure $ Just metadata
-
     pull RegistryRepo >>= case _ of
       Left error ->
         Except.throw $ "Could not read metadata because the registry repo could not be checked: " <> error
 
       Right Git.NoChange -> do
         Cache.get _registryCache AllMetadata >>= case _ of
-          Nothing -> resetFromDisk
+          Nothing -> readMetadataFromDisk
           Just allMetadata -> case Map.lookup name allMetadata of
             Nothing -> do
               Log.debug $ "Did not find " <> printedName <> " in memory cache, trying local registry checkout..."
@@ -372,7 +359,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
       Right Git.Changed -> do
         Log.info "Registry repo has changed, clearing metadata cache..."
         Cache.delete _registryCache AllMetadata
-        resetFromDisk
+        readMetadataFromDisk
 
   WriteMetadata name metadata reply -> map (map reply) Except.runExcept do
     let printedName = PackageName.print name

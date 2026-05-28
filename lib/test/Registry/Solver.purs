@@ -17,11 +17,13 @@ import Data.Set.NonEmpty as NES
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
 import Partial.Unsafe (unsafeCrashWith)
+import Registry.Manifest (Manifest(..))
+import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Range as Range
-import Registry.Solver (Intersection(..), LocalSolverPosition(..), SolverError(..), SolverPosition(..), Sourced(..), initializeRegistry, initializeRequired, lowerBound, printSolverError, solve, solveSeed, solveSteps, upperBound)
+import Registry.Solver (Intersection(..), LocalSolverPosition(..), SolverError(..), SolverPosition(..), Sourced(..), buildCompilerIndex, initializeRegistry, initializeRequired, lowerBound, printSolverError, solve, solveSeed, solveSteps, solveWithCompiler, updateCompilerIndex, upperBound)
 import Registry.Test.Assert as Assert
-import Registry.Test.Utils (fromRight)
+import Registry.Test.Utils (fromRight, unsafeManifest, unsafeMetadata, unsafeNonEmptyArray, unsafeVersion)
 import Registry.Types (PackageName, Range, Version)
 import Registry.Version as Version
 import Test.Spec as Spec
@@ -284,6 +286,93 @@ spec = do
           , message: "While solving qaotic each version could not be solved:\n- 1.0.0: \n  Conflict in version ranges for prelude:\n    >=2.0.0 (declared dependency)\n    <1.0.0 seen in qaotic@1.0.0\n- 2.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in qaotic@2.0.0\n    <4.0.0 (declared dependency)"
           }
         ]
+
+  Spec.describe "CompilerIndex" do
+    let
+      -- Package graph:
+      --   prelude@6.0.1  (no deps)
+      --   effect@4.0.0   (depends on prelude >=6.0.0 <7.0.0)
+      --   effect@5.0.0   (depends on prelude >=6.0.0 <7.0.0)
+      --   my-pkg@1.0.0   (depends on prelude >=6.0.0 <7.0.0, effect >=4.0.0 <5.0.0)
+      preludeManifest = unsafeManifest "prelude" "6.0.1" []
+      effectManifest = unsafeManifest "effect" "4.0.0" [ Tuple "prelude" ">=6.0.0 <7.0.0" ]
+      effect5Manifest = unsafeManifest "effect" "5.0.0" [ Tuple "prelude" ">=6.0.0 <7.0.0" ]
+      myPkgManifest = unsafeManifest "my-pkg" "1.0.0" [ Tuple "prelude" ">=6.0.0 <7.0.0", Tuple "effect" ">=4.0.0 <5.0.0" ]
+
+      Manifest myPkg = myPkgManifest
+
+      compilers = unsafeNonEmptyArray [ unsafeVersion "0.15.15", unsafeVersion "0.15.16" ]
+
+      manifestIndex = fromRight "Failed to build ManifestIndex" do
+        ManifestIndex.insert ManifestIndex.ConsiderRanges preludeManifest ManifestIndex.empty
+          >>= ManifestIndex.insert ManifestIndex.ConsiderRanges effectManifest
+          >>= ManifestIndex.insert ManifestIndex.ConsiderRanges effect5Manifest
+          >>= ManifestIndex.insert ManifestIndex.ConsiderRanges myPkgManifest
+
+      -- All packages present, only support 0.15.15
+      oldCompilerMetadata = Map.fromFoldable
+        [ unsafeMetadata "prelude" [ Tuple "6.0.1" [ "0.15.15" ] ]
+        , unsafeMetadata "effect"
+            [ Tuple "4.0.0" [ "0.15.15" ]
+            , Tuple "5.0.0" [ "0.15.15" ]
+            ]
+        , unsafeMetadata "my-pkg" [ Tuple "1.0.0" [ "0.15.15" ] ]
+        ]
+
+      -- All packages present, support both compilers
+      bothCompilersMetadata = Map.fromFoldable
+        [ unsafeMetadata "prelude" [ Tuple "6.0.1" [ "0.15.15", "0.15.16" ] ]
+        , unsafeMetadata "effect"
+            [ Tuple "4.0.0" [ "0.15.15", "0.15.16" ]
+            , Tuple "5.0.0" [ "0.15.15", "0.15.16" ]
+            ]
+        , unsafeMetadata "my-pkg" [ Tuple "1.0.0" [ "0.15.15", "0.15.16" ] ]
+        ]
+
+    Spec.it "Complete metadata rejects incompatible compiler" do
+      let compilerIndex = buildCompilerIndex compilers manifestIndex oldCompilerMetadata
+      case solveWithCompiler (Range.exact (unsafeVersion "0.15.16")) compilerIndex myPkg.dependencies of
+        Left _ -> pure unit -- expected: effect's purs range >=0.15.15 <0.15.16 excludes 0.15.16
+        Right _ ->
+          Assert.fail "Expected solver to reject build plan where effect only supports 0.15.15"
+
+    Spec.it "Complete metadata accepts compatible compiler" do
+      let compilerIndex = buildCompilerIndex compilers manifestIndex bothCompilersMetadata
+      case solveWithCompiler (Range.exact (unsafeVersion "0.15.16")) compilerIndex myPkg.dependencies of
+        Left errs ->
+          Assert.fail $ "Expected solver to succeed but it failed:\n" <> foldMapWithIndex
+            (\i error -> "[Error " <> show (i + 1) <> "] " <> printSolverError error <> "\n")
+            errs
+        Right (Tuple _solvedCompiler resolutions) -> do
+          Map.lookup (package "prelude") resolutions `Assert.shouldEqual` Just (unsafeVersion "6.0.1")
+          Map.lookup (package "effect") resolutions `Assert.shouldEqual` Just (unsafeVersion "4.0.0")
+
+    Spec.it "updateCompilerIndex produces same result as full rebuild" do
+      -- Setup: effect has two versions (4.0.0 and 5.0.0) both supporting
+      -- only 0.15.15. The incremental update adds 0.15.16 to effect@4.0.0;
+      -- effect@5.0.0 must be left untouched. Equivalence with a full
+      -- rebuild verifies both that the updated entry matches and that
+      -- unrelated entries are preserved (e.g. a bug that inserted at the
+      -- package-name level instead of the (name, version) level would
+      -- drop effect@5.0.0 in the incremental).
+      let
+        fullOld = buildCompilerIndex compilers manifestIndex oldCompilerMetadata
+
+        Tuple _ updatedEffectMeta = unsafeMetadata "effect"
+          [ Tuple "4.0.0" [ "0.15.15", "0.15.16" ]
+          , Tuple "5.0.0" [ "0.15.15" ]
+          ]
+
+        updatedMetadata = Map.fromFoldable
+          [ unsafeMetadata "prelude" [ Tuple "6.0.1" [ "0.15.15" ] ]
+          , Tuple (package "effect") updatedEffectMeta
+          , unsafeMetadata "my-pkg" [ Tuple "1.0.0" [ "0.15.15" ] ]
+          ]
+        fullNew = buildCompilerIndex compilers manifestIndex updatedMetadata
+
+        incremental = updateCompilerIndex fullOld effectManifest updatedEffectMeta
+
+      incremental `Assert.shouldEqual` fullNew
 
 solverIndex :: Map PackageName (Map Version (Map PackageName Range))
 solverIndex = Map.fromFoldable $ map buildPkg

@@ -12,7 +12,7 @@ import Data.Either as Either
 import Data.Formatter.DateTime as DateTime.Formatters
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
-import Data.Tuple (Tuple)
+import Data.Tuple (Tuple(..))
 import JSON (JSON)
 import JSON as JSON
 import Partial.Unsafe (unsafeCrashWith)
@@ -21,11 +21,13 @@ import Registry.Internal.Format as Internal.Format
 import Registry.License as License
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
+import Registry.Metadata (Metadata(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.SSH as SSH
 import Registry.Sha256 as Sha256
+import Registry.Test.Fixtures (defaultHash, defaultLocation)
 import Registry.Version (Version)
 import Registry.Version as Version
 import Unsafe.Coerce (unsafeCoerce)
@@ -153,6 +155,23 @@ unsafeManifest name version dependencies = Manifest
   , owners: Nothing
   , includeFiles: Nothing
   , excludeFiles: Nothing
+  }
+
+unsafeMetadata :: String -> Array (Tuple String (Array String)) -> Tuple PackageName Metadata
+unsafeMetadata name versions = Tuple (unsafePackageName name) $ Metadata
+  { location: defaultLocation
+  , owners: Nothing
+  , published: Map.fromFoldable $ map
+      ( \(Tuple ver comps) -> Tuple (unsafeVersion ver)
+          { bytes: 1000.0
+          , compilers: unsafeNonEmptyArray (map unsafeVersion comps)
+          , hash: defaultHash
+          , publishedTime: unsafeDateTime "2024-01-01T00:00:00.000Z"
+          , ref: Nothing
+          }
+      )
+      versions
+  , unpublished: Map.empty
   }
 
 -- | Format a package version as a string in the form 'name@X.Y.Z'
