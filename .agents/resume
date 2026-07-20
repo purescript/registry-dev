@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The repository has no persistent local services to repair after an orb wake.
+# The repository currently has no persistent local services to repair after an
+# orb wake. If services are added, declare them in .amp/services.yaml and run
+# `amp orb services ensure` here rather than starting unmanaged processes.
 :
