@@ -7,6 +7,12 @@ if ! command -v direnv >/dev/null 2>&1; then
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y direnv
 fi
 
+# Make the repository's existing .envrc activate in interactive orb terminals.
+direnv_hook='eval "$(direnv hook bash)"'
+if ! grep -Fqx "$direnv_hook" "$HOME/.bashrc"; then
+  printf '\n%s\n' "$direnv_hook" >> "$HOME/.bashrc"
+fi
+
 if ! command -v nix >/dev/null 2>&1 \
   && [ ! -x /nix/var/nix/profiles/default/bin/nix ]; then
   curl --proto '=https' --tlsv1.2 -fsSL https://install.determinate.systems/nix \

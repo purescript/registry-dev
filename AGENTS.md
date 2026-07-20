@@ -13,7 +13,7 @@ We use Nix with direnv. Expect to be in a Nix shell automatically, but if you ar
 nix develop
 ```
 
-In Amp orbs, non-login command shells do not automatically load `.envrc`. Prefix commands that need the development environment with `direnv exec .`, for example:
+Orb setup configures interactive terminals to load `.envrc` automatically, so bare commands such as `spago build` work there. Amp's non-login command shells do not load `.envrc`; in those shells, prefix commands that need the development environment with `direnv exec .`, for example:
 
 ```sh
 direnv exec . spago build
