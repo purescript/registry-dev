@@ -31,7 +31,8 @@ ln -sfn /nix/var/nix/profiles/default/bin/nix "$HOME/.local/bin/nix"
 
 echo "Preparing the pinned Nix development environment..."
 direnv allow .
-direnv exec . npm ci
-direnv exec . spago build
+eval "$(direnv export bash)"
+npm ci
+spago build
 
 echo "Orb setup complete."
