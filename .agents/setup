@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Installing orb prerequisites..."
+if ! command -v direnv >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y direnv
+fi
+
+if ! command -v nix >/dev/null 2>&1 \
+  && [ ! -x /nix/var/nix/profiles/default/bin/nix ]; then
+  curl --proto '=https' --tlsv1.2 -fsSL https://install.determinate.systems/nix \
+    | sh -s -- install --no-confirm
+fi
+
+# The installer updates future login shells, but this setup process also needs Nix.
+if [ -f /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+  # shellcheck disable=SC1091
+  source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+fi
+
+# Amp commands use non-login shells, so expose Nix on their existing PATH too.
+mkdir -p "$HOME/.local/bin"
+ln -sfn /nix/var/nix/profiles/default/bin/nix "$HOME/.local/bin/nix"
+
+echo "Preparing the pinned Nix development environment..."
+direnv allow .
+direnv exec . npm ci
+direnv exec . spago build
+
+echo "Orb setup complete."

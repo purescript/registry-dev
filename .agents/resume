@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Nix supplies the repository's complete development toolchain. Repair its
+# daemon after an orb pause if systemd did not restore it automatically.
+if systemctl is-enabled --quiet nix-daemon.service \
+  && ! systemctl is-active --quiet nix-daemon.service; then
+  sudo systemctl start nix-daemon.service
+fi
