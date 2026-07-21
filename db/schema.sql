@@ -54,9 +54,19 @@ CREATE TABLE logs (
   message TEXT NOT NULL,
   timestamp TEXT NOT NULL
 );
+CREATE INDEX idx_publish_jobs_name_version
+ON publish_jobs (packageName, packageVersion);
+CREATE INDEX idx_unpublish_jobs_name_version
+ON unpublish_jobs (packageName, packageVersion);
+CREATE INDEX idx_transfer_jobs_name
+ON transfer_jobs (packageName);
+CREATE INDEX idx_job_info_pending
+ON job_info (createdAt)
+WHERE finishedAt IS NULL AND startedAt IS NULL;
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
   ('20230711143615'),
   ('20230711143803'),
   ('20240914170550'),
-  ('20240914171030');
+  ('20240914171030'),
+  ('20260721231201');
