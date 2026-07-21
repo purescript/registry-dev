@@ -13,6 +13,13 @@ We use Nix with direnv. Expect to be in a Nix shell automatically, but if you ar
 nix develop
 ```
 
+Orb setup configures interactive terminals to load `.envrc` automatically, so bare commands such as `spago build` work there. Amp's non-login command shells do not load `.envrc`; in those shells, prefix commands that need the development environment with `direnv exec .`, for example:
+
+```sh
+direnv exec . spago build
+direnv exec . spago test
+```
+
 ### Nix Quirks
 
 - If Nix tries to fetch from git during a build and fails, then most likely `spago.yaml` files have been changed but the lockfiles were not updated. Update them with `spago build`.
