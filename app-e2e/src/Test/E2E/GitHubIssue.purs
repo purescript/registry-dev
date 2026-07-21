@@ -40,6 +40,19 @@ spec = do
       assertNoComment "Job completed successfully" requests
       assertOpen requests
 
+    Spec.it "links to existing logs without polling a duplicate job" do
+      let event = mkPublishEvent Fixtures.effectPublishData
+      _ <- runWorkflow event
+      WireMock.clearGithubRequests
+
+      requests <- runWorkflow event
+      assertComment "Duplicate job" requests
+      assertComment "Logs:" requests
+      assertNoComment "Job started" requests
+      assertNoComment "Job completed successfully" requests
+      assertNoComment "Job failed" requests
+      assertOpen requests
+
     Spec.it "calls Teams API to verify trustee membership for authenticated operation" do
       requests <- runWorkflow $ mkAuthenticatedEvent packagingTeamUser Fixtures.trusteeAuthenticatedData
       assertComment "Job started" requests

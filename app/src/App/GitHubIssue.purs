@@ -114,22 +114,39 @@ runGitHubIssue env = do
     submitResult <- Run.liftAff $ submitJob (registryApiUrl <> endpoint) jsonBody
     case submitResult of
       Left err -> Except.throw $ "Failed to submit job: " <> err
-      Right { jobId } -> do
+      Right (DuplicateJob { jobId }) -> do
         let jobIdStr = unwrap jobId
+        let logsUrl = registryApiUrl <> "/v1/jobs/" <> jobIdStr
+        Log.debug $ "Duplicate job: " <> jobIdStr
+        Run.liftAff $ void $ Octokit.request env.octokit $ Octokit.createCommentRequest
+          { address: Constants.registry
+          , issue: env.issue
+          , body: "Duplicate job: `" <> jobIdStr <> "`\nLogs: " <> logsUrl
+          }
+        pure false
+      Right (CreatedJob { jobId }) -> do
+        let jobIdStr = unwrap jobId
+        let logsUrl = registryApiUrl <> "/v1/jobs/" <> jobIdStr
         Log.debug $ "Job created: " <> jobIdStr
 
         -- Post initial comment with job ID
         Run.liftAff $ void $ Octokit.request env.octokit $ Octokit.createCommentRequest
           { address: Constants.registry
           , issue: env.issue
-          , body: "Job started: `" <> jobIdStr <> "`\nLogs: " <> registryApiUrl <> "/v1/jobs/" <> jobIdStr
+          , body: "Job started: `" <> jobIdStr <> "`\nLogs: " <> logsUrl
           }
 
         -- Poll for completion, posting logs as comments
         pollAndReport env.octokit env.issue env.pollConfig registryApiUrl jobId
 
+-- | The V1 response body is unchanged; the HTTP status distinguishes whether
+-- | the server created a job (201) or returned an existing duplicate (200).
+data JobSubmissionResult
+  = CreatedJob V1.JobCreatedResponse
+  | DuplicateJob V1.JobCreatedResponse
+
 -- | Submit a job to the registry API
-submitJob :: String -> String -> Aff (Either String V1.JobCreatedResponse)
+submitJob :: String -> String -> Aff (Either String JobSubmissionResult)
 submitJob url body = do
   result <- Aff.attempt $ Fetch.fetch url
     { method: POST
@@ -140,10 +157,12 @@ submitJob url body = do
     Left err -> pure $ Left $ "Network error: " <> Aff.message err
     Right response -> do
       responseBody <- response.text
-      if response.status >= 200 && response.status < 300 then
+      if response.status == 200 || response.status == 201 then
         case JSON.parse responseBody >>= \json -> lmap CJ.DecodeError.print (CJ.decode V1.jobCreatedResponseCodec json) of
           Left err -> pure $ Left $ "Failed to parse response: " <> err
-          Right r -> pure $ Right r
+          Right jobResponse
+            | response.status == 200 -> pure $ Right $ DuplicateJob jobResponse
+            | otherwise -> pure $ Right $ CreatedJob jobResponse
       else
         pure $ Left $ "HTTP " <> show response.status <> ": " <> responseBody
 
