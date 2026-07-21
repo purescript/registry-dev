@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  evaluate:
+    name: Evaluate flake
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
+        with:
+          use-flakehub: false
+      - run: nix flake show
+      - name: Generate build matrix
+        id: matrix
+        env:
+          SYSTEM: x86_64-linux
+        run: |
+          checks=$(nix eval --json ".#checks.$SYSTEM" --apply builtins.attrNames)
+          packages=$(nix eval --json ".#packages.$SYSTEM" --apply builtins.attrNames)
+          dev_shells=$(nix eval --json ".#devShells.$SYSTEM" --apply builtins.attrNames)
+
+          matrix=$(jq --compact-output --null-input \
+            --arg system "$SYSTEM" \
+            --argjson checks "$checks" \
+            --argjson packages "$packages" \
+            --argjson devShells "$dev_shells" \
+            '
+              def entries($kind; $prefix; $names):
+                $names | map({
+                  kind: $kind,
+                  name: .,
+                  output: "\($prefix).\($system).\(.)"
+                });
+
+              {
+                include: (
+                  entries("check"; "checks"; $checks)
+                  + entries("package"; "packages"; $packages)
+                  + entries("devShell"; "devShells"; $devShells)
+                )
+              }
+            ')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.kind }} ${{ matrix.name }} [x86_64-linux]
+    needs: evaluate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.evaluate.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
+        with:
+          use-flakehub: false
+      - run: nix build --print-build-logs ".#${{ matrix.output }}"
