@@ -16,7 +16,7 @@ import Registry.Metadata (Metadata(..))
 import Registry.Operation.Validation (UnpublishError(..), forbiddenModules, getUnresolvedDependencies, validatePursModule, validateUnpublish)
 import Registry.Test.Assert as Assert
 import Registry.Test.Fixtures (defaultHash, defaultLocation)
-import Registry.Test.Utils (fromJust, unsafeDateTime, unsafeManifest, unsafePackageName, unsafeVersion)
+import Registry.Test.Utils (fromJust, unsafeDateTime, unsafeLimitedString, unsafeManifest, unsafePackageName, unsafeVersion)
 import Test.Spec (Spec)
 import Test.Spec as Spec
 
@@ -73,7 +73,7 @@ spec = do
         { location: defaultLocation
         , owners: Nothing
         , published: Map.fromFoldable [ Tuple (unsafeVersion "1.0.0") publishedMetadata ]
-        , unpublished: Map.fromFoldable [ Tuple (unsafeVersion "2.0.0") { publishedTime: outOfRange, unpublishedTime: inRange, reason: "" } ]
+        , unpublished: Map.fromFoldable [ Tuple (unsafeVersion "2.0.0") { publishedTime: outOfRange, unpublishedTime: inRange, reason: unsafeLimitedString "" } ]
         }
 
     Spec.it "Rejects when not yet published" do

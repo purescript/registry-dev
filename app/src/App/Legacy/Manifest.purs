@@ -31,6 +31,7 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..), rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
+import Registry.LimitedString as LimitedString
 import Registry.Location as Location
 import Registry.Owner as Owner
 import Registry.PackageName as PackageName
@@ -194,7 +195,7 @@ legacyManifestCodec fallbackRef = Profunctor.dimap toRep fromRep $ CJ.named "Man
   $ CJ.recordProp @"name" PackageName.codec
   $ CJ.recordProp @"version" Version.codec
   $ CJ.recordProp @"license" License.codec
-  $ CJ.recordPropOptional @"description" (Internal.Codec.limitedString 300)
+  $ CJ.recordPropOptional @"description" LimitedString.codec
   $ CJ.recordProp @"location" Location.codec
   $ CJ.recordPropOptional @"ref" CJ.string
   $ CJ.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)

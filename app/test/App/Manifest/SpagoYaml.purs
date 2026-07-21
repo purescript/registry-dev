@@ -2,7 +2,9 @@ module Test.Registry.App.Manifest.SpagoYaml where
 
 import Registry.App.Prelude
 
+import Data.Array as Array
 import Data.Either (isLeft)
+import Data.String as String
 import Effect.Aff as Aff
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
@@ -44,6 +46,28 @@ spec = do
         """
 
     parseYaml SpagoYaml.spagoYamlCodec input `Assert.shouldSatisfy` isLeft
+
+  Spec.it "Rejects descriptions over the manifest limit" do
+    let
+      description = String.joinWith "" $ Array.replicate 501 "a"
+      input = String.joinWith "\n"
+        [ "package:"
+        , "  name: registry-lib"
+        , "  description: " <> description
+        , "  publish:"
+        , "    version: 0.0.1"
+        , "    license: BSD-3-Clause"
+        , "    location:"
+        , "      githubOwner: purescript"
+        , "      githubRepo: registry-dev"
+        , "  dependencies:"
+        , "    - prelude: \">=1.0.0 <2.0.0\""
+        ]
+
+    case parseYaml SpagoYaml.spagoYamlCodec input of
+      Left err -> Assert.fail err
+      Right config ->
+        SpagoYaml.spagoYamlToManifest "v1.0.0" config `Assert.shouldSatisfy` isLeft
 
   Spec.describe "parseSpagoRange" do
     Spec.it "parses unbounded range '*'" do

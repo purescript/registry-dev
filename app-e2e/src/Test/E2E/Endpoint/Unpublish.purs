@@ -6,6 +6,7 @@ import Data.Array as Array
 import Data.Map as Map
 import Data.String as String
 import Registry.API.V1 as V1
+import Registry.LimitedString as LimitedString
 import Registry.Metadata (Metadata(..))
 import Registry.Test.Assert as Assert
 import Test.E2E.Support.Client as Client
@@ -37,7 +38,7 @@ spec = do
         Nothing ->
           Assert.fail "Expected version 4.0.0 to be in 'unpublished' metadata"
         Just unpublishedInfo ->
-          Assert.shouldSatisfy unpublishedInfo.reason (not <<< String.null)
+          Assert.shouldSatisfy (LimitedString.print unpublishedInfo.reason) (not <<< String.null)
 
       when (Map.member Fixtures.effect.version metadata.published) do
         Assert.fail "Version 4.0.0 should not be in 'published' metadata after unpublish"

@@ -24,6 +24,7 @@ import Effect.Exception (Error)
 import JSON as JSON
 import Node.Path as Path
 import Registry.Internal.Codec as Internal.Codec
+import Registry.LimitedString as LimitedString
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex (ManifestIndex)
@@ -72,7 +73,8 @@ spec = do
   Spec.it "Prefers second manifest in the case of duplicate insertion." do
     let
       manifest1 = unsafeManifest "prelude" "1.0.0" []
-      manifest2 = Newtype.over Manifest (_ { description = Just "My prelude description." }) manifest1
+      expectedDescription = Utils.fromRight "Failed to parse manifest description" $ LimitedString.parse "My prelude description."
+      manifest2 = Newtype.over Manifest (_ { description = Just expectedDescription }) manifest1
       index =
         ManifestIndex.insert ManifestIndex.ConsiderRanges manifest1 ManifestIndex.empty
           >>= ManifestIndex.insert ManifestIndex.ConsiderRanges manifest2

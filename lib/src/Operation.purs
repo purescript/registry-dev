@@ -48,6 +48,8 @@ import Data.Map (Map)
 import Data.Maybe (Maybe)
 import JSON as JSON
 import Registry.Internal.Codec as Internal.Codec
+import Registry.LimitedString (LimitedString)
+import Registry.LimitedString as LimitedString
 import Registry.Location (Location)
 import Registry.Location as Location
 import Registry.PackageName (PackageName)
@@ -171,7 +173,7 @@ authenticatedCodec = topLevelCodec
 type UnpublishData =
   { name :: PackageName
   , version :: Version
-  , reason :: String
+  , reason :: LimitedString 300
   }
 
 -- | A codec for encoding and decoding an `Unpublish` operation as JSON.
@@ -179,7 +181,7 @@ unpublishCodec :: CJ.Codec UnpublishData
 unpublishCodec = CJ.named "Unpublish" $ CJ.Record.object
   { name: PackageName.codec
   , version: Version.codec
-  , reason: Internal.Codec.limitedString 300
+  , reason: LimitedString.codec
   }
 
 -- | Transfer a package from one location to another. This operation must be

@@ -30,6 +30,8 @@ import Data.String.NonEmpty (NonEmptyString)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License (License)
 import Registry.License as License
+import Registry.LimitedString (LimitedString)
+import Registry.LimitedString as LimitedString
 import Registry.Location (Location)
 import Registry.Location as Location
 import Registry.Owner (Owner)
@@ -50,7 +52,7 @@ newtype Manifest = Manifest
   , location :: Location
   , ref :: String
   , owners :: Maybe (NonEmptyArray Owner)
-  , description :: Maybe String
+  , description :: Maybe (LimitedString 500)
   , includeFiles :: Maybe (NonEmptyArray NonEmptyString)
   , excludeFiles :: Maybe (NonEmptyArray NonEmptyString)
   , dependencies :: Map PackageName Range
@@ -77,7 +79,7 @@ codec = Profunctor.wrapIso Manifest $ CJ.named "Manifest" $ CJ.object
   $ CJ.recordProp @"name" PackageName.codec
   $ CJ.recordProp @"version" Version.codec
   $ CJ.recordProp @"license" License.codec
-  $ CJ.recordPropOptional @"description" (Internal.Codec.limitedString 300)
+  $ CJ.recordPropOptional @"description" LimitedString.codec
   $ CJ.recordProp @"location" Location.codec
   $ CJ.recordProp @"ref" CJ.string
   $ CJ.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)

@@ -95,6 +95,7 @@ import Registry.Foreign.Tmp as Tmp
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Internal.Path as Internal.Path
 import Registry.License as License
+import Registry.LimitedString as LimitedString
 import Registry.Location as Location
 import Registry.Manifest as Manifest
 import Registry.Metadata as Metadata
@@ -492,6 +493,9 @@ parseSourceManifest { packageDir, name, version, ref, location } = do
           Left err ->
             Except.throw $ "Could not convert bower.json to purs.json manifest: " <> err
           Right { license, description, dependencies } -> do
+            parsedDescription <- case traverse LimitedString.parse description of
+              Left err -> Except.throw err
+              Right result -> pure result
             let
               manifest = Manifest
                 { name
@@ -499,7 +503,7 @@ parseSourceManifest { packageDir, name, version, ref, location } = do
                 , license
                 , location
                 , ref
-                , description
+                , description: parsedDescription
                 , dependencies
                 , includeFiles: Nothing
                 , excludeFiles: Nothing
@@ -530,6 +534,9 @@ parseSourceManifest { packageDir, name, version, ref, location } = do
             Left err ->
               Except.throw $ "Could not convert spago.dhall to purs.json manifest: " <> err
             Right { license, description, dependencies } -> do
+              parsedDescription <- case traverse LimitedString.parse description of
+                Left err -> Except.throw err
+                Right result -> pure result
               let
                 manifest = Manifest
                   { name
@@ -537,7 +544,7 @@ parseSourceManifest { packageDir, name, version, ref, location } = do
                   , license
                   , location
                   , ref
-                  , description
+                  , description: parsedDescription
                   , dependencies
                   , includeFiles: Nothing
                   , excludeFiles: Nothing
