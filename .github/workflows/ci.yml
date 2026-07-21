@@ -32,34 +32,22 @@ jobs:
           SYSTEM: x86_64-linux
         run: |
           checks=$(nix eval --json ".#checks.$SYSTEM" --apply builtins.attrNames)
-          packages=$(nix eval --json ".#packages.$SYSTEM" --apply builtins.attrNames)
-          dev_shells=$(nix eval --json ".#devShells.$SYSTEM" --apply builtins.attrNames)
 
           matrix=$(jq --compact-output --null-input \
             --arg system "$SYSTEM" \
             --argjson checks "$checks" \
-            --argjson packages "$packages" \
-            --argjson devShells "$dev_shells" \
             '
-              def entries($kind; $prefix; $names):
-                $names | map({
-                  kind: $kind,
-                  name: .,
-                  output: "\($prefix).\($system).\(.)"
-                });
-
               {
-                include: (
-                  entries("check"; "checks"; $checks)
-                  + entries("package"; "packages"; $packages)
-                  + entries("devShell"; "devShells"; $devShells)
-                )
+                include: ($checks | map({
+                  name: .,
+                  output: "checks.\($system).\(.)"
+                }))
               }
             ')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   build:
-    name: ${{ matrix.kind }} ${{ matrix.name }} [x86_64-linux]
+    name: check ${{ matrix.name }} [x86_64-linux]
     needs: evaluate
     runs-on: ubuntu-latest
     strategy:
