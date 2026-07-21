@@ -164,6 +164,16 @@ bowerfileToPursJsonSpec = do
           Left _ -> pure unit
           Right _ -> Assert.fail "Expected conversion to fail for missing license"
 
+    Spec.it "Fails when the description exceeds the manifest limit" do
+      let
+        description = Array.fold $ Array.replicate 501 "a"
+        input = "{ \"license\": \"MIT\", \"description\": \"" <> description <> "\" }"
+      case parseJson Legacy.Manifest.bowerfileCodec input of
+        Left err -> Assert.fail $ "Failed to parse bowerfile:\n" <> CJ.DecodeError.print err
+        Right bowerfile -> case Legacy.Manifest.bowerfileToPursJson bowerfile of
+          Left _ -> pure unit
+          Right _ -> Assert.fail "Expected conversion to fail for an overlong description"
+
 spagoDhallToPursJsonSpec :: Spec Unit
 spagoDhallToPursJsonSpec = do
   Spec.describe "Converts valid SpagoDhallJson" do

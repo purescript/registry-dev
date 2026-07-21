@@ -14,6 +14,7 @@ import Data.Bifunctor (lmap)
 import Data.Codec as Codec
 import Data.Codec.JSON as CJ
 import Data.Either (Either(..))
+import Data.Int as Int
 import Data.Reflectable (class Reflectable, reflectType)
 import Data.String as String
 import JSON (JSON)
@@ -40,7 +41,7 @@ parse :: forall limit. Reflectable limit Int => String -> Either String (Limited
 parse string = do
   let limit = reflectType (Proxy @limit)
   if String.length string > limit then
-    Left $ "LimitedString: Exceeds limit of " <> show limit <> " characters."
+    Left $ "LimitedString: Exceeds limit of " <> Int.toStringAs Int.decimal limit <> " characters."
   else
     Right $ LimitedString string
 

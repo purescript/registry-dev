@@ -13,6 +13,7 @@
 -- | https://github.com/purescript/registry-index
 module Registry.Manifest
   ( Manifest(..)
+  , ManifestDescription
   , codec
   ) where
 
@@ -43,6 +44,10 @@ import Registry.Range as Range
 import Registry.Version (Version)
 import Registry.Version as Version
 
+-- | A plain-text package description with the maximum length permitted by the
+-- | registry specification.
+type ManifestDescription = LimitedString 500
+
 -- | The manifest for a package version, which records critical information for
 -- | the registry, pursuit, and package managers to use.
 newtype Manifest = Manifest
@@ -52,7 +57,7 @@ newtype Manifest = Manifest
   , location :: Location
   , ref :: String
   , owners :: Maybe (NonEmptyArray Owner)
-  , description :: Maybe (LimitedString 500)
+  , description :: Maybe ManifestDescription
   , includeFiles :: Maybe (NonEmptyArray NonEmptyString)
   , excludeFiles :: Maybe (NonEmptyArray NonEmptyString)
   , dependencies :: Map PackageName Range
