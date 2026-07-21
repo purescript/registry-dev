@@ -48,6 +48,7 @@ spec = do
     Spec.it "posts error comment when issue body contains invalid JSON" do
       requests <- runWorkflow Fixtures.invalidJsonIssueEvent
       assertComment "malformed" requests
+      assertComment "Publish: { name, ref, compiler?, version, location?, resolutions? }" requests
       assertOpen requests
 
 -- Constants
