@@ -6,6 +6,7 @@ import Data.Map as Map
 import Effect.Aff as Aff
 import Effect.Ref as Ref
 import Node.Path as Path
+import Registry.API.V1 (JobId(..))
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.GitHub (GITHUB, GitHub)
@@ -29,6 +30,12 @@ import Test.Spec as Spec
 
 spec :: Spec.Spec Unit
 spec = do
+  Spec.it "appends the executing job ID to commit messages" do
+    let message = "Update metadata for prelude"
+    Registry.appendJobIdToCommitMessage Nothing message `Assert.shouldEqual` message
+    Registry.appendJobIdToCommitMessage (Just (JobId "job-123")) message `Assert.shouldEqual`
+      "Update metadata for prelude\n\nJob ID: job-123"
+
   -- This test exercises the Registry.handle to verify that readMetadata does
   -- not poison the AllMetadata cache: i.e. a single-package read must not seed
   -- the cache with a singleton map that readAllMetadata would mistake for the
@@ -63,7 +70,8 @@ spec = do
       cacheRef <- liftEffect Cache.newCacheRef
       let
         env =
-          { repos:
+          { jobId: Nothing
+          , repos:
               { registry: { owner: "test", repo: "test" }
               , manifestIndex: { owner: "test", repo: "test" }
               , legacyPackageSets: { owner: "test", repo: "test" }

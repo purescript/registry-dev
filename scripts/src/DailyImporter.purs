@@ -89,7 +89,8 @@ main = launchAff_ do
   let
     registryEnv :: Registry.RegistryEnv
     registryEnv =
-      { pull: Git.Autostash
+      { jobId: Nothing
+      , pull: Git.Autostash
       , write: Registry.ReadOnly
       , repos: Registry.defaultRepos
       , workdir: scratchDir

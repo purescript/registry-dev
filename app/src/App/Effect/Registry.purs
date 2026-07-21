@@ -21,6 +21,7 @@ import Effect.Ref as Ref
 import JSON as JSON
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Registry.API.V1 (JobId)
 import Registry.App.CLI.Git (GitResult)
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (class MemoryEncodable, Cache, CacheRef, MemoryEncoding(..))
@@ -184,7 +185,8 @@ data WriteMode = ReadOnly | CommitAs Git.Committer
 derive instance Eq WriteMode
 
 type RegistryEnv =
-  { repos :: Repos
+  { jobId :: Maybe JobId
+  , repos :: Repos
   , workdir :: FilePath
   , pull :: Git.PullMode
   , write :: WriteMode
@@ -672,12 +674,13 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
     let repoKey = commitKeyToRepoKey commitKey
     let address = repoAddress repoKey
     let formatted = address.owner <> "/" <> address.repo
+    let messageWithJobId = appendJobIdToCommitMessage env.jobId message
     case env.write of
       ReadOnly -> do
         Log.info $ "Skipping commit to repo " <> formatted <> " because write mode is 'ReadOnly'."
         pure $ Right Git.NoChange
       CommitAs committer -> do
-        result <- Git.gitCommit { committer, address, commit: commitKeyToPaths commitKey, message } (repoPath repoKey)
+        result <- Git.gitCommit { committer, address, commit: commitKeyToPaths commitKey, message: messageWithJobId } (repoPath repoKey)
         pure result
 
   -- | Push the repository at the given key, recording whether the push had any
@@ -738,6 +741,11 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
             "Failed to push tags in local checkout " <> cwd <> ": " <> error
           if String.contains (String.Pattern "Everything up-to-date") output then pure Git.NoChange else pure Git.Changed
         pure result
+
+appendJobIdToCommitMessage :: Maybe JobId -> String -> String
+appendJobIdToCommitMessage maybeJobId message = case maybeJobId of
+  Nothing -> message
+  Just jobId -> message <> "\n\nJob ID: " <> unwrap jobId
 
 -- | Given the file path of a local manifest index on disk, read its contents.
 readManifestIndexFromDisk :: forall r. FilePath -> Run (LOG + EXCEPT String + AFF + EFFECT + r) ManifestIndex
