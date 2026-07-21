@@ -30,6 +30,8 @@ import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Profunctor as Profunctor
 import Registry.Internal.Codec as Internal.Codec
+import Registry.LimitedString (LimitedString)
+import Registry.LimitedString as LimitedString
 import Registry.Location (Location)
 import Registry.Location as Location
 import Registry.Owner (Owner)
@@ -87,13 +89,13 @@ publishedMetadataCodec = CJ.named "PublishedMetadata" $ CJ.Record.object
 -- | Metadata about an unpublished package version.
 type UnpublishedMetadata =
   { publishedTime :: DateTime
-  , reason :: String
+  , reason :: LimitedString 300
   , unpublishedTime :: DateTime
   }
 
 unpublishedMetadataCodec :: CJ.Codec UnpublishedMetadata
 unpublishedMetadataCodec = CJ.named "UnpublishedMetadata" $ CJ.Record.object
   { publishedTime: Internal.Codec.iso8601DateTime
-  , reason: Internal.Codec.limitedString 300
+  , reason: LimitedString.codec
   , unpublishedTime: Internal.Codec.iso8601DateTime
   }

@@ -31,7 +31,9 @@ import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.App.Legacy.Types (RawPackageName(..), RawVersion(..), RawVersionRange(..), rawPackageNameMapCodec, rawVersionCodec, rawVersionRangeCodec)
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
+import Registry.LimitedString as LimitedString
 import Registry.Location as Location
+import Registry.Manifest (ManifestDescription)
 import Registry.Owner as Owner
 import Registry.PackageName as PackageName
 import Registry.Range (Range)
@@ -73,8 +75,8 @@ bowerfileCodec = Profunctor.dimap toRep fromRep $ CJ.named "Bowerfile" $ CJ.Reco
 -- | Returns an error message if the conversion fails.
 bowerfileToPursJson
   :: Bowerfile
-  -> Either String { license :: License, description :: Maybe String, dependencies :: Map PackageName Range }
-bowerfileToPursJson (Bowerfile { description, dependencies, license }) = do
+  -> Either String { license :: License, description :: Maybe ManifestDescription, dependencies :: Map PackageName Range }
+bowerfileToPursJson (Bowerfile { description: bowerDescription, dependencies, license }) = do
   let
     -- Best effort: keep any licenses that parse cleanly and drop the rest.
     validLicenses = Array.mapMaybe (hush <<< License.parseCanonical) license
@@ -85,6 +87,7 @@ bowerfileToPursJson (Bowerfile { description, dependencies, license }) = do
       Just multiple -> Right $ License.joinWith License.And multiple
 
   parsedDeps <- parseDependencies dependencies
+  description <- traverse LimitedString.parse bowerDescription
 
   Right { license: parsedLicense, description, dependencies: parsedDeps }
 
@@ -136,7 +139,7 @@ spagoDhallJsonCodec = Profunctor.dimap toRep fromRep $ CJ.named "SpagoDhallJson"
 -- | Returns an error message if the conversion fails.
 spagoDhallToPursJson
   :: SpagoDhallJson
-  -> Either String { license :: License, description :: Maybe String, dependencies :: Map PackageName Range }
+  -> Either String { license :: License, description :: Maybe ManifestDescription, dependencies :: Map PackageName Range }
 spagoDhallToPursJson (SpagoDhallJson { license, dependencies, packages }) = do
   parsedLicense <- case license of
     Nothing -> Left "No license found in spago.dhall"
@@ -194,7 +197,7 @@ legacyManifestCodec fallbackRef = Profunctor.dimap toRep fromRep $ CJ.named "Man
   $ CJ.recordProp @"name" PackageName.codec
   $ CJ.recordProp @"version" Version.codec
   $ CJ.recordProp @"license" License.codec
-  $ CJ.recordPropOptional @"description" (Internal.Codec.limitedString 300)
+  $ CJ.recordPropOptional @"description" LimitedString.codec
   $ CJ.recordProp @"location" Location.codec
   $ CJ.recordPropOptional @"ref" CJ.string
   $ CJ.recordPropOptional @"owners" (CJ.Common.nonEmptyArray Owner.codec)

@@ -12,6 +12,7 @@ import Data.Either as Either
 import Data.Formatter.DateTime as DateTime.Formatters
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
+import Data.Reflectable (class Reflectable)
 import Data.Tuple (Tuple(..))
 import JSON (JSON)
 import JSON as JSON
@@ -19,6 +20,8 @@ import Partial.Unsafe (unsafeCrashWith)
 import Partial.Unsafe as Partial
 import Registry.Internal.Format as Internal.Format
 import Registry.License as License
+import Registry.LimitedString (LimitedString)
+import Registry.LimitedString as LimitedString
 import Registry.Location (Location(..))
 import Registry.Manifest (Manifest(..))
 import Registry.Metadata (Metadata(..))
@@ -87,6 +90,10 @@ fromJust msg = case _ of
 -- | if the value is a `Left`.
 fromRight :: forall a b. String -> Either a b -> b
 fromRight msg = Either.fromRight' (\_ -> Partial.unsafeCrashWith msg)
+
+-- | Unsafely parse a string with a type-level length limit.
+unsafeLimitedString :: forall limit. Reflectable limit Int => String -> LimitedString limit
+unsafeLimitedString string = fromRight ("Failed to parse LimitedString: " <> string) (LimitedString.parse string)
 
 -- | Unsafely stringify a value by coercing it to `Json` and stringifying it.
 unsafeStringify :: forall a. a -> String

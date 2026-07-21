@@ -145,7 +145,7 @@ effectUnpublishData :: UnpublishData
 effectUnpublishData =
   { name: effect.name
   , version: effect.version
-  , reason: "Testing unpublish flow"
+  , reason: Utils.unsafeLimitedString "Testing unpublish flow"
   }
 
 -- | Transfer data for effect, used for transfer tests.
@@ -166,7 +166,7 @@ nonexistentUnpublishData :: UnpublishData
 nonexistentUnpublishData =
   { name: Utils.unsafePackageName "nonexistent-package"
   , version: Utils.unsafeVersion "1.0.0"
-  , reason: "Testing error handling for unknown package"
+  , reason: Utils.unsafeLimitedString "Testing error handling for unknown package"
   }
 
 -- | Unpublish data for prelude@6.0.1.
@@ -176,7 +176,7 @@ preludeUnpublishData :: UnpublishData
 preludeUnpublishData =
   { name: prelude.name
   , version: prelude.version
-  , reason: "Testing 48-hour limit enforcement"
+  , reason: Utils.unsafeLimitedString "Testing 48-hour limit enforcement"
   }
 
 -- | Sign an unpublish operation using the given private key.
@@ -228,7 +228,7 @@ trusteeAuthenticatedData = do
     unpublishPayload =
       { name: prelude.name
       , version: prelude.version
-      , reason: "Testing trustee re-signing"
+      , reason: Utils.unsafeLimitedString "Testing trustee re-signing"
       }
     rawPayload = JSON.print $ CJ.encode Operation.unpublishCodec unpublishPayload
 

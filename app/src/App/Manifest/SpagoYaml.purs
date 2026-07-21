@@ -18,6 +18,7 @@ import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
 import Registry.Internal.Codec as Internal.Codec
 import Registry.License as License
+import Registry.LimitedString as LimitedString
 import Registry.Location as Location
 import Registry.Manifest (Manifest(..))
 import Registry.Owner as Owner
@@ -31,13 +32,14 @@ import Registry.Version as Version
 -- | the Git reference (tag or commit) used to fetch this version's source.
 spagoYamlToManifest :: String -> SpagoYaml -> Either String Manifest
 spagoYamlToManifest ref config = do
-  package@{ name, description, dependencies: spagoDependencies } <- note "No 'package' key found in config." config.package
+  package@{ name, description: spagoDescription, dependencies: spagoDependencies } <- note "No 'package' key found in config." config.package
   publish@{ version, license, owners } <- note "No 'publish' key found under the 'package' key in config." package.publish
   location <- note "No 'location' key found under the 'publish' key in config." publish.location
   let includeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publish.include)
   let excludeFiles = NonEmptyArray.fromArray =<< (Array.mapMaybe NonEmptyString.fromString <$> publish.exclude)
   let printRangeError packages = "The following packages did not have their ranges specified: " <> String.joinWith ", " (map PackageName.print (Set.toUnfoldable packages))
   dependencies <- lmap printRangeError $ convertSpagoDependencies spagoDependencies
+  description <- traverse LimitedString.parse spagoDescription
   pure $ Manifest
     { name
     , version

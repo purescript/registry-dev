@@ -5,6 +5,8 @@ import Registry.App.Prelude
 import Data.Newtype (over)
 import Data.String as String
 import Registry.App.Auth as Auth
+import Registry.LimitedString (LimitedString)
+import Registry.LimitedString as LimitedString
 import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..))
 import Registry.PackageName as PackageName
 import Registry.SSH (Signature(..))
@@ -74,7 +76,7 @@ validPayload =
   , payload: Unpublish
       { name
       , version
-      , reason: "Committed bad credentials"
+      , reason
       }
   , rawPayload
   }
@@ -84,6 +86,9 @@ name = unsafeFromRight $ PackageName.parse "foo"
 
 version :: Version
 version = unsafeFromRight $ Version.parse "1.2.3"
+
+reason :: LimitedString 300
+reason = unsafeFromRight $ LimitedString.parse "Committed bad credentials"
 
 keytype :: String
 keytype = "ssh-ed25519"

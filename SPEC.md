@@ -389,7 +389,7 @@ All packages in the registry contain a `purs.json` manifest file in their root d
 - `location`: a valid [`Location`](#location)
 - `ref`: a `string` representing the reference (e.g., a Git commit or Git tag) at the `location` that was used to fetch this version's source code
 - `owners` (optional): a non-empty array of [`Owner`](#owner)
-- `description` (optional): a description of your library as a plain text string, not markdown, up to 300 characters
+- `description` (optional): a description of your library as a plain text string, not markdown, up to 500 characters
 - `includeFiles` (optional): a non-empty array of globs, where globs are used to match file paths (in addition to the `src` directory and other [always-included files](#always-included-files)) that you want included in your package tarball
 - `excludeFiles` (optional): a non-empty array of globs, where globs are used to match file paths in your package source to exclude them (in addition to the [always-ignored files](#always-ignored-files)) from your package tarball.
 - `dependencies`: dependencies of your package as key-value pairs where the keys are [`PackageName`](#packagename)s and values are [`Range`](#range)s; this is a required field, but if you have no dependencies you can provide an empty object.
