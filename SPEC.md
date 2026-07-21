@@ -227,9 +227,9 @@ This section contains schemas for `PackageName`, `Version`, `Range`, `Location`,
 
 Packages are uniquely identified by their `PackageName`. No two packages in the registry can share the same name. A package name represented as a `string`, with the following restrictions:
 
-- Must be no more than 50 characters long
-- Must contain only letters and digits, optionally separated by hyphens
-- Must begin with a letter or digit
+- Must be no more than 150 characters long
+- Must contain only lowercase ASCII letters (`a`–`z`) and ASCII digits (`0`–`9`), optionally separated by hyphens
+- Must begin with a lowercase ASCII letter or ASCII digit
 - Cannot contain consecutive hyphens
 - Cannot begin with `purescript-`
 

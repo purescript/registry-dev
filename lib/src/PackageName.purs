@@ -32,7 +32,6 @@ import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
-import Parsing.String.Basic as Parsing.String.Basic
 
 -- | Strip the "purescript-" prefix from a package name, if present.
 -- |
@@ -99,7 +98,9 @@ parser = do
     Parsing.fail prefixErr
 
   let
-    acceptedChars = Parsing.Combinators.choice [ Parsing.String.Basic.lower, Parsing.String.Basic.digit ] <|> Parsing.fail charErr
+    asciiLower = Parsing.String.satisfy \char -> char >= 'a' && char <= 'z'
+    asciiDigit = Parsing.String.satisfy \char -> char >= '0' && char <= '9'
+    acceptedChars = Parsing.Combinators.choice [ asciiLower, asciiDigit ] <|> Parsing.fail charErr
     chunk1 = Parsing.Combinators.Array.many1 acceptedChars
 
   -- A "chunk" is a lowercase alphanumeric word delimited by dashes

@@ -61,6 +61,9 @@ valid =
 
   -- blessed purescript-prefixed packages
   , "purescript-compiler-backend-utilities"
+
+  -- maximum-length package name
+  , String.joinWith "" $ Array.replicate 150 "a"
   ]
 
 invalid :: Array (Tuple String String)
@@ -70,15 +73,24 @@ invalid = do
   let prefixErr = "Package names should not begin with 'purescript-'"
   let endErr = "Package name should end with a lower case char or digit"
   let manyDashesErr = "Package names cannot contain consecutive dashes"
+  let lengthErr = "Package name cannot be longer than 150 characters"
   let expectedEOF = "Expected EOF"
 
   [ "-a" /\ startErr
   , "double--dash" /\ manyDashesErr
+  , "Uppercase" /\ startErr
   , "BIGLETTERS" /\ startErr
+  , "upperCase" /\ midErr
+  , "éclair" /\ startErr
+  , "café" /\ midErr
+  , "β-reduction" /\ startErr
+  , "١package" /\ startErr
+  , "package١" /\ midErr
   , "some space" /\ midErr
   , "a-" /\ endErr
   , "" /\ startErr
   , "🍝" /\ startErr
   , "abc-🍝-abc" /\ expectedEOF
   , "purescript-aff" /\ prefixErr
+  , String.joinWith "" (Array.replicate 151 "a") /\ lengthErr
   ]
