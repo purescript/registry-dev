@@ -44,17 +44,16 @@ main = launchAff_ do
       , cacheRef: registryCacheRef
       }
 
-  result <- runVersionCheck
+  runVersionCheck
     # Except.runExcept
     # Registry.interpretRead (Registry.handleRead registryEnv)
     # Log.interpret (Log.handleTerminal Normal)
     # Run.runBaseAff'
-
-  case result of
-    Left err -> do
-      Console.error $ "Error: " <> err
-      liftEffect $ Process.exit' 1
-    Right _ -> pure unit
+    >>= case _ of
+      Left err -> do
+        Console.error $ "Error: " <> err
+        liftEffect $ Process.exit' 1
+      Right _ -> pure unit
 
 type VersionCheckEffects = (REGISTRY_READ + LOG + EXCEPT String + AFF + EFFECT + ())
 
