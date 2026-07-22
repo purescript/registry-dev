@@ -9,8 +9,6 @@ import Node.Path as Path
 import Registry.API.V1 (JobId(..))
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.GitHub (GITHUB, GitHub)
-import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, Log(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY_READ, RegistryEnv, WriteMode(..))
@@ -108,16 +106,10 @@ spec = do
   runRealRegistry
     :: forall a
      . RegistryEnv
-    -> Run (REGISTRY_READ + GITHUB + LOG + EXCEPT String + AFF + EFFECT + ()) a
+    -> Run (REGISTRY_READ + LOG + EXCEPT String + AFF + EFFECT + ()) a
     -> Aff a
   runRealRegistry env =
     Registry.interpretRead (Registry.handleRead env)
-      >>> GitHub.interpret handleGitHubStub
       >>> Log.interpret (\(Log _ _ next) -> pure next)
       >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
       >>> Run.runBaseAff'
-
-  -- | Stub GitHub handler — crashes if called. ReadMetadata and ReadAllMetadata
-  -- | don't use the GITHUB effect, so this should never be reached.
-  handleGitHubStub :: forall r a. GitHub a -> Run r a
-  handleGitHubStub _ = unsafeCrashWith "GITHUB effect should not be called in this test"
