@@ -29,6 +29,10 @@ storageUrl = "https://packages.registry.purescript.org"
 apiUrl :: String
 apiUrl = "https://registry.purescript.org/api"
 
+-- | The URL of the registry dashboard, where jobs and their logs can be viewed
+dashboardUrl :: String
+dashboardUrl = "https://www.purescript.org/registry-dev"
+
 ignoredDirectories :: Array FilePath
 ignoredDirectories =
   [ ".psci"
