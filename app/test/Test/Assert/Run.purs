@@ -13,7 +13,6 @@ module Registry.Test.Assert.Run
 import Registry.App.Prelude
 
 import Data.Array as Array
-import Data.Exists as Exists
 import Data.Foldable (class Foldable)
 import Data.Foldable as Foldable
 import Data.FunctorWithIndex (mapWithIndex)
@@ -97,9 +96,9 @@ type TEST_EFFECTS =
       + ()
   )
 
--- | A one-shot failure injected into an effect mock. The matching handler
--- | consumes the failure before returning its error, so one test can run a
--- | failed publication and its retry against the same mock state.
+-- | A failure injected into an effect mock. Matching handlers consume failures
+-- | from the front of a plan, allowing one test to fail successive publication
+-- | retries at each durable boundary while preserving their shared state.
 data TestFailure
   = FailStorageUploadAfterWrite
   | FailMetadataWrite
@@ -107,18 +106,19 @@ data TestFailure
 
 derive instance Eq TestFailure
 
-consumeFailure :: forall m. MonadEffect m => TestFailure -> Ref (Maybe TestFailure) -> m Boolean
+consumeFailure :: forall m. MonadEffect m => TestFailure -> Ref (Array TestFailure) -> m Boolean
 consumeFailure expected ref = liftEffect do
-  actual <- Ref.read ref
-  if actual == Just expected then do
-    Ref.write Nothing ref
-    pure true
-  else
-    pure false
+  failures <- Ref.read ref
+  case Array.uncons failures of
+    Just { head, tail } | head == expected -> do
+      Ref.write tail ref
+      pure true
+    _ ->
+      pure false
 
 type TestEnv =
   { workdir :: FilePath
-  , failNext :: Ref (Maybe TestFailure)
+  , failurePlan :: Ref (Array TestFailure)
   , logs :: Ref (Array (Tuple LogLevel String))
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
@@ -138,20 +138,21 @@ runTestEffects env operation = Aff.attempt do
         ( handleRegistryMock
             { metadataRef: env.metadata
             , indexRef: env.index
-            , failNext: env.failNext
+            , failurePlan: env.failurePlan
             }
         )
     # PackageSets.interpret handlePackageSetsMock
-    # Storage.interpret (handleStorageMock { storage: env.storage, failNext: env.failNext })
+    # Storage.interpret (handleStorageMock { storage: env.storage, failurePlan: env.failurePlan })
     # Source.interpret (handleSourceMock { github: env.github })
     # GitHub.interpret (handleGitHubMock { github: env.github })
     -- Environments
     # Env.runGitHubEventEnv { username: env.username, issue: IssueNumber 1 }
     # Env.runPacchettiBottiEnv { publicKey: "Unimplemented", privateKey: "Unimplemented" }
     # Env.runResourceEnv resourceEnv
-    -- Caches
-    # runCompilerCacheMock
-    # runPursGraphCacheMock
+    -- Use the production cache interpreter so retries in one assertion reuse
+    -- successful graph and compilation results instead of rerunning compilers.
+    # Cache.interpret API._compilerCache (Cache.handleFs env.workdir)
+    # Cache.interpret API._pursGraphCache (Cache.handleFs env.workdir)
     # runGitHubCacheMemory githubCache
     -- Other effects
     # Log.interpret (\(Log level msg next) -> Run.liftEffect (Ref.modify_ (_ <> [ Tuple level (Dodo.print Dodo.plainText Dodo.twoSpaces msg) ]) env.logs) *> pure next)
@@ -170,45 +171,13 @@ runBaseEffects = do
 -- | For testing Run functions that only need the REGISTRY effect.
 runRegistryMock :: forall a. Ref (Map PackageName Metadata) -> Ref ManifestIndex -> Run (EXCEPT String + LOG + REGISTRY + AFF + EFFECT + ()) a -> Aff a
 runRegistryMock metadataRef indexRef operation = do
-  failNext <- liftEffect $ Ref.new Nothing
+  failurePlan <- liftEffect $ Ref.new []
   operation
-    # Registry.interpret (handleRegistryMock { metadataRef, indexRef, failNext })
+    # Registry.interpret (handleRegistryMock { metadataRef, indexRef, failurePlan })
     # runBaseEffects
 
 runGitHubCacheMemory :: forall r a. CacheRef -> Run (GITHUB_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
 runGitHubCacheMemory = Cache.interpret GitHub._githubCache <<< Cache.handleMemory
-
-runCompilerCacheMock :: forall r a. Run (COMPILER_CACHE + LOG + r) a -> Run (LOG + r) a
-runCompilerCacheMock = Cache.interpret API._compilerCache case _ of
-  Cache.Get key -> Exists.runExists getImpl (Cache.encodeFs key)
-  Cache.Put _ next -> pure next
-  Cache.Delete key -> Exists.runExists deleteImpl (Cache.encodeFs key)
-  where
-  getImpl :: forall x z. Cache.FsEncoding Cache.Reply x z -> Run _ x
-  getImpl = case _ of
-    Cache.AsBuffer _ (Cache.Reply reply) -> pure $ reply Nothing
-    Cache.AsJson _ _ (Cache.Reply reply) -> pure $ reply Nothing
-
-  deleteImpl :: forall x z. Cache.FsEncoding Cache.Ignore x z -> Run _ x
-  deleteImpl = case _ of
-    Cache.AsBuffer _ (Cache.Ignore next) -> pure next
-    Cache.AsJson _ _ (Cache.Ignore next) -> pure next
-
-runPursGraphCacheMock :: forall r a. Run (PURS_GRAPH_CACHE + LOG + r) a -> Run (LOG + r) a
-runPursGraphCacheMock = Cache.interpret API._pursGraphCache case _ of
-  Cache.Get key -> Exists.runExists getImpl (Cache.encodeFs key)
-  Cache.Put _ next -> pure next
-  Cache.Delete key -> Exists.runExists deleteImpl (Cache.encodeFs key)
-  where
-  getImpl :: forall x z. Cache.FsEncoding Cache.Reply x z -> Run _ x
-  getImpl = case _ of
-    Cache.AsBuffer _ (Cache.Reply reply) -> pure $ reply Nothing
-    Cache.AsJson _ _ (Cache.Reply reply) -> pure $ reply Nothing
-
-  deleteImpl :: forall x z. Cache.FsEncoding Cache.Ignore x z -> Run _ x
-  deleteImpl = case _ of
-    Cache.AsBuffer _ (Cache.Ignore next) -> pure next
-    Cache.AsJson _ _ (Cache.Ignore next) -> pure next
 
 type PursuitMockEnv =
   { excludes :: Set PackageName
@@ -238,7 +207,7 @@ handlePursuitMock { excludes, metadataRef } = case _ of
 type RegistryMockEnv =
   { metadataRef :: Ref (Map PackageName Metadata)
   , indexRef :: Ref ManifestIndex
-  , failNext :: Ref (Maybe TestFailure)
+  , failurePlan :: Ref (Array TestFailure)
   }
 
 handleRegistryMock :: forall r a. RegistryMockEnv -> Registry a -> Run (AFF + EFFECT + r) a
@@ -248,7 +217,7 @@ handleRegistryMock env = case _ of
     pure $ reply $ Right $ ManifestIndex.lookup name version index
 
   WriteManifest manifest reply -> do
-    failWrite <- consumeFailure FailManifestWrite env.failNext
+    failWrite <- consumeFailure FailManifestWrite env.failurePlan
     if failWrite then do
       pure $ reply $ Left "Injected manifest write failure."
     else do
@@ -276,7 +245,7 @@ handleRegistryMock env = case _ of
     pure $ reply $ Right $ Map.lookup name metadata
 
   WriteMetadata name metadata reply -> do
-    failWrite <- consumeFailure FailMetadataWrite env.failNext
+    failWrite <- consumeFailure FailMetadataWrite env.failurePlan
     if failWrite then do
       pure $ reply $ Left "Injected metadata write failure."
     else do
@@ -314,7 +283,7 @@ handlePackageSetsMock = case _ of
 
 type StorageMockEnv =
   { storage :: FilePath
-  , failNext :: Ref (Maybe TestFailure)
+  , failurePlan :: Ref (Array TestFailure)
   }
 
 -- We handle the storage effect by copying files to/from the provided
@@ -326,7 +295,7 @@ handleStorageMock env = case _ of
     Run.liftAff (Aff.attempt (FS.Aff.stat destinationPath)) >>= case _ of
       Left _ -> do
         Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
-        failUpload <- consumeFailure FailStorageUploadAfterWrite env.failNext
+        failUpload <- consumeFailure FailStorageUploadAfterWrite env.failurePlan
         if failUpload then
           pure $ reply $ Left "Injected storage upload failure after writing the tarball."
         else
