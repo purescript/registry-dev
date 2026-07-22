@@ -360,7 +360,7 @@ readOperation eventPath = do
           , ""
           , "Expected one of:"
           , "  - Package set update: { packages, compiler? }"
-          , "  - Publish: { name, ref, compiler, version, location?, resolutions? }"
+          , "  - Publish: { name, ref, compiler?, version, location?, resolutions? }"
           , "  - Authenticated (unpublish/transfer): { payload, signature }"
           ]
 
