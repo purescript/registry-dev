@@ -149,8 +149,13 @@ spec = do
         Just _ -> Assert.fail "Expected PackageSetJob but got different job type"
         Nothing -> Assert.fail "Expected package set job to be enqueued"
 
--- | Common environment for running registry scripts in E2E tests
-type ScriptSetup =
+-- | Common environment for running read-only registry scripts in E2E tests
+type RegistryScriptSetup =
+  { resourceEnv :: Env.ResourceEnv
+  , registryEnv :: Registry.RegistryEnv
+  }
+
+type GitHubScriptSetup =
   { privateKey :: String
   , resourceEnv :: Env.ResourceEnv
   , registryEnv :: Registry.RegistryEnv
@@ -159,17 +164,12 @@ type ScriptSetup =
   , githubCacheRef :: Cache.CacheRef
   }
 
--- | Set up common environment for running registry scripts
-setupScript :: E2E ScriptSetup
-setupScript = do
-  { stateDir, privateKey } <- ask
+setupRegistryScript :: E2E RegistryScriptSetup
+setupRegistryScript = do
+  { stateDir } <- ask
   liftEffect $ Process.chdir stateDir
   resourceEnv <- liftEffect Env.lookupResourceEnv
-  token <- liftEffect $ Env.lookupRequired Env.githubToken
-  githubCacheRef <- liftAff Cache.newCacheRef
   registryCacheRef <- liftAff Cache.newCacheRef
-  let cache = Path.concat [ stateDir, "scratch", ".cache" ]
-  octokit <- liftAff $ Octokit.newOctokit token resourceEnv.githubApiUrl
   debouncer <- liftAff Registry.newDebouncer
   let
     registryEnv :: Registry.RegistryEnv
@@ -182,16 +182,26 @@ setupScript = do
       , debouncer
       , cacheRef: registryCacheRef
       }
+  pure { resourceEnv, registryEnv }
+
+setupGitHubScript :: E2E GitHubScriptSetup
+setupGitHubScript = do
+  { stateDir, privateKey } <- ask
+  { resourceEnv, registryEnv } <- setupRegistryScript
+  token <- liftEffect $ Env.lookupRequired Env.githubToken
+  githubCacheRef <- liftAff Cache.newCacheRef
+  let cache = Path.concat [ stateDir, "scratch", ".cache" ]
+  octokit <- liftAff $ Octokit.newOctokit token resourceEnv.githubApiUrl
   pure { privateKey, resourceEnv, registryEnv, octokit, cache, githubCacheRef }
 
 -- | Run the DailyImporter script in Submit mode
 runDailyImporterScript :: E2E Unit
 runDailyImporterScript = do
-  { resourceEnv, registryEnv, octokit, cache, githubCacheRef } <- setupScript
+  { resourceEnv, registryEnv, octokit, cache, githubCacheRef } <- setupGitHubScript
   result <- liftAff
     $ DailyImporter.runDailyImport DailyImporter.Submit resourceEnv.registryApiUrl
     # Except.runExcept
-    # Registry.interpret (Registry.handle registryEnv)
+    # Registry.interpretRead (Registry.handleRead registryEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Log.interpret (Log.handleTerminal Quiet)
     # Env.runResourceEnv resourceEnv
@@ -203,11 +213,11 @@ runDailyImporterScript = do
 -- | Run the PackageTransferrer script in Submit mode
 runPackageTransferrerScript :: E2E Unit
 runPackageTransferrerScript = do
-  { privateKey, resourceEnv, registryEnv, octokit, cache, githubCacheRef } <- setupScript
+  { privateKey, resourceEnv, registryEnv, octokit, cache, githubCacheRef } <- setupGitHubScript
   result <- liftAff
     $ PackageTransferrer.runPackageTransferrer PackageTransferrer.Submit (Just privateKey) resourceEnv.registryApiUrl
     # Except.runExcept
-    # Registry.interpret (Registry.handle registryEnv)
+    # Registry.interpretRead (Registry.handleRead registryEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Log.interpret (Log.handleTerminal Quiet)
     # Env.runResourceEnv resourceEnv
@@ -219,14 +229,12 @@ runPackageTransferrerScript = do
 -- | Run the PackageSetUpdater script in Submit mode
 runPackageSetUpdaterScript :: E2E Unit
 runPackageSetUpdaterScript = do
-  { resourceEnv, registryEnv, octokit, cache, githubCacheRef } <- setupScript
+  { resourceEnv, registryEnv } <- setupRegistryScript
   result <- liftAff
     $ PackageSetUpdater.runPackageSetUpdater PackageSetUpdater.Submit resourceEnv.registryApiUrl
     # Except.runExcept
-    # Registry.interpret (Registry.handle registryEnv)
-    # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
+    # Registry.interpretRead (Registry.handleRead registryEnv)
     # Log.interpret (Log.handleTerminal Quiet)
-    # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
   case result of
     Left err -> liftAff $ Aff.throwError $ Aff.error $ "PackageSetUpdater failed: " <> err

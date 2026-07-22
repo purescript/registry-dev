@@ -9,11 +9,9 @@ import Node.Path as Path
 import Registry.API.V1 (JobId(..))
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.GitHub (GITHUB, GitHub)
-import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG, Log(..))
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Registry (REGISTRY, RegistryEnv, WriteMode(..))
+import Registry.App.Effect.Registry (REGISTRY_READ, RegistryEnv, WriteMode(..))
 import Registry.App.Effect.Registry as Registry
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Tmp as Tmp
@@ -36,7 +34,7 @@ spec = do
     Registry.appendJobIdToCommitMessage (Just (JobId "job-123")) message `Assert.shouldEqual`
       "Update metadata for prelude\n\nJob ID: job-123"
 
-  -- This test exercises the Registry.handle to verify that readMetadata does
+  -- This test exercises Registry.handleRead to verify that readMetadata does
   -- not poison the AllMetadata cache: i.e. a single-package read must not seed
   -- the cache with a singleton map that readAllMetadata would mistake for the
   -- complete set.
@@ -103,21 +101,15 @@ spec = do
     , { name: "control", version: "6.0.0", compilers: [ "0.15.15" ] }
     ]
 
-  -- | Run the REGISTRY effect - can't use the mock here because the regression
+  -- | Run the REGISTRY_READ effect - can't use the mock here because the regression
   -- | we are testing is in the caching code of the handle
   runRealRegistry
     :: forall a
      . RegistryEnv
-    -> Run (REGISTRY + GITHUB + LOG + EXCEPT String + AFF + EFFECT + ()) a
+    -> Run (REGISTRY_READ + LOG + EXCEPT String + AFF + EFFECT + ()) a
     -> Aff a
   runRealRegistry env =
-    Registry.interpret (Registry.handle env)
-      >>> GitHub.interpret handleGitHubStub
+    Registry.interpretRead (Registry.handleRead env)
       >>> Log.interpret (\(Log _ _ next) -> pure next)
       >>> Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
       >>> Run.runBaseAff'
-
-  -- | Stub GitHub handler — crashes if called. ReadMetadata and ReadAllMetadata
-  -- | don't use the GITHUB effect, so this should never be reached.
-  handleGitHubStub :: forall r a. GitHub a -> Run r a
-  handleGitHubStub _ = unsafeCrashWith "GITHUB effect should not be called in this test"

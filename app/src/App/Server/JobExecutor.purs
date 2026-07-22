@@ -21,7 +21,7 @@ import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry (REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Server.Env (ServerEffects, ServerEnv, runEffects)
 import Registry.App.Server.MatrixBuilder as MatrixBuilder
@@ -186,7 +186,7 @@ executeJob _ = case _ of
         }
   PackageSetJob payload -> API.packageSetUpdate payload
 
-upgradeRegistryToNewCompiler :: forall r. Version -> Run (DB + LOG + EXCEPT String + REGISTRY + r) Unit
+upgradeRegistryToNewCompiler :: forall r. Version -> Run (DB + LOG + EXCEPT String + REGISTRY_READ + r) Unit
 upgradeRegistryToNewCompiler newCompilerVersion = do
   Log.info $ "New compiler found: " <> Version.print newCompilerVersion
   Log.info "Starting upgrade of the whole registry to the new compiler..."

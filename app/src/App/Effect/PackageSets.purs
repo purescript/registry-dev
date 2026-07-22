@@ -24,7 +24,7 @@ import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry (REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
@@ -86,7 +86,7 @@ type PackageSetsEnv =
 
 -- | A handler for the PACKAGE_SETS effect which compiles the package sets and
 -- | returns the results.
-handle :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY + STORAGE + LOG + AFF + EFFECT + r) a
+handle :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY_READ + STORAGE + LOG + AFF + EFFECT + r) a
 handle env = case _ of
   UpgradeAtomic oldSet@(PackageSet { packages }) compiler changes reply -> reply <$> Except.runExcept do
     Log.info $ "Performing atomic upgrade of package set " <> Version.print (un PackageSet oldSet).version
@@ -423,7 +423,7 @@ type ValidatedCandidates =
   }
 
 -- | Validate a package set is self-contained, ignoring version bounds.
-validatePackageSet :: forall r. PackageSet -> Run (REGISTRY + LOG + EXCEPT String + r) Unit
+validatePackageSet :: forall r. PackageSet -> Run (REGISTRY_READ + LOG + EXCEPT String + r) Unit
 validatePackageSet (PackageSet set) = do
   Log.debug $ "Validating package set version " <> Version.print set.version
   index <- Registry.readAllManifests
