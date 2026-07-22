@@ -2,6 +2,7 @@
 -- | the various registry effects and fixtures for a minimal registry.
 module Registry.Test.Assert.Run
   ( TEST_EFFECTS
+  , TestFailure(..)
   , runBaseEffects
   , runRegistryMock
   , runTestEffects
@@ -96,10 +97,28 @@ type TEST_EFFECTS =
       + ()
   )
 
+-- | A one-shot failure injected into an effect mock. The matching handler
+-- | consumes the failure before returning its error, so one test can run a
+-- | failed publication and its retry against the same mock state.
+data TestFailure
+  = FailStorageUploadAfterWrite
+  | FailMetadataWrite
+  | FailManifestWrite
+
+derive instance Eq TestFailure
+
+consumeFailure :: forall m. MonadEffect m => TestFailure -> Ref (Maybe TestFailure) -> m Boolean
+consumeFailure expected ref = liftEffect do
+  actual <- Ref.read ref
+  if actual == Just expected then do
+    Ref.write Nothing ref
+    pure true
+  else
+    pure false
+
 type TestEnv =
   { workdir :: FilePath
-  , failNextManifestWrite :: Ref Boolean
-  , failNextMetadataWrite :: Ref Boolean
+  , failNext :: Ref (Maybe TestFailure)
   , logs :: Ref (Array (Tuple LogLevel String))
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
@@ -119,12 +138,11 @@ runTestEffects env operation = Aff.attempt do
         ( handleRegistryMock
             { metadataRef: env.metadata
             , indexRef: env.index
-            , failNextManifestWrite: env.failNextManifestWrite
-            , failNextMetadataWrite: env.failNextMetadataWrite
+            , failNext: env.failNext
             }
         )
     # PackageSets.interpret handlePackageSetsMock
-    # Storage.interpret (handleStorageMock { storage: env.storage })
+    # Storage.interpret (handleStorageMock { storage: env.storage, failNext: env.failNext })
     # Source.interpret (handleSourceMock { github: env.github })
     # GitHub.interpret (handleGitHubMock { github: env.github })
     -- Environments
@@ -152,10 +170,9 @@ runBaseEffects = do
 -- | For testing Run functions that only need the REGISTRY effect.
 runRegistryMock :: forall a. Ref (Map PackageName Metadata) -> Ref ManifestIndex -> Run (EXCEPT String + LOG + REGISTRY + AFF + EFFECT + ()) a -> Aff a
 runRegistryMock metadataRef indexRef operation = do
-  failNextManifestWrite <- liftEffect $ Ref.new false
-  failNextMetadataWrite <- liftEffect $ Ref.new false
+  failNext <- liftEffect $ Ref.new Nothing
   operation
-    # Registry.interpret (handleRegistryMock { metadataRef, indexRef, failNextManifestWrite, failNextMetadataWrite })
+    # Registry.interpret (handleRegistryMock { metadataRef, indexRef, failNext })
     # runBaseEffects
 
 runGitHubCacheMemory :: forall r a. CacheRef -> Run (GITHUB_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
@@ -221,8 +238,7 @@ handlePursuitMock { excludes, metadataRef } = case _ of
 type RegistryMockEnv =
   { metadataRef :: Ref (Map PackageName Metadata)
   , indexRef :: Ref ManifestIndex
-  , failNextManifestWrite :: Ref Boolean
-  , failNextMetadataWrite :: Ref Boolean
+  , failNext :: Ref (Maybe TestFailure)
   }
 
 handleRegistryMock :: forall r a. RegistryMockEnv -> Registry a -> Run (AFF + EFFECT + r) a
@@ -232,9 +248,8 @@ handleRegistryMock env = case _ of
     pure $ reply $ Right $ ManifestIndex.lookup name version index
 
   WriteManifest manifest reply -> do
-    failWrite <- Run.liftEffect (Ref.read env.failNextManifestWrite)
+    failWrite <- consumeFailure FailManifestWrite env.failNext
     if failWrite then do
-      Run.liftEffect (Ref.write false env.failNextManifestWrite)
       pure $ reply $ Left "Injected manifest write failure."
     else do
       index <- Run.liftEffect (Ref.read env.indexRef)
@@ -261,9 +276,8 @@ handleRegistryMock env = case _ of
     pure $ reply $ Right $ Map.lookup name metadata
 
   WriteMetadata name metadata reply -> do
-    failWrite <- Run.liftEffect (Ref.read env.failNextMetadataWrite)
+    failWrite <- consumeFailure FailMetadataWrite env.failNext
     if failWrite then do
-      Run.liftEffect (Ref.write false env.failNextMetadataWrite)
       pure $ reply $ Left "Injected metadata write failure."
     else do
       Run.liftEffect (Ref.modify_ (Map.insert name metadata) env.metadataRef)
@@ -298,7 +312,10 @@ handlePackageSetsMock = case _ of
   UpgradeSequential packageSet _compilerVersion changeSet reply ->
     pure $ reply $ Right $ Just { failed: changeSet, succeeded: changeSet, result: packageSet }
 
-type StorageMockEnv = { storage :: FilePath }
+type StorageMockEnv =
+  { storage :: FilePath
+  , failNext :: Ref (Maybe TestFailure)
+  }
 
 -- We handle the storage effect by copying files to/from the provided
 -- upload/download directories, and listing versions based on the filenames.
@@ -309,7 +326,11 @@ handleStorageMock env = case _ of
     Run.liftAff (Aff.attempt (FS.Aff.stat destinationPath)) >>= case _ of
       Left _ -> do
         Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
-        pure $ reply $ Right unit
+        failUpload <- consumeFailure FailStorageUploadAfterWrite env.failNext
+        if failUpload then
+          pure $ reply $ Left "Injected storage upload failure after writing the tarball."
+        else
+          pure $ reply $ Right unit
       Right _ ->
         pure $ reply $ Left $ "Cannot upload " <> formatPackageVersion name version <> " because it already exists in storage at path " <> destinationPath
 
