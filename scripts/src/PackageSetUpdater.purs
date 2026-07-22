@@ -48,6 +48,13 @@ data Mode = DryRun | Submit
 
 derive instance Eq Mode
 
+-- | Which registry releases should be considered for a package set update.
+-- | `AllPending` only reports upgrades to packages already in the set; adding
+-- | packages that have never appeared in a package set is a separate concern.
+data CandidateSelection
+  = RecentUploads DateTime.DateTime Hours
+  | AllPending
+
 parser :: ArgParser Mode
 parser = Arg.choose "command"
   [ Arg.flag [ "dry-run" ]
@@ -111,16 +118,9 @@ runPackageSetUpdater mode registryApiUrl = do
     Just set -> pure (Just set)
 
   for_ latestPackageSet \packageSet -> do
-    let currentPackages = (un PackageSet packageSet).packages
-
     -- Find packages uploaded in the last 24 hours
-    recentUploads <- findRecentUploads (Hours 24.0)
-    let
-      -- Filter out packages already in the set at the same or newer version
-      newOrUpdated = recentUploads # Map.filterWithKey \name version ->
-        case Map.lookup name currentPackages of
-          Nothing -> true -- new package
-          Just currentVersion -> version > currentVersion -- upgrade
+    now <- nowUTC
+    newOrUpdated <- findPackageSetCandidates (RecentUploads now (Hours 24.0)) packageSet
 
     if Map.isEmpty newOrUpdated then
       Log.info "No new packages for package set update."
@@ -175,23 +175,39 @@ runPackageSetUpdater mode registryApiUrl = do
               Right { jobId } -> do
                 Log.info $ "Submitted package set job " <> unwrap jobId
 
--- | Find the latest version of each package uploaded within the time limit
-findRecentUploads :: Hours -> Run PackageSetUpdaterEffects (Map PackageName Version)
-findRecentUploads limit = do
+-- | Find the latest eligible registry version for each package relative to the
+-- | current package set.
+findPackageSetCandidates
+  :: forall r
+   . CandidateSelection
+  -> PackageSet
+  -> Run (REGISTRY_READ + EXCEPT String + r) (Map PackageName Version)
+findPackageSetCandidates selection packageSet = do
   allMetadata <- Registry.readAllMetadata
-  now <- nowUTC
+  pure $ selectPackageSetCandidates selection packageSet allMetadata
 
+-- | Select package set candidates in one traversal of registry metadata.
+selectPackageSetCandidates
+  :: CandidateSelection
+  -> PackageSet
+  -> Map PackageName Metadata
+  -> Map PackageName Version
+selectPackageSetCandidates selection (PackageSet packageSet) = Map.mapMaybeWithKey \name (Metadata metadata) -> do
   let
-    getLatestRecentVersion :: Metadata -> Maybe Version
-    getLatestRecentVersion (Metadata metadata) = do
-      let
-        recentVersions = Array.catMaybes $ flip map (Map.toUnfoldable metadata.published)
-          \(Tuple version { publishedTime }) ->
-            if (DateTime.diff now publishedTime) <= limit then Just version else Nothing
-      Array.last $ Array.sort recentVersions
-
-  pure $ Map.fromFoldable $ Array.catMaybes $ flip map (Map.toUnfoldable allMetadata) \(Tuple name metadata) ->
-    map (Tuple name) $ getLatestRecentVersion metadata
+    eligibleVersions = Array.mapMaybe
+      ( \(Tuple version { publishedTime }) -> case selection of
+          RecentUploads now limit
+            | DateTime.diff now publishedTime <= limit -> Just version
+          RecentUploads _ _ -> Nothing
+          AllPending -> Just version
+      )
+      (Map.toUnfoldable metadata.published)
+  latestVersion <- Array.last $ Array.sort eligibleVersions
+  case Map.lookup name packageSet.packages of
+    Just currentVersion
+      | latestVersion > currentVersion -> Just latestVersion
+    Nothing | RecentUploads _ _ <- selection -> Just latestVersion
+    _ -> Nothing
 
 -- | Submit a package set job to the registry API
 submitPackageSetJob :: String -> Operation.PackageSetUpdateRequest -> Aff (Either String V1.JobCreatedResponse)

@@ -62,6 +62,10 @@ let
       module = "Registry.Scripts.PackageTransferrer";
       description = "Check for moved packages and submit transfer jobs";
     };
+    version-check = {
+      module = "Registry.Scripts.VersionCheck";
+      description = "Report registry versions pending a package set update";
+    };
     verify-integrity = {
       module = "Registry.Scripts.VerifyIntegrity";
       description = "Verify registry and registry-index consistency";
