@@ -8,6 +8,7 @@ import Data.String as String
 import Effect.Aff as Aff
 import HTTPurple (JsonDecoder(..), JsonEncoder(..), Request, Response)
 import HTTPurple as HTTPurple
+import HTTPurple.Status as Status
 import Node.Path as Path
 import Registry.API.V1 (JobId, Route)
 import Registry.App.API (COMPILER_CACHE, PURS_GRAPH_CACHE, _compilerCache, _pursGraphCache)
@@ -133,6 +134,9 @@ jsonEncoder codec = JsonEncoder (stringifyJson codec)
 
 jsonOk :: forall m a. MonadAff m => CJ.Codec a -> a -> m Response
 jsonOk codec datum = HTTPurple.ok' HTTPurple.jsonHeaders $ HTTPurple.toJson (jsonEncoder codec) datum
+
+jsonCreated :: forall m a. MonadAff m => CJ.Codec a -> a -> m Response
+jsonCreated codec datum = HTTPurple.response' Status.created HTTPurple.jsonHeaders $ HTTPurple.toJson (jsonEncoder codec) datum
 
 runEffects :: forall a. ServerEnv -> Run ServerEffects a -> Aff (Either Aff.Error a)
 runEffects env operation = Aff.attempt do

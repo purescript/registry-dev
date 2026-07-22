@@ -19,7 +19,7 @@ import Registry.App.Auth as Auth
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
-import Registry.App.Server.Env (ServerEffects, ServerEnv, jsonDecoder, jsonOk, runEffects)
+import Registry.App.Server.Env (ServerEffects, ServerEnv, jsonCreated, jsonDecoder, jsonOk, runEffects)
 import Registry.Operation (PackageSetOperation(..))
 import Registry.Operation as Operation
 import Run (Run)
@@ -80,14 +80,13 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
 
-    jobId <- lift (Db.selectPublishJob publish.name publish.version) >>= case _ of
+    lift (Db.selectPublishJob publish.name publish.version) >>= case _ of
       Just job -> do
         lift $ Log.warn $ "Duplicate publish job insertion, returning existing one: " <> unwrap job.jobId
-        pure job.jobId
+        jsonOk V1.jobCreatedResponseCodec { jobId: job.jobId }
       Nothing -> do
-        lift $ Db.insertPublishJob { payload: publish }
-
-    jsonOk V1.jobCreatedResponseCodec { jobId }
+        jobId <- lift $ Db.insertPublishJob { payload: publish }
+        jsonCreated V1.jobCreatedResponseCodec { jobId }
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
@@ -95,18 +94,17 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
       Operation.Unpublish payload -> do
         lift $ Log.info $ "Received Unpublish request: " <> printJson Operation.unpublishCodec payload
 
-        jobId <- lift (Db.selectUnpublishJob payload.name payload.version) >>= case _ of
+        lift (Db.selectUnpublishJob payload.name payload.version) >>= case _ of
           Just job -> do
             lift $ Log.warn $ "Duplicate unpublish job insertion, returning existing one: " <> unwrap job.jobId
-            pure job.jobId
+            jsonOk V1.jobCreatedResponseCodec { jobId: job.jobId }
           Nothing -> do
-            lift $ Db.insertUnpublishJob
+            jobId <- lift $ Db.insertUnpublishJob
               { payload: payload
               , rawPayload: auth.rawPayload
               , signature: auth.signature
               }
-
-        jsonOk V1.jobCreatedResponseCodec { jobId }
+            jsonCreated V1.jobCreatedResponseCodec { jobId }
       _ ->
         HTTPurple.badRequest "Expected unpublish operation."
 
@@ -116,18 +114,17 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
       Operation.Transfer payload -> do
         lift $ Log.info $ "Received Transfer request: " <> printJson Operation.transferCodec payload
 
-        jobId <- lift (Db.selectTransferJob payload.name) >>= case _ of
+        lift (Db.selectTransferJob payload.name) >>= case _ of
           Just job -> do
             lift $ Log.warn $ "Duplicate transfer job insertion, returning existing one: " <> unwrap job.jobId
-            pure job.jobId
+            jsonOk V1.jobCreatedResponseCodec { jobId: job.jobId }
           Nothing -> do
-            lift $ Db.insertTransferJob
+            jobId <- lift $ Db.insertTransferJob
               { payload: payload
               , rawPayload: auth.rawPayload
               , signature: auth.signature
               }
-
-        jsonOk V1.jobCreatedResponseCodec { jobId }
+            jsonCreated V1.jobCreatedResponseCodec { jobId }
       _ ->
         HTTPurple.badRequest "Expected transfer operation."
 
@@ -190,18 +187,17 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
           lift $ Log.info "Package set authentication successful."
 
         -- Check for duplicate pending job with the same payload
-        jobId <- lift (Db.selectPackageSetJobByPayload request.payload) >>= case _ of
+        lift (Db.selectPackageSetJobByPayload request.payload) >>= case _ of
           Just job -> do
             lift $ Log.warn $ "Duplicate package set job insertion, returning existing one: " <> unwrap job.jobId
-            pure job.jobId
+            jsonOk V1.jobCreatedResponseCodec { jobId: job.jobId }
           Nothing -> do
-            lift $ Db.insertPackageSetJob
+            jobId <- lift $ Db.insertPackageSetJob
               { payload: request.payload
               , rawPayload: request.rawPayload
               , signature: request.signature
               }
-
-        jsonOk V1.jobCreatedResponseCodec { jobId }
+            jsonCreated V1.jobCreatedResponseCodec { jobId }
 
   Status, Get ->
     HTTPurple.emptyResponse Status.ok
