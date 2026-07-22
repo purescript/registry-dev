@@ -24,13 +24,11 @@ import Node.Process as Process
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
-import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Format as Internal.Format
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
@@ -54,12 +52,10 @@ main = launchAff_ do
 
   -- Environment
   _ <- Env.loadEnvFile ".env"
-  resourceEnv <- Env.lookupResourceEnv
 
   -- Caching
   let cache = Path.concat [ scratchDir, ".cache" ]
   FS.Extra.ensureDirectory cache
-  githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
 
   -- Registry
@@ -85,15 +81,10 @@ main = launchAff_ do
   log $ "Logs available at " <> logPath
 
   if localMode then do
-    token <- Env.lookupRequired Env.pacchettibottiToken
-    octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
-
     let
       interpret =
         Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit' 1))
           >>> Registry.interpretRead (Registry.handleRead registryEnv)
-          >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
-          >>> Env.runResourceEnv resourceEnv
           >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
           >>> Run.runBaseAff'
 
@@ -120,16 +111,14 @@ main = launchAff_ do
         liftEffect $ Process.exit' 1
 
   else do
-    token <- Env.lookupRequired Env.pacchettibottiToken
+    resourceEnv <- Env.lookupResourceEnv
     s3 <- lift2 { key: _, secret: _ } (Env.lookupRequired Env.spacesKey) (Env.lookupRequired Env.spacesSecret)
-    octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
 
     let
       interpret =
         Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit' 1))
           >>> Registry.interpretRead (Registry.handleRead registryEnv)
           >>> Storage.interpret (Storage.handleS3 { s3, cache })
-          >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
           >>> Env.runResourceEnv resourceEnv
           >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
           >>> Run.runBaseAff'

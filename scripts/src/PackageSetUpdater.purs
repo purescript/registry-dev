@@ -6,7 +6,6 @@
 -- |   nix run .#package-set-updater -- --submit    # Actually submit to the API
 -- |
 -- | Required environment variables:
--- |   GITHUB_TOKEN - GitHub API token
 -- |   REGISTRY_API_URL - Registry API URL (default: https://registry.purescript.org)
 module Registry.Scripts.PackageSetUpdater where
 
@@ -25,21 +24,16 @@ import Effect.Class.Console as Console
 import Fetch (Method(..))
 import Fetch as Fetch
 import JSON as JSON
-import Node.Path as Path
 import Node.Process as Process
 import Registry.API.V1 as V1
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
-import Registry.App.Effect.GitHub (GITHUB)
-import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Registry (REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
-import Registry.Foreign.Octokit as Octokit
 import Registry.Operation (PackageSetOperation(..))
 import Registry.Operation as Operation
 import Registry.PackageName as PackageName
@@ -75,13 +69,9 @@ main = launchAff_ do
 
   Env.loadEnvFile ".env"
   resourceEnv <- Env.lookupResourceEnv
-  token <- Env.lookupRequired Env.githubToken
 
-  githubCacheRef <- Cache.newCacheRef
   registryCacheRef <- Cache.newCacheRef
-  let cache = Path.concat [ scratchDir, ".cache" ]
 
-  octokit <- Octokit.newOctokit token resourceEnv.githubApiUrl
   debouncer <- Registry.newDebouncer
 
   let
@@ -99,9 +89,7 @@ main = launchAff_ do
   runPackageSetUpdater mode resourceEnv.registryApiUrl
     # Except.runExcept
     # Registry.interpretRead (Registry.handleRead registryEnv)
-    # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Log.interpret (Log.handleTerminal Normal)
-    # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
     >>= case _ of
       Left err -> do
@@ -109,7 +97,7 @@ main = launchAff_ do
         liftEffect $ Process.exit' 1
       Right _ -> pure unit
 
-type PackageSetUpdaterEffects = (REGISTRY_READ + GITHUB + LOG + RESOURCE_ENV + EXCEPT String + AFF + EFFECT + ())
+type PackageSetUpdaterEffects = (REGISTRY_READ + LOG + EXCEPT String + AFF + EFFECT + ())
 
 runPackageSetUpdater :: Mode -> URL -> Run PackageSetUpdaterEffects Unit
 runPackageSetUpdater mode registryApiUrl = do
