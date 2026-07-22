@@ -191,7 +191,7 @@ runDailyImporterScript = do
   result <- liftAff
     $ DailyImporter.runDailyImport DailyImporter.Submit resourceEnv.registryApiUrl
     # Except.runExcept
-    # Registry.interpret (Registry.handle registryEnv)
+    # Registry.interpretRead (Registry.handleRead registryEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Log.interpret (Log.handleTerminal Quiet)
     # Env.runResourceEnv resourceEnv
@@ -207,7 +207,7 @@ runPackageTransferrerScript = do
   result <- liftAff
     $ PackageTransferrer.runPackageTransferrer PackageTransferrer.Submit (Just privateKey) resourceEnv.registryApiUrl
     # Except.runExcept
-    # Registry.interpret (Registry.handle registryEnv)
+    # Registry.interpretRead (Registry.handleRead registryEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Log.interpret (Log.handleTerminal Quiet)
     # Env.runResourceEnv resourceEnv
@@ -223,7 +223,7 @@ runPackageSetUpdaterScript = do
   result <- liftAff
     $ PackageSetUpdater.runPackageSetUpdater PackageSetUpdater.Submit resourceEnv.registryApiUrl
     # Except.runExcept
-    # Registry.interpret (Registry.handle registryEnv)
+    # Registry.interpretRead (Registry.handleRead registryEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Log.interpret (Log.handleTerminal Quiet)
     # Env.runResourceEnv resourceEnv

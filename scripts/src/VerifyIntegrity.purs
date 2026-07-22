@@ -91,7 +91,7 @@ main = launchAff_ do
     let
       interpret =
         Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit' 1))
-          >>> Registry.interpret (Registry.handle registryEnv)
+          >>> Registry.interpretRead (Registry.handleRead registryEnv)
           >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
           >>> Env.runResourceEnv resourceEnv
           >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
@@ -127,7 +127,7 @@ main = launchAff_ do
     let
       interpret =
         Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit' 1))
-          >>> Registry.interpret (Registry.handle registryEnv)
+          >>> Registry.interpretRead (Registry.handleRead registryEnv)
           >>> Storage.interpret (Storage.handleS3 { s3, cache })
           >>> GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
           >>> Env.runResourceEnv resourceEnv

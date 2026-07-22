@@ -68,74 +68,91 @@ type REGISTRY_CACHE r = (registryCache :: Cache RegistryCache | r)
 _registryCache :: Proxy "registryCache"
 _registryCache = Proxy
 
-data Registry a
+data RegistryRead a
   = ReadManifest PackageName Version (Either String (Maybe Manifest) -> a)
-  | WriteManifest Manifest (Either String Unit -> a)
-  | DeleteManifest PackageName Version (Either String Unit -> a)
   | ReadAllManifests (Either String ManifestIndex -> a)
   | ReadMetadata PackageName (Either String (Maybe Metadata) -> a)
-  | WriteMetadata PackageName Metadata (Either String Unit -> a)
   | ReadAllMetadata (Either String (Map PackageName Metadata) -> a)
   | ReadLatestPackageSet (Either String (Maybe PackageSet) -> a)
-  | WritePackageSet PackageSet String (Either String Unit -> a)
   | ReadAllPackageSets (Either String (Map Version PackageSet) -> a)
+
+derive instance Functor RegistryRead
+
+data RegistryWrite a
+  = WriteManifest Manifest (Either String Unit -> a)
+  | DeleteManifest PackageName Version (Either String Unit -> a)
+  | WriteMetadata PackageName Metadata (Either String Unit -> a)
+  | WritePackageSet PackageSet String (Either String Unit -> a)
   | MirrorPackageSet PackageSet (Either String Unit -> a)
 
-derive instance Functor Registry
+derive instance Functor RegistryWrite
 
--- | An effect for interacting with registry resources, like manifests, metadata,
--- | and the package sets.
-type REGISTRY r = (registry :: Registry | r)
+-- | An effect for reading registry resources, like manifests, metadata, and
+-- | package sets.
+type REGISTRY_READ r = (registryRead :: RegistryRead | r)
 
-_registry :: Proxy "registry"
-_registry = Proxy
+_registryRead :: Proxy "registryRead"
+_registryRead = Proxy
+
+-- | An effect for writing registry resources, like manifests, metadata, and
+-- | package sets.
+type REGISTRY_WRITE r = (registryWrite :: RegistryWrite | r)
+
+_registryWrite :: Proxy "registryWrite"
+_registryWrite = Proxy
+
+-- | An effect for reading and writing registry resources.
+type REGISTRY r = (REGISTRY_READ + REGISTRY_WRITE + r)
 
 -- | Read a manifest from the manifest index
-readManifest :: forall r. PackageName -> Version -> Run (REGISTRY + EXCEPT String + r) (Maybe Manifest)
-readManifest name version = Except.rethrow =<< Run.lift _registry (ReadManifest name version identity)
+readManifest :: forall r. PackageName -> Version -> Run (REGISTRY_READ + EXCEPT String + r) (Maybe Manifest)
+readManifest name version = Except.rethrow =<< Run.lift _registryRead (ReadManifest name version identity)
 
 -- | Write a manifest to the manifest index
-writeManifest :: forall r. Manifest -> Run (REGISTRY + EXCEPT String + r) Unit
-writeManifest manifest = Except.rethrow =<< Run.lift _registry (WriteManifest manifest identity)
+writeManifest :: forall r. Manifest -> Run (REGISTRY_WRITE + EXCEPT String + r) Unit
+writeManifest manifest = Except.rethrow =<< Run.lift _registryWrite (WriteManifest manifest identity)
 
 -- | Delete a manifest from the manifest index
-deleteManifest :: forall r. PackageName -> Version -> Run (REGISTRY + EXCEPT String + r) Unit
-deleteManifest name version = Except.rethrow =<< Run.lift _registry (DeleteManifest name version identity)
+deleteManifest :: forall r. PackageName -> Version -> Run (REGISTRY_WRITE + EXCEPT String + r) Unit
+deleteManifest name version = Except.rethrow =<< Run.lift _registryWrite (DeleteManifest name version identity)
 
 -- | Read the entire manifest index
-readAllManifests :: forall r. Run (REGISTRY + EXCEPT String + r) ManifestIndex
-readAllManifests = Except.rethrow =<< Run.lift _registry (ReadAllManifests identity)
+readAllManifests :: forall r. Run (REGISTRY_READ + EXCEPT String + r) ManifestIndex
+readAllManifests = Except.rethrow =<< Run.lift _registryRead (ReadAllManifests identity)
 
 -- | Read the registry metadata for a package
-readMetadata :: forall r. PackageName -> Run (REGISTRY + EXCEPT String + r) (Maybe Metadata)
-readMetadata name = Except.rethrow =<< Run.lift _registry (ReadMetadata name identity)
+readMetadata :: forall r. PackageName -> Run (REGISTRY_READ + EXCEPT String + r) (Maybe Metadata)
+readMetadata name = Except.rethrow =<< Run.lift _registryRead (ReadMetadata name identity)
 
 -- | Write the registry metadata for a package
-writeMetadata :: forall r. PackageName -> Metadata -> Run (REGISTRY + EXCEPT String + r) Unit
-writeMetadata name metadata = Except.rethrow =<< Run.lift _registry (WriteMetadata name metadata identity)
+writeMetadata :: forall r. PackageName -> Metadata -> Run (REGISTRY_WRITE + EXCEPT String + r) Unit
+writeMetadata name metadata = Except.rethrow =<< Run.lift _registryWrite (WriteMetadata name metadata identity)
 
 -- | Read the registry metadata for all packages
-readAllMetadata :: forall r. Run (REGISTRY + EXCEPT String + r) (Map PackageName Metadata)
-readAllMetadata = Except.rethrow =<< Run.lift _registry (ReadAllMetadata identity)
+readAllMetadata :: forall r. Run (REGISTRY_READ + EXCEPT String + r) (Map PackageName Metadata)
+readAllMetadata = Except.rethrow =<< Run.lift _registryRead (ReadAllMetadata identity)
 
 -- | Read the latest package set from the registry
-readLatestPackageSet :: forall r. Run (REGISTRY + EXCEPT String + r) (Maybe PackageSet)
-readLatestPackageSet = Except.rethrow =<< Run.lift _registry (ReadLatestPackageSet identity)
+readLatestPackageSet :: forall r. Run (REGISTRY_READ + EXCEPT String + r) (Maybe PackageSet)
+readLatestPackageSet = Except.rethrow =<< Run.lift _registryRead (ReadLatestPackageSet identity)
 
 -- | Write a package set to the registry
-writePackageSet :: forall r. PackageSet -> String -> Run (REGISTRY + EXCEPT String + r) Unit
-writePackageSet set message = Except.rethrow =<< Run.lift _registry (WritePackageSet set message identity)
+writePackageSet :: forall r. PackageSet -> String -> Run (REGISTRY_WRITE + EXCEPT String + r) Unit
+writePackageSet set message = Except.rethrow =<< Run.lift _registryWrite (WritePackageSet set message identity)
 
 -- | Read all package sets from the registry
-readAllPackageSets :: forall r. Run (REGISTRY + EXCEPT String + r) (Map Version PackageSet)
-readAllPackageSets = Except.rethrow =<< Run.lift _registry (ReadAllPackageSets identity)
+readAllPackageSets :: forall r. Run (REGISTRY_READ + EXCEPT String + r) (Map Version PackageSet)
+readAllPackageSets = Except.rethrow =<< Run.lift _registryRead (ReadAllPackageSets identity)
 
 -- | Mirror a package set to the legacy package-sets repo
-mirrorPackageSet :: forall r. PackageSet -> Run (REGISTRY + EXCEPT String + r) Unit
-mirrorPackageSet set = Except.rethrow =<< Run.lift _registry (MirrorPackageSet set identity)
+mirrorPackageSet :: forall r. PackageSet -> Run (REGISTRY_WRITE + EXCEPT String + r) Unit
+mirrorPackageSet set = Except.rethrow =<< Run.lift _registryWrite (MirrorPackageSet set identity)
 
-interpret :: forall r a. (Registry ~> Run r) -> Run (REGISTRY + r) a -> Run r a
-interpret handler = Run.interpret (Run.on _registry handler Run.send)
+interpretRead :: forall r a. (RegistryRead ~> Run r) -> Run (REGISTRY_READ + r) a -> Run r a
+interpretRead handler = Run.interpret (Run.on _registryRead handler Run.send)
+
+interpretWrite :: forall r a. (RegistryWrite ~> Run r) -> Run (REGISTRY_WRITE + r) a -> Run r a
+interpretWrite handler = Run.interpret (Run.on _registryWrite handler Run.send)
 
 -- | A legend for repositories that can be fetched and committed to.
 data RepoKey
@@ -213,18 +230,28 @@ defaultRepos =
   , legacyPackageSets: Legacy.PackageSet.legacyPackageSetsRepo
   }
 
--- | Handle the REGISTRY effect by downloading the registry and registry-index
--- | repositories locally and reading and writing their contents from disk.
+data RegistryOperation a
+  = ReadOperation (RegistryRead a)
+  | WriteOperation (RegistryWrite a)
+
+-- | Handle the REGISTRY_READ effect by downloading the registry and
+-- | registry-index repositories locally and reading their contents from disk.
+handleRead :: forall r a. RegistryEnv -> RegistryRead a -> Run (GITHUB + LOG + AFF + EFFECT + r) a
+handleRead env = handleOperation env <<< ReadOperation
+
+-- | Handle the REGISTRY_WRITE effect by writing registry resources to disk.
 -- | Writes can optionally commit and push to the upstream Git repository.
--- |
--- | This handler enforces a memory-only cache: we do not want to cache on the
--- | file system or other storage because this handler relies on the registry
--- | Git repositories instead.
-handle :: forall r a. RegistryEnv -> Registry a -> Run (GITHUB + LOG + AFF + EFFECT + r) a
-handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<< case _ of
-  ReadManifest name version reply -> do
+handleWrite :: forall r a. RegistryEnv -> RegistryWrite a -> Run (GITHUB + LOG + AFF + EFFECT + r) a
+handleWrite env = handleOperation env <<< WriteOperation
+
+-- | These handlers share a memory-only cache: we do not want to cache on the
+-- | file system or other storage because they rely on the registry Git
+-- | repositories instead.
+handleOperation :: forall r a. RegistryEnv -> RegistryOperation a -> Run (GITHUB + LOG + AFF + EFFECT + r) a
+handleOperation env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<< case _ of
+  ReadOperation (ReadManifest name version reply) -> do
     let formatted = formatPackageVersion name version
-    handle env (ReadAllManifests identity) >>= case _ of
+    handleOperation env (ReadOperation (ReadAllManifests identity)) >>= case _ of
       Left error -> pure $ reply $ Left error
       Right index -> case ManifestIndex.lookup name version index of
         Nothing -> do
@@ -233,10 +260,10 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
         Just manifest -> do
           pure $ reply $ Right $ Just manifest
 
-  WriteManifest manifest@(Manifest { name, version }) reply -> map (map reply) Except.runExcept do
+  WriteOperation (WriteManifest manifest@(Manifest { name, version }) reply) -> map (map reply) Except.runExcept do
     let formatted = formatPackageVersion name version
     Log.info $ "Writing manifest for " <> formatted <> ":\n" <> printJson Manifest.codec manifest
-    index <- Except.rethrow =<< handle env (ReadAllManifests identity)
+    index <- Except.rethrow =<< handleOperation env (ReadOperation (ReadAllManifests identity))
     case ManifestIndex.insert ManifestIndex.ConsiderRanges manifest index of
       Left error ->
         Except.throw $ Array.fold
@@ -256,10 +283,10 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
               Git.Changed -> Log.info "Wrote and committed manifest."
             Cache.put _registryCache AllManifests updated
 
-  DeleteManifest name version reply -> map (map reply) Except.runExcept do
+  WriteOperation (DeleteManifest name version reply) -> map (map reply) Except.runExcept do
     let formatted = formatPackageVersion name version
     Log.info $ "Deleting manifest for " <> formatted
-    index <- Except.rethrow =<< handle env (ReadAllManifests identity)
+    index <- Except.rethrow =<< handleOperation env (ReadOperation (ReadAllManifests identity))
     case ManifestIndex.delete ManifestIndex.ConsiderRanges name version index of
       Left error ->
         Except.throw $ Array.fold
@@ -281,7 +308,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
                 Log.info "Wrote and committed manifest."
             Cache.put _registryCache AllManifests updated
 
-  ReadAllManifests reply -> map (map reply) Except.runExcept do
+  ReadOperation (ReadAllManifests reply) -> map (map reply) Except.runExcept do
     let
       refreshIndex = do
         let indexPath = repoPath ManifestIndexRepo
@@ -303,7 +330,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
         Log.info "Manifest index has changed, replacing cache..."
         refreshIndex
 
-  ReadMetadata name reply -> map (map reply) Except.runExcept do
+  ReadOperation (ReadMetadata name reply) -> map (map reply) Except.runExcept do
     let printedName = PackageName.print name
     let dir = repoPath RegistryRepo
 
@@ -363,7 +390,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
         Cache.delete _registryCache AllMetadata
         readMetadataFromDisk
 
-  WriteMetadata name metadata reply -> map (map reply) Except.runExcept do
+  WriteOperation (WriteMetadata name metadata reply) -> map (map reply) Except.runExcept do
     let printedName = PackageName.print name
     Log.info $ "Writing metadata for " <> printedName
     Log.debug $ printJson Metadata.codec metadata
@@ -384,7 +411,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
         for_ cache \cached ->
           Cache.put _registryCache AllMetadata (Map.insert name metadata cached)
 
-  ReadAllMetadata reply -> map (map reply) Except.runExcept do
+  ReadOperation (ReadAllMetadata reply) -> map (map reply) Except.runExcept do
     let
       refreshMetadata = do
         let dir = repoPath RegistryRepo
@@ -408,7 +435,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
         Log.info "Registry repo has changed, replacing metadata cache..."
         refreshMetadata
 
-  ReadLatestPackageSet reply -> map (map reply) Except.runExcept do
+  ReadOperation (ReadLatestPackageSet reply) -> map (map reply) Except.runExcept do
     pull RegistryRepo >>= case _ of
       Left error -> Except.throw $ "Could not read package sets because the registry repo could not be checked: " <> error
       Right _ -> pure unit
@@ -429,7 +456,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
             Log.debug $ "Successfully read package set " <> printed
             pure $ Just set
 
-  WritePackageSet set@(PackageSet { version }) message reply -> map (map reply) Except.runExcept do
+  WriteOperation (WritePackageSet set@(PackageSet { version }) message reply) -> map (map reply) Except.runExcept do
     pull RegistryRepo >>= case _ of
       Left error -> Except.throw $ "Could not read package sets because the registry repo could not be checked: " <> error
       Right _ -> pure unit
@@ -445,7 +472,7 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
       Right Git.NoChange -> Log.info "Did not commit package set because it was unchanged."
       Right Git.Changed -> Log.info "Wrote and committed package set."
 
-  ReadAllPackageSets reply -> map (map reply) Except.runExcept do
+  ReadOperation (ReadAllPackageSets reply) -> map (map reply) Except.runExcept do
     pull RegistryRepo >>= case _ of
       Left error -> Except.throw $ "Could not read package sets because the registry repo could not be checked: " <> error
       Right _ -> pure unit
@@ -469,11 +496,11 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
 
   -- https://github.com/purescript/package-sets/blob/psc-0.15.4-20220829/release.sh
   -- https://github.com/purescript/package-sets/blob/psc-0.15.4-20220829/update-latest-compatible-sets.sh
-  MirrorPackageSet set@(PackageSet { version }) reply -> map (map reply) Except.runExcept do
+  WriteOperation (MirrorPackageSet set@(PackageSet { version }) reply) -> map (map reply) Except.runExcept do
     let name = Version.print version
     Log.info $ "Mirroring legacy package set " <> name <> " to the legacy package sets repo"
 
-    manifests <- Except.rethrow =<< handle env (ReadAllManifests identity)
+    manifests <- Except.rethrow =<< handleOperation env (ReadOperation (ReadAllManifests identity))
 
     Log.debug $ "Converting package set..."
     converted <- case Legacy.PackageSet.convertPackageSet manifests set of

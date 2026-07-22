@@ -147,19 +147,19 @@ runEffects env operation = Aff.attempt do
     writeMode
       | env.vars.readOnly = Registry.ReadOnly
       | otherwise = Registry.CommitAs (Git.pacchettibottiCommitter env.vars.token)
+    registryEnv =
+      { jobId: env.jobId
+      , repos: Registry.defaultRepos
+      , pull: Git.ForceClean
+      , write: writeMode
+      , workdir: scratchDir
+      , debouncer: env.debouncer
+      , cacheRef: env.registryCacheRef
+      }
   operation
     # PackageSets.interpret (PackageSets.handle { workdir: scratchDir })
-    # Registry.interpret
-        ( Registry.handle
-            { jobId: env.jobId
-            , repos: Registry.defaultRepos
-            , pull: Git.ForceClean
-            , write: writeMode
-            , workdir: scratchDir
-            , debouncer: env.debouncer
-            , cacheRef: env.registryCacheRef
-            }
-        )
+    # Registry.interpretWrite (Registry.handleWrite registryEnv)
+    # Registry.interpretRead (Registry.handleRead registryEnv)
     # Pursuit.interpret (if env.vars.readOnly then Pursuit.handlePure else Pursuit.handleAff env.vars.token)
     # Storage.interpret (if env.vars.readOnly then Storage.handleReadOnly env.cacheDir else Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
     # Source.interpret Source.handle
