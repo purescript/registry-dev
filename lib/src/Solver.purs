@@ -40,7 +40,7 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.List.NonEmpty as NEL
 import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe, maybe, maybe')
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Maybe as Maybe
 import Data.Monoid.Disj (Disj(..))
 import Data.Monoid.Endo (Endo(..))
@@ -75,7 +75,6 @@ import Safe.Coerce (coerce)
 -- | each package version as a dependency.
 newtype CompilerIndex = CompilerIndex DependencyIndex
 
-derive instance Newtype CompilerIndex _
 derive newtype instance Eq CompilerIndex
 
 -- | Associate the compiler versions supported by each package version by
@@ -148,9 +147,6 @@ purs = Either.fromRight' (\_ -> Partial.unsafeCrashWith "Invalid package name!")
 -- | each package
 type DependencyIndex = Map PackageName (Map Version (Map PackageName Range))
 
--- | Load a package (asynchronously)
-type Loader m = PackageName -> m (Map Version (Map PackageName Range))
-
 -- | Solve a map of requirements given a registry index.
 solve :: DependencyIndex -> Map PackageName Range -> Either SolverErrors (Map PackageName Version)
 solve index required =
@@ -159,64 +155,9 @@ solve index required =
     , required: initializeRequired required
     }
 
-loadAndSolve :: forall m. Monad m => Loader m -> Map PackageName Range -> m (Either SolverErrors (Map PackageName Version))
-loadAndSolve loader required =
-  loadIndex loader required <#> \index ->
-    solveFull
-      { registry: initializeRegistry index
-      , required: initializeRequired required
-      }
-
 --------------------------------------------------------------------------------
 -- Public API to semi-public API
 --------------------------------------------------------------------------------
-
-loadIndex
-  :: forall m
-   . Monad m
-  => Loader m
-  -> Map PackageName Range
-  -> m DependencyIndex
-loadIndex loader required = map _.known <$> go Map.empty (need required)
-  where
-  need = SemigroupMap <<< map pure
-  loadNew package (_ :: Unit) =
-    { found: Set.empty, known: _ } <$> loader package
-
-  go
-    ::
-       -- Packages we have downloaded, and versions whose transitive dependencies
-       -- we have already added to `needed` so we never re-scan them
-       Map PackageName { known :: Map Version (Map PackageName Range), found :: Set Version }
-    ->
-    -- Requirements may be disjoint, so we have `Array Range` instead of `Loose`
-    SemigroupMap PackageName (Array Range)
-    -> m (Map PackageName { known :: Map Version (Map PackageName Range), found :: Set Version })
-  go acc (SemigroupMap needed)
-    | Just { key: package, value: ranges } <- Map.findMin needed = do
-        loaded <- maybe' (loadNew package) pure $ Map.lookup package acc
-        let
-          needed' = SemigroupMap (Map.delete package needed)
-          { needed: neededMore, found: foundMore } = needMore loaded ranges
-          loaded' = loaded { found = loaded.found <> foundMore }
-          acc' = Map.insert package loaded' acc
-        go acc' (needed' <> neededMore)
-  go acc _ = pure acc
-
-  needMore
-    :: { known :: Map Version (Map PackageName Range), found :: Set Version }
-    -> Array Range
-    -> { needed :: SemigroupMap PackageName (Array Range), found :: Set Version }
-  needMore { known, found } needed =
-    let
-      isNeeded k = needed # Array.any
-        \r -> Range.includes r k
-      more = known # Map.filterKeys
-        \k -> not Set.member k found && isNeeded k
-    in
-      { needed: foldMap need more
-      , found: found <> Map.keys more
-      }
 
 initializeRegistry :: DependencyIndex -> TransitivizedRegistry
 initializeRegistry = coerce >>>
@@ -712,9 +653,6 @@ data Sourced = Sourced Version SolverPosition
 
 derive instance Eq Sourced
 
-unSource :: Sourced -> Version
-unSource (Sourced v _) = v
-
 getPos :: forall z. Newtype z Sourced => z -> SolverPosition
 getPos = unwrap >>> \(Sourced _ pos) -> pos
 
@@ -873,9 +811,3 @@ fixEqM f = join go
 
 noUpdates :: forall r k v. { updated :: SemigroupMap k v | r } -> Boolean
 noUpdates { updated: SemigroupMap updated } = Map.isEmpty updated
-
-exploreAllTransitiveDependencies :: TransitivizedRegistry -> TransitivizedRegistry
-exploreAllTransitiveDependencies registry = go { registry, updated: registry, required: mempty }
-  where
-  go r | noUpdates r = r.registry
-  go r = go (exploreTransitiveDependencies r)
