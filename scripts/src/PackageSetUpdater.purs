@@ -37,7 +37,7 @@ import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets as PackageSets
-import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry (REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
 import Registry.Foreign.Octokit as Octokit
 import Registry.Operation (PackageSetOperation(..))
@@ -98,7 +98,7 @@ main = launchAff_ do
 
   runPackageSetUpdater mode resourceEnv.registryApiUrl
     # Except.runExcept
-    # Registry.interpret (Registry.handle registryEnv)
+    # Registry.interpretRead (Registry.handleRead registryEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Log.interpret (Log.handleTerminal Normal)
     # Env.runResourceEnv resourceEnv
@@ -109,7 +109,7 @@ main = launchAff_ do
         liftEffect $ Process.exit' 1
       Right _ -> pure unit
 
-type PackageSetUpdaterEffects = (REGISTRY + GITHUB + LOG + RESOURCE_ENV + EXCEPT String + AFF + EFFECT + ())
+type PackageSetUpdaterEffects = (REGISTRY_READ + GITHUB + LOG + RESOURCE_ENV + EXCEPT String + AFF + EFFECT + ())
 
 runPackageSetUpdater :: Mode -> URL -> Run PackageSetUpdaterEffects Unit
 runPackageSetUpdater mode registryApiUrl = do

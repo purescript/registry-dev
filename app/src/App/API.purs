@@ -76,7 +76,7 @@ import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
-import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry (REGISTRY, REGISTRY_READ)
 import Registry.App.Effect.Registry as ManifestIndex
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source (SOURCE)
@@ -349,7 +349,7 @@ resolveCompilerAndDeps
   -> Manifest
   -> Maybe Version -- payload.compiler
   -> Maybe (Map PackageName Version) -- payload.resolutions
-  -> Run (REGISTRY + LOG + AFF + EXCEPT String + r) { compiler :: Version, resolutions :: Map PackageName Version }
+  -> Run (LOG + AFF + EXCEPT String + r) { compiler :: Version, resolutions :: Map PackageName Version }
 resolveCompilerAndDeps compilerIndex manifest@(Manifest { dependencies }) maybeCompiler maybeResolutions = do
   Log.debug "Resolving compiler and dependencies..."
   case maybeCompiler of
@@ -1067,7 +1067,7 @@ type FindAllCompilersResult =
 findAllCompilers
   :: forall r
    . { source :: FilePath, manifest :: Manifest, compilers :: NonEmptyArray Version }
-  -> Run (REGISTRY + STORAGE + COMPILER_CACHE + LOG + AFF + EFFECT + EXCEPT String + r) FindAllCompilersResult
+  -> Run (REGISTRY_READ + STORAGE + COMPILER_CACHE + LOG + AFF + EFFECT + EXCEPT String + r) FindAllCompilersResult
 findAllCompilers { source, manifest, compilers } = do
   compilerIndex <- MatrixBuilder.readCompilerIndex
   checkedCompilers <- for compilers \target -> do

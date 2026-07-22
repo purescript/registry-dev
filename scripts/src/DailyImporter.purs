@@ -40,7 +40,7 @@ import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry (REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Legacy.LenientVersion as LenientVersion
 import Registry.Foreign.Octokit as Octokit
@@ -100,7 +100,7 @@ main = launchAff_ do
 
   runDailyImport mode resourceEnv.registryApiUrl
     # Except.runExcept
-    # Registry.interpret (Registry.handle registryEnv)
+    # Registry.interpretRead (Registry.handleRead registryEnv)
     # GitHub.interpret (GitHub.handle { octokit, cache, ref: githubCacheRef })
     # Log.interpret (Log.handleTerminal Verbose)
     # Env.runResourceEnv resourceEnv
@@ -111,7 +111,7 @@ main = launchAff_ do
         liftEffect $ Process.exit' 1
       Right _ -> pure unit
 
-type DailyImportEffects = (REGISTRY + GITHUB + LOG + RESOURCE_ENV + EXCEPT String + AFF + EFFECT + ())
+type DailyImportEffects = (REGISTRY_READ + GITHUB + LOG + RESOURCE_ENV + EXCEPT String + AFF + EFFECT + ())
 
 runDailyImport :: Mode -> URL -> Run DailyImportEffects Unit
 runDailyImport mode registryApiUrl = do

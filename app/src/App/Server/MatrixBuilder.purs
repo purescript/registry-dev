@@ -30,7 +30,7 @@ import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Effect.Registry (REGISTRY)
+import Registry.App.Effect.Registry (REGISTRY, REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
@@ -102,7 +102,7 @@ runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan 
 
 -- TODO feels like we should be doing this at startup and use the cache instead
 -- of reading files all over again
-readCompilerIndex :: forall r. Run (REGISTRY + AFF + EXCEPT String + r) Solver.CompilerIndex
+readCompilerIndex :: forall r. Run (REGISTRY_READ + AFF + EXCEPT String + r) Solver.CompilerIndex
 readCompilerIndex = do
   metadata <- Registry.readAllMetadata
   manifests <- Registry.readAllManifests
@@ -137,7 +137,7 @@ installBuildPlan resolutions dependenciesDir = do
 
 -- | Convert resolutions (Map PackageName Version) to build plan entries using metadata.
 -- | Fetches metadata for each package as needed.
-resolutionsToBuildPlan :: forall r. Map PackageName Version -> Run (REGISTRY + EXCEPT String + r) (Map PackageName BuildPlanEntry)
+resolutionsToBuildPlan :: forall r. Map PackageName Version -> Run (REGISTRY_READ + EXCEPT String + r) (Map PackageName BuildPlanEntry)
 resolutionsToBuildPlan resolutions =
   forWithIndex resolutions \name version -> do
     maybeMetadata <- Registry.readMetadata name
@@ -190,7 +190,7 @@ solveForAllCompilers solverData@{ compiler } = do
     trySolveForCompiler (solverData { compiler = target })
   pure $ Set.fromFoldable $ Array.catMaybes newJobs
 
-solveDependantsForCompiler :: forall r. MatrixSolverData -> Run (EXCEPT String + LOG + REGISTRY + r) (Set MatrixSolverResult)
+solveDependantsForCompiler :: forall r. MatrixSolverData -> Run (EXCEPT String + LOG + REGISTRY_READ + r) (Set MatrixSolverResult)
 solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
   manifestIndex <- Registry.readAllManifests
   let seed = Tuple name version
@@ -276,7 +276,7 @@ trySolveForCompiler { compilerIndex, compiler, name, version, dependencies } = d
             ]
           pure Nothing
 
-checkIfNewCompiler :: forall r. Run (EXCEPT String + LOG + REGISTRY + AFF + r) (Maybe Version)
+checkIfNewCompiler :: forall r. Run (EXCEPT String + LOG + REGISTRY_READ + AFF + r) (Maybe Version)
 checkIfNewCompiler = do
   Log.info "Checking if there's a new compiler in town..."
   latestCompiler <- NonEmptyArray.foldr1 max <$> PursVersions.pursVersions

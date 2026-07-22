@@ -43,7 +43,7 @@ import Registry.App.Effect.PackageSets (PACKAGE_SETS, PackageSets(..))
 import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit (PURSUIT, Pursuit(..))
 import Registry.App.Effect.Pursuit as Pursuit
-import Registry.App.Effect.Registry (REGISTRY, Registry(..))
+import Registry.App.Effect.Registry (REGISTRY, RegistryRead(..), RegistryWrite(..))
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source (FetchError(..), SOURCE, Source(..))
 import Registry.App.Effect.Source as Source
@@ -134,8 +134,15 @@ runTestEffects env operation = Aff.attempt do
   githubCache <- liftEffect Cache.newCacheRef
   operation
     # Pursuit.interpret (handlePursuitMock { metadataRef: env.metadata, excludes: env.pursuitExcludes })
-    # Registry.interpret
-        ( handleRegistryMock
+    # Registry.interpretWrite
+        ( handleRegistryWriteMock
+            { metadataRef: env.metadata
+            , indexRef: env.index
+            , failurePlan: env.failurePlan
+            }
+        )
+    # Registry.interpretRead
+        ( handleRegistryReadMock
             { metadataRef: env.metadata
             , indexRef: env.index
             , failurePlan: env.failurePlan
@@ -173,7 +180,8 @@ runRegistryMock :: forall a. Ref (Map PackageName Metadata) -> Ref ManifestIndex
 runRegistryMock metadataRef indexRef operation = do
   failurePlan <- liftEffect $ Ref.new []
   operation
-    # Registry.interpret (handleRegistryMock { metadataRef, indexRef, failurePlan })
+    # Registry.interpretWrite (handleRegistryWriteMock { metadataRef, indexRef, failurePlan })
+    # Registry.interpretRead (handleRegistryReadMock { metadataRef, indexRef, failurePlan })
     # runBaseEffects
 
 runGitHubCacheMemory :: forall r a. CacheRef -> Run (GITHUB_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
@@ -210,12 +218,34 @@ type RegistryMockEnv =
   , failurePlan :: Ref (Array TestFailure)
   }
 
-handleRegistryMock :: forall r a. RegistryMockEnv -> Registry a -> Run (AFF + EFFECT + r) a
-handleRegistryMock env = case _ of
+handleRegistryReadMock :: forall r a. RegistryMockEnv -> RegistryRead a -> Run (AFF + EFFECT + r) a
+handleRegistryReadMock env = case _ of
   ReadManifest name version reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
     pure $ reply $ Right $ ManifestIndex.lookup name version index
 
+  ReadAllManifests reply -> do
+    index <- Run.liftEffect (Ref.read env.indexRef)
+    pure $ reply $ Right index
+
+  ReadMetadata name reply -> do
+    metadata <- Run.liftEffect (Ref.read env.metadataRef)
+    pure $ reply $ Right $ Map.lookup name metadata
+
+  ReadAllMetadata reply -> do
+    metadata <- Run.liftEffect (Ref.read env.metadataRef)
+    pure $ reply $ Right metadata
+
+  -- FIXME: Actually reply with a package set
+  ReadLatestPackageSet reply ->
+    pure $ reply $ Right Nothing
+
+  -- FIXME: Actually reply with a package set
+  ReadAllPackageSets reply ->
+    pure $ reply $ Right Map.empty
+
+handleRegistryWriteMock :: forall r a. RegistryMockEnv -> RegistryWrite a -> Run (AFF + EFFECT + r) a
+handleRegistryWriteMock env = case _ of
   WriteManifest manifest reply -> do
     failWrite <- consumeFailure FailManifestWrite env.failurePlan
     if failWrite then do
@@ -236,14 +266,6 @@ handleRegistryMock env = case _ of
         Run.liftEffect (Ref.write index' env.indexRef)
         pure $ reply $ Right unit
 
-  ReadAllManifests reply -> do
-    index <- Run.liftEffect (Ref.read env.indexRef)
-    pure $ reply $ Right index
-
-  ReadMetadata name reply -> do
-    metadata <- Run.liftEffect (Ref.read env.metadataRef)
-    pure $ reply $ Right $ Map.lookup name metadata
-
   WriteMetadata name metadata reply -> do
     failWrite <- consumeFailure FailMetadataWrite env.failurePlan
     if failWrite then do
@@ -252,21 +274,9 @@ handleRegistryMock env = case _ of
       Run.liftEffect (Ref.modify_ (Map.insert name metadata) env.metadataRef)
       pure $ reply $ Right unit
 
-  ReadAllMetadata reply -> do
-    metadata <- Run.liftEffect (Ref.read env.metadataRef)
-    pure $ reply $ Right metadata
-
-  -- FIXME: Actually reply with a package set
-  ReadLatestPackageSet reply ->
-    pure $ reply $ Right Nothing
-
   -- FIXME: Actually write package set
   WritePackageSet _packageSet _message reply ->
     pure $ reply $ Right unit
-
-  -- FIXME: Actually reply with a package set
-  ReadAllPackageSets reply ->
-    pure $ reply $ Right Map.empty
 
   -- FIXME: Actually mirror the package set
   MirrorPackageSet _packageSet reply ->

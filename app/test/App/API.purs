@@ -78,7 +78,7 @@ assertPublicationState
    . PackageName
   -> Version
   -> { manifest :: Boolean, metadata :: Boolean, storage :: Boolean }
-  -> Run (Registry.REGISTRY + Storage.STORAGE + Except.EXCEPT String + r) Unit
+  -> Run (Registry.REGISTRY_READ + Storage.STORAGE + Except.EXCEPT String + r) Unit
 assertPublicationState name version expected = do
   storedVersions <- Storage.query name
   maybeMetadata <- Registry.readMetadata name
