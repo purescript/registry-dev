@@ -116,7 +116,7 @@ runGitHubIssue env = do
       Left err -> Except.throw $ "Failed to submit job: " <> err
       Right (DuplicateJob { jobId }) -> do
         let jobIdStr = unwrap jobId
-        let logsUrl = registryApiUrl <> "/v1/jobs/" <> jobIdStr
+        let logsUrl = Constants.dashboardUrl <> "/#/jobs/" <> jobIdStr
         Log.debug $ "Duplicate job: " <> jobIdStr
         Run.liftAff $ void $ Octokit.request env.octokit $ Octokit.createCommentRequest
           { address: Constants.registry
@@ -126,7 +126,7 @@ runGitHubIssue env = do
         pure false
       Right (CreatedJob { jobId }) -> do
         let jobIdStr = unwrap jobId
-        let logsUrl = registryApiUrl <> "/v1/jobs/" <> jobIdStr
+        let logsUrl = Constants.dashboardUrl <> "/#/jobs/" <> jobIdStr
         Log.debug $ "Job created: " <> jobIdStr
 
         -- Post initial comment with job ID
@@ -408,7 +408,7 @@ firstObject input = fromMaybe input do
   after <- String.lastIndexOf (String.Pattern "}") start
   pure (String.take (after + 1) start)
 
--- | An event triggered by a GitHub workflow, specifically via an issue commentAdd a comment on  line L244Add diff commentMarkdown input:  edit mode selected.WritePreviewHeadingBoldItalicQuoteCodeLinkUnordered listNumbered listTask listMentionReferenceSaved repliesAdd FilesPaste, drop, or click to add filesCancelCommentStart a reviewReturn to code
+-- | An event triggered by a GitHub workflow, specifically via an issue comment
 -- | or issue creation.
 -- | https://docs.github.com/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
 newtype IssueEvent = IssueEvent
