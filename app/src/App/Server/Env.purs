@@ -147,7 +147,8 @@ runEffects env operation = Aff.attempt do
     # PackageSets.interpret (PackageSets.handle { workdir: scratchDir })
     # Registry.interpret
         ( Registry.handle
-            { repos: Registry.defaultRepos
+            { jobId: env.jobId
+            , repos: Registry.defaultRepos
             , pull: Git.ForceClean
             , write: writeMode
             , workdir: scratchDir

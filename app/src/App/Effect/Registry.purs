@@ -21,6 +21,7 @@ import Effect.Ref as Ref
 import JSON as JSON
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
+import Registry.API.V1 (JobId)
 import Registry.App.CLI.Git (GitResult)
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (class MemoryEncodable, Cache, CacheRef, MemoryEncoding(..))
@@ -184,7 +185,8 @@ data WriteMode = ReadOnly | CommitAs Git.Committer
 derive instance Eq WriteMode
 
 type RegistryEnv =
-  { repos :: Repos
+  { jobId :: Maybe JobId
+  , repos :: Repos
   , workdir :: FilePath
   , pull :: Git.PullMode
   , write :: WriteMode
@@ -668,10 +670,12 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
 
   -- | Commit the file(s) indicated by the commit key with a commit message.
   commit :: CommitKey -> String -> Run _ (Either String GitResult)
-  commit commitKey message = do
-    let repoKey = commitKeyToRepoKey commitKey
-    let address = repoAddress repoKey
-    let formatted = address.owner <> "/" <> address.repo
+  commit commitKey message' = do
+    let
+      repoKey = commitKeyToRepoKey commitKey
+      address = repoAddress repoKey
+      formatted = address.owner <> "/" <> address.repo
+      message = appendJobIdToCommitMessage env.jobId message'
     case env.write of
       ReadOnly -> do
         Log.info $ "Skipping commit to repo " <> formatted <> " because write mode is 'ReadOnly'."
@@ -738,6 +742,11 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
             "Failed to push tags in local checkout " <> cwd <> ": " <> error
           if String.contains (String.Pattern "Everything up-to-date") output then pure Git.NoChange else pure Git.Changed
         pure result
+
+appendJobIdToCommitMessage :: Maybe JobId -> String -> String
+appendJobIdToCommitMessage maybeJobId message = case maybeJobId of
+  Nothing -> message
+  Just jobId -> message <> "\n\nJob ID: " <> unwrap jobId
 
 -- | Given the file path of a local manifest index on disk, read its contents.
 readManifestIndexFromDisk :: forall r. FilePath -> Run (LOG + EXCEPT String + AFF + EFFECT + r) ManifestIndex
