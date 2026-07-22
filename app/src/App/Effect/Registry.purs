@@ -670,17 +670,18 @@ handle env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<
 
   -- | Commit the file(s) indicated by the commit key with a commit message.
   commit :: CommitKey -> String -> Run _ (Either String GitResult)
-  commit commitKey message = do
-    let repoKey = commitKeyToRepoKey commitKey
-    let address = repoAddress repoKey
-    let formatted = address.owner <> "/" <> address.repo
-    let messageWithJobId = appendJobIdToCommitMessage env.jobId message
+  commit commitKey message' = do
+    let
+      repoKey = commitKeyToRepoKey commitKey
+      address = repoAddress repoKey
+      formatted = address.owner <> "/" <> address.repo
+      message = appendJobIdToCommitMessage env.jobId message'
     case env.write of
       ReadOnly -> do
         Log.info $ "Skipping commit to repo " <> formatted <> " because write mode is 'ReadOnly'."
         pure $ Right Git.NoChange
       CommitAs committer -> do
-        result <- Git.gitCommit { committer, address, commit: commitKeyToPaths commitKey, message: messageWithJobId } (repoPath repoKey)
+        result <- Git.gitCommit { committer, address, commit: commitKeyToPaths commitKey, message } (repoPath repoKey)
         pure result
 
   -- | Push the repository at the given key, recording whether the push had any
