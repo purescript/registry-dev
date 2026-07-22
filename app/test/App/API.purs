@@ -8,7 +8,7 @@ import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
 import Data.String.NonEmpty as NonEmptyString
-import Data.String.Pattern (Pattern(..))
+import Data.String.Pattern (Pattern(..), Replacement(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
 import Effect.Ref as Ref
@@ -29,6 +29,7 @@ import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
 import Registry.License as License
 import Registry.Location (Location(..))
+import Registry.Operation (PublishData)
 import Registry.PackageName as PackageName
 import Registry.Test.Assert as Assert
 import Registry.Test.Assert.Run as Assert.Run
@@ -43,11 +44,75 @@ import Test.Spec as Spec
 -- | from the fixtures.
 type PipelineEnv =
   { workdir :: FilePath
+  , failNextManifestWrite :: Ref Boolean
+  , failNextMetadataWrite :: Ref Boolean
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
   , storageDir :: FilePath
   , githubDir :: FilePath
   }
+
+effectName :: PackageName
+effectName = Utils.unsafePackageName "effect"
+
+effectVersion :: Version
+effectVersion = Utils.unsafeVersion "4.0.0"
+
+effectPublishArgs :: PublishData
+effectPublishArgs =
+  { compiler: Just $ Utils.unsafeVersion "0.15.10"
+  , location: Just $ GitHub { owner: "purescript", repo: "purescript-effect", subdir: Nothing }
+  , name: effectName
+  , ref: "v4.0.0"
+  , version: effectVersion
+  , resolutions: Nothing
+  }
+
+assertPublicationState
+  :: forall r
+   . PackageName
+  -> Version
+  -> { manifest :: Boolean, metadata :: Boolean, storage :: Boolean }
+  -> Run (Registry.REGISTRY + Storage.STORAGE + Except.EXCEPT String + r) Unit
+assertPublicationState name version expected = do
+  storedVersions <- Storage.query name
+  maybeMetadata <- Registry.readMetadata name
+  maybeManifest <- Registry.readManifest name version
+  let
+    actualStorage = Set.member version storedVersions
+    actualMetadata = case maybeMetadata of
+      Nothing -> false
+      Just (Metadata { published }) -> Map.member version published
+    actualManifest = isJust maybeManifest
+  unless (actualStorage == expected.storage) do
+    Except.throw $ "Expected storage presence to be " <> show expected.storage <> " but got " <> show actualStorage
+  unless (actualMetadata == expected.metadata) do
+    Except.throw $ "Expected metadata presence to be " <> show expected.metadata <> " but got " <> show actualMetadata
+  unless (actualManifest == expected.manifest) do
+    Except.throw $ "Expected manifest presence to be " <> show expected.manifest <> " but got " <> show actualManifest
+
+runPipelineAssertion :: PipelineEnv -> Run Assert.Run.TEST_EFFECTS Unit -> Aff Unit
+runPipelineAssertion env action = do
+  logs <- liftEffect (Ref.new [])
+  result <- Assert.Run.runTestEffects
+    { workdir: env.workdir
+    , failNextManifestWrite: env.failNextManifestWrite
+    , failNextMetadataWrite: env.failNextMetadataWrite
+    , logs
+    , index: env.index
+    , metadata: env.metadata
+    , pursuitExcludes: Set.empty
+    , username: "jon"
+    , storage: env.storageDir
+    , github: env.githubDir
+    }
+    action
+  case result of
+    Left exn -> do
+      recorded <- liftEffect (Ref.read logs)
+      Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
+      Assert.fail $ "Got an Aff exception! " <> Aff.message exn
+    Right _ -> pure unit
 
 spec :: Spec.Spec Unit
 spec = do
@@ -65,12 +130,14 @@ spec = do
     copySourceFiles
 
   Spec.describe "API pipelines run correctly" $ Spec.around withCleanEnv do
-    Spec.it "Publish a package successfully" \{ workdir, index, metadata, storageDir, githubDir } -> do
+    Spec.it "Publish a package successfully" \{ workdir, failNextManifestWrite, failNextMetadataWrite, index, metadata, storageDir, githubDir } -> do
       logs <- liftEffect (Ref.new [])
 
       let
         testEnv =
           { workdir
+          , failNextManifestWrite
+          , failNextMetadataWrite
           , logs
           , index
           , metadata
@@ -141,6 +208,73 @@ spec = do
           Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
           Assert.fail $ "Expected to publish effect@4.0.0 but got error: " <> err
         Right (Right _) -> pure unit
+
+    Spec.it "Retries after storage upload when metadata writing fails" \env -> do
+      liftEffect $ Ref.write true env.failNextMetadataWrite
+      runPipelineAssertion env do
+        Except.runExcept (API.publish effectPublishArgs) >>= case _ of
+          Left error | String.contains (Pattern "Injected metadata write failure") error -> pure unit
+          Left error -> Except.throw $ "Expected an injected metadata failure but got: " <> error
+          Right _ -> Except.throw "Expected metadata writing to fail."
+
+        assertPublicationState effectName effectVersion { storage: true, metadata: false, manifest: false }
+
+        API.publish effectPublishArgs >>= case _ of
+          Just _ -> pure unit
+          Nothing -> Except.throw "Expected retrying the incomplete publication to report a newly completed publication."
+        assertPublicationState effectName effectVersion { storage: true, metadata: true, manifest: true }
+
+    Spec.it "Retries after metadata writing when manifest writing fails" \env -> do
+      liftEffect $ Ref.write true env.failNextManifestWrite
+      runPipelineAssertion env do
+        Except.runExcept (API.publish effectPublishArgs) >>= case _ of
+          Left error | String.contains (Pattern "Injected manifest write failure") error -> pure unit
+          Left error -> Except.throw $ "Expected an injected manifest failure but got: " <> error
+          Right _ -> Except.throw "Expected manifest writing to fail."
+
+        assertPublicationState effectName effectVersion { storage: true, metadata: true, manifest: false }
+
+        let storedTarballPath = Path.concat [ env.storageDir, "effect-4.0.0.tar.gz" ]
+        storedTarball <- Run.liftAff $ FS.Aff.readFile storedTarballPath
+        Run.liftAff $ FS.Aff.writeTextFile UTF8 storedTarballPath "corrupted tarball"
+        Except.runExcept (API.publish effectPublishArgs) >>= case _ of
+          Left error | String.contains (Pattern "Integrity check failed") error -> pure unit
+          Left error -> Except.throw $ "Expected an existing tarball integrity failure but got: " <> error
+          Right _ -> Except.throw "Expected retrying with a corrupted stored tarball to fail."
+        assertPublicationState effectName effectVersion { storage: true, metadata: true, manifest: false }
+        Run.liftAff $ FS.Aff.writeFile storedTarballPath storedTarball
+
+        let sourceDir = Path.concat [ env.githubDir, "effect-4.0.0" ]
+        let bowerPath = Path.concat [ sourceDir, "bower.json" ]
+        let licensePath = Path.concat [ sourceDir, "LICENSE" ]
+        originalBower <- Run.liftAff $ FS.Aff.readTextFile UTF8 bowerPath
+        originalLicense <- Run.liftAff $ FS.Aff.readTextFile UTF8 licensePath
+        mitLicense <- Run.liftAff $ FS.Aff.readTextFile UTF8 (Path.concat [ env.githubDir, "slug-3.0.0", "LICENSE" ])
+        Run.liftAff $ FS.Aff.writeTextFile UTF8 bowerPath $ String.replace (Pattern "BSD-3-Clause") (Replacement "MIT") originalBower
+        Run.liftAff $ FS.Aff.writeTextFile UTF8 licensePath mitLicense
+        Except.runExcept (API.publish effectPublishArgs) >>= case _ of
+          Left error | String.contains (Pattern "source manifest differs from the manifest in the existing tarball") error -> pure unit
+          Left error -> Except.throw $ "Expected a changed source manifest failure but got: " <> error
+          Right _ -> Except.throw "Expected retrying from a changed source manifest to fail."
+        assertPublicationState effectName effectVersion { storage: true, metadata: true, manifest: false }
+
+        Run.liftAff $ FS.Aff.writeTextFile UTF8 bowerPath originalBower
+        Run.liftAff $ FS.Aff.writeTextFile UTF8 licensePath originalLicense
+        API.publish effectPublishArgs >>= case _ of
+          Just _ -> pure unit
+          Nothing -> Except.throw "Expected retrying the incomplete publication to report a newly completed publication."
+        assertPublicationState effectName effectVersion { storage: true, metadata: true, manifest: true }
+
+    Spec.it "Rejects an existing tarball that does not match the package source" \env -> do
+      let storedTarballPath = Path.concat [ env.storageDir, "effect-4.0.0.tar.gz" ]
+      FS.Aff.writeTextFile UTF8 storedTarballPath "conflicting tarball"
+      runPipelineAssertion env do
+        Except.runExcept (API.publish effectPublishArgs) >>= case _ of
+          Left error | String.contains (Pattern "existing tarball in storage could not be verified") error -> pure unit
+          Left error -> Except.throw $ "Expected an existing tarball verification failure but got: " <> error
+          Right _ -> Except.throw "Expected publishing with a conflicting tarball to fail."
+
+        assertPublicationState effectName effectVersion { storage: true, metadata: false, manifest: false }
   where
   withCleanEnv :: (PipelineEnv -> Aff Unit) -> Aff Unit
   withCleanEnv action = do
@@ -194,9 +328,13 @@ spec = do
         # Except.catch (\err -> Run.liftAff (Aff.throwError (Aff.error err)))
         # Run.runBaseAff'
 
+      failNextManifestWrite <- liftEffect $ Ref.new false
+      failNextMetadataWrite <- liftEffect $ Ref.new false
       liftEffect $ Process.chdir workdir
       pure
         { workdir
+        , failNextManifestWrite
+        , failNextMetadataWrite
         , metadata: fixtures.metadata
         , index: fixtures.index
         , storageDir: Path.concat [ testFixtures, "registry-storage" ]

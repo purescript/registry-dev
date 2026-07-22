@@ -669,24 +669,44 @@ publish payload = do
       , "```"
       ]
 
-  -- try to terminate early here: if the package is already published AND the docs
-  -- are on Pursuit, then we can wrap up here
-  for_ (Operation.Validation.isNotPublished (Manifest receivedManifest) (Metadata metadata)) \info -> do
-    published <- Pursuit.getPublishedVersions receivedManifest.name >>= case _ of
-      Left error -> Except.throw error
-      Right versions -> pure versions
-    for_ (Map.lookup receivedManifest.version published) \url ->
+  let existingPublishedVersion = Operation.Validation.isNotPublished (Manifest receivedManifest) (Metadata metadata)
+  existingManifest <- Registry.readManifest receivedManifest.name receivedManifest.version
+  for_ existingManifest \manifest ->
+    unless (manifest == Manifest receivedManifest) do
       Except.throw $ String.joinWith "\n"
-        [ "You tried to upload a version that already exists: " <> Version.print receivedManifest.version
+        [ "Cannot publish " <> formatPackageVersion receivedManifest.name receivedManifest.version <> " because a different manifest already exists in the registry index."
         , ""
-        , "Its metadata is:"
+        , "Existing manifest:"
         , "```json"
-        , printJson Metadata.publishedMetadataCodec info
+        , printJson Manifest.codec manifest
         , "```"
         , ""
-        , "and its documentation is available here:"
-        , url
+        , "Submitted manifest:"
+        , "```json"
+        , printJson Manifest.codec (Manifest receivedManifest)
+        , "```"
         ]
+
+  -- Try to terminate early if metadata and a manifest are present and the docs
+  -- are on Pursuit. Metadata without a manifest is an incomplete publication
+  -- which must continue so the missing registry-index state can be repaired.
+  for_ existingPublishedVersion \info ->
+    when (isJust existingManifest) do
+      published <- Pursuit.getPublishedVersions receivedManifest.name >>= case _ of
+        Left error -> Except.throw error
+        Right versions -> pure versions
+      for_ (Map.lookup receivedManifest.version published) \url ->
+        Except.throw $ String.joinWith "\n"
+          [ "You tried to upload a version that already exists: " <> Version.print receivedManifest.version
+          , ""
+          , "Its metadata is:"
+          , "```json"
+          , printJson Metadata.publishedMetadataCodec info
+          , "```"
+          , ""
+          , "and its documentation is available here:"
+          , url
+          ]
 
   -- Resolve compiler and resolutions. If compiler was not provided,
   -- discover a compatible compiler based on dependencies.
@@ -710,23 +730,50 @@ publish payload = do
     Right _ ->
       Log.debug "Package contains well-formed .purs files in its src directory."
 
-  case Operation.Validation.isNotPublished (Manifest receivedManifest) (Metadata metadata) of
-    -- If the package has been published already but docs for this version are missing
-    -- from Pursuit (we check earlier if the docs are there, so we end up here if they are not)
-    -- then upload to Pursuit and terminate
-    Just _ | compiler < Purs.minPursuitPublish -> do
+  let
+    reconcileExistingPublication info = do
+      let storedPackageDirname = PackageName.print receivedManifest.name <> "-" <> Version.print receivedManifest.version
+      let storedTarballPath = Path.concat [ tmp, "stored-" <> storedPackageDirname <> ".tar.gz" ]
+      Storage.download receivedManifest.name receivedManifest.version storedTarballPath { hash: info.hash, bytes: info.bytes }
+      when (isNothing existingManifest) do
+        Tar.extract { cwd: tmp, archive: storedTarballPath }
+        storedManifest <- Run.liftAff (readJsonFile Manifest.codec (Path.concat [ tmp, storedPackageDirname, "purs.json" ])) >>= case _ of
+          Left error -> Except.throw $ "Could not verify the manifest in the existing tarball for " <> formatPackageVersion receivedManifest.name receivedManifest.version <> ": " <> error
+          Right manifest -> pure manifest
+        unless (storedManifest == Manifest receivedManifest) do
+          Except.throw $ "Cannot resume publishing " <> formatPackageVersion receivedManifest.name receivedManifest.version <> " because its source manifest differs from the manifest in the existing tarball. The published ref may have changed since the first attempt."
+      -- Re-issue both Git writes even when the local checkout already contains
+      -- them. A failed push can leave a local commit ahead of its remote; the
+      -- idempotent write will then retry that push instead of treating local
+      -- state as a completed publication.
+      Registry.writeMetadata receivedManifest.name (Metadata metadata)
+      Registry.writeManifest (Manifest receivedManifest)
+      Log.notice "Verified the existing package tarball and reconciled its registry metadata and manifest."
+
+    reconciledResult =
+      if isNothing existingManifest then
+        Just { compiler, dependencies: receivedManifest.dependencies, version: receivedManifest.version }
+      else
+        Nothing
+
+  case existingPublishedVersion of
+    -- If metadata already contains this version, first reconcile storage and
+    -- both Git repositories, then retry any missing Pursuit documentation.
+    Just info | compiler < Purs.minPursuitPublish -> do
+      reconcileExistingPublication info
       Log.notice $ Array.fold
         [ "This version has already been published to the registry, but the docs have not been "
         , "uploaded to Pursuit. Unfortunately, it is not possible to publish to Pursuit via the "
         , "registry using compiler versions prior to " <> Version.print Purs.minPursuitPublish
         , ". Please try with a later compiler."
         ]
-      pure Nothing
+      pure reconciledResult
 
-    Just _ -> do
+    Just info -> do
+      reconcileExistingPublication info
       Log.notice $ Array.fold
         [ "This version has already been published to the registry, but the docs have not been "
-        , "uploaded to Pursuit. Skipping registry publishing and retrying Pursuit publishing..."
+        , "uploaded to Pursuit. Retrying Pursuit publishing..."
         ]
       let installedResolutions = Path.concat [ tmp, ".registry" ]
       buildPlan <- MatrixBuilder.resolutionsToBuildPlan validatedResolutions
@@ -747,8 +794,8 @@ publish payload = do
           -- still need to ensure a purs.json file exists for 'purs publish'.
           when (manifestOrigin /= FromPursJson) do
             let packagePursJson = Path.concat [ downloadedPackage, "purs.json" ]
-            existingManifest <- ManifestIndex.readManifest receivedManifest.name receivedManifest.version
-            case existingManifest of
+            indexedManifest <- ManifestIndex.readManifest receivedManifest.name receivedManifest.version
+            case indexedManifest of
               Nothing -> Except.throw "Version was previously published, but we could not find a purs.json file in the package source, and no existing manifest was found in the registry."
               Just existing -> Run.liftAff $ writeJsonFile Manifest.codec packagePursJson existing
           publishToPursuit { source: downloadedPackage, compiler, resolutions: validatedResolutions, installedResolutions } >>= case _ of
@@ -756,7 +803,7 @@ publish payload = do
             Right _ -> do
               FS.Extra.remove tmp
               Log.notice "Successfully uploaded package docs to Pursuit! 🎉 🚀"
-          pure Nothing
+          pure reconciledResult
 
     -- In this case the package version has not been published, so we proceed
     -- with ordinary publishing.
@@ -918,7 +965,18 @@ publish payload = do
       Log.info $ "Tarball size of " <> show bytes <> " bytes is acceptable."
       Log.info $ "Tarball hash: " <> Sha256.print hash
 
-      Storage.upload receivedManifest.name receivedManifest.version tarballPath
+      Except.runExcept (Storage.upload receivedManifest.name receivedManifest.version tarballPath) >>= case _ of
+        Right _ -> pure unit
+        Left uploadError -> do
+          Except.runExcept (Storage.query receivedManifest.name) >>= case _ of
+            Right storedVersions | Set.member receivedManifest.version storedVersions -> do
+              let storedTarballPath = tarballPath <> ".stored"
+              Except.runExcept (Storage.download receivedManifest.name receivedManifest.version storedTarballPath { hash, bytes }) >>= case _ of
+                Left error ->
+                  Except.throw $ "Cannot resume publishing " <> formatPackageVersion receivedManifest.name receivedManifest.version <> " because the existing tarball in storage could not be verified against the package source: " <> error
+                Right _ ->
+                  Log.info $ "Verified that the existing tarball for " <> formatPackageVersion receivedManifest.name receivedManifest.version <> " matches the package source; reusing it."
+            _ -> Except.throw uploadError
       Log.debug $ "Adding the new version " <> Version.print receivedManifest.version <> " to the package metadata file."
       -- NOTE: The `ref` field is DEPRECATED and will be removed after 2027-01-31.
       -- We always write `Just ""` for backwards compatibility with older package managers.

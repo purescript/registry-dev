@@ -98,6 +98,8 @@ type TEST_EFFECTS =
 
 type TestEnv =
   { workdir :: FilePath
+  , failNextManifestWrite :: Ref Boolean
+  , failNextMetadataWrite :: Ref Boolean
   , logs :: Ref (Array (Tuple LogLevel String))
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
@@ -113,7 +115,14 @@ runTestEffects env operation = Aff.attempt do
   githubCache <- liftEffect Cache.newCacheRef
   operation
     # Pursuit.interpret (handlePursuitMock { metadataRef: env.metadata, excludes: env.pursuitExcludes })
-    # Registry.interpret (handleRegistryMock { metadataRef: env.metadata, indexRef: env.index })
+    # Registry.interpret
+        ( handleRegistryMock
+            { metadataRef: env.metadata
+            , indexRef: env.index
+            , failNextManifestWrite: env.failNextManifestWrite
+            , failNextMetadataWrite: env.failNextMetadataWrite
+            }
+        )
     # PackageSets.interpret handlePackageSetsMock
     # Storage.interpret (handleStorageMock { storage: env.storage })
     # Source.interpret (handleSourceMock { github: env.github })
@@ -142,9 +151,12 @@ runBaseEffects = do
 
 -- | For testing Run functions that only need the REGISTRY effect.
 runRegistryMock :: forall a. Ref (Map PackageName Metadata) -> Ref ManifestIndex -> Run (EXCEPT String + LOG + REGISTRY + AFF + EFFECT + ()) a -> Aff a
-runRegistryMock metadataRef indexRef =
-  Registry.interpret (handleRegistryMock { metadataRef, indexRef })
-    >>> runBaseEffects
+runRegistryMock metadataRef indexRef operation = do
+  failNextManifestWrite <- liftEffect $ Ref.new false
+  failNextMetadataWrite <- liftEffect $ Ref.new false
+  operation
+    # Registry.interpret (handleRegistryMock { metadataRef, indexRef, failNextManifestWrite, failNextMetadataWrite })
+    # runBaseEffects
 
 runGitHubCacheMemory :: forall r a. CacheRef -> Run (GITHUB_CACHE + LOG + EFFECT + r) a -> Run (LOG + EFFECT + r) a
 runGitHubCacheMemory = Cache.interpret GitHub._githubCache <<< Cache.handleMemory
@@ -209,6 +221,8 @@ handlePursuitMock { excludes, metadataRef } = case _ of
 type RegistryMockEnv =
   { metadataRef :: Ref (Map PackageName Metadata)
   , indexRef :: Ref ManifestIndex
+  , failNextManifestWrite :: Ref Boolean
+  , failNextMetadataWrite :: Ref Boolean
   }
 
 handleRegistryMock :: forall r a. RegistryMockEnv -> Registry a -> Run (AFF + EFFECT + r) a
@@ -218,12 +232,17 @@ handleRegistryMock env = case _ of
     pure $ reply $ Right $ ManifestIndex.lookup name version index
 
   WriteManifest manifest reply -> do
-    index <- Run.liftEffect (Ref.read env.indexRef)
-    case ManifestIndex.insert ManifestIndex.ConsiderRanges manifest index of
-      Left err -> pure $ reply $ Left $ "Failed to insert manifest:\n" <> Utils.unsafeStringify manifest <> " due to an error:\n" <> Utils.unsafeStringify err
-      Right index' -> do
-        Run.liftEffect (Ref.write index' env.indexRef)
-        pure $ reply $ Right unit
+    failWrite <- Run.liftEffect (Ref.read env.failNextManifestWrite)
+    if failWrite then do
+      Run.liftEffect (Ref.write false env.failNextManifestWrite)
+      pure $ reply $ Left "Injected manifest write failure."
+    else do
+      index <- Run.liftEffect (Ref.read env.indexRef)
+      case ManifestIndex.insert ManifestIndex.ConsiderRanges manifest index of
+        Left err -> pure $ reply $ Left $ "Failed to insert manifest:\n" <> Utils.unsafeStringify manifest <> " due to an error:\n" <> Utils.unsafeStringify err
+        Right index' -> do
+          Run.liftEffect (Ref.write index' env.indexRef)
+          pure $ reply $ Right unit
 
   DeleteManifest name version reply -> do
     index <- Run.liftEffect (Ref.read env.indexRef)
@@ -242,8 +261,13 @@ handleRegistryMock env = case _ of
     pure $ reply $ Right $ Map.lookup name metadata
 
   WriteMetadata name metadata reply -> do
-    Run.liftEffect (Ref.modify_ (Map.insert name metadata) env.metadataRef)
-    pure $ reply $ Right unit
+    failWrite <- Run.liftEffect (Ref.read env.failNextMetadataWrite)
+    if failWrite then do
+      Run.liftEffect (Ref.write false env.failNextMetadataWrite)
+      pure $ reply $ Left "Injected metadata write failure."
+    else do
+      Run.liftEffect (Ref.modify_ (Map.insert name metadata) env.metadataRef)
+      pure $ reply $ Right unit
 
   ReadAllMetadata reply -> do
     metadata <- Run.liftEffect (Ref.read env.metadataRef)
