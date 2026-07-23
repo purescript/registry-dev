@@ -125,9 +125,9 @@ The registry responds immediately with a job ID that can be polled for status:
 
 The publish response disposition is `created` for a new job,
 `duplicate-active` when an unfinished job already owns the package version, or
-`already-published` when an equivalent publish job previously succeeded. The
-response keeps its historical `jobId` field and HTTP status behavior: new jobs
-return 201, while reused jobs return 200.
+`already-published` when an equivalent successful publish job exists. New jobs
+return HTTP 201, while `duplicate-active` and `already-published` responses
+return HTTP 200.
 
 #### Step 2: Source Fetched and Validated
 
@@ -1007,11 +1007,11 @@ The response contains a job ID and a publish submission disposition:
 ```
 
 `disposition` is one of `created`, `duplicate-active`, or
-`already-published`. It is an additive field: clients which only consume
-`jobId` remain compatible. New jobs return HTTP 201 and reused jobs return HTTP
-200, as before. An active job owns its package name and version even if its
-payload differs, because registry package versions are immutable; clients can
-inspect the returned job's `payload` when handling `duplicate-active`.
+`already-published`. New jobs return HTTP 201; `duplicate-active` and
+`already-published` responses return HTTP 200. An active job owns its package
+name and version even if its payload differs, because registry package versions
+are immutable; clients can inspect the returned job's `payload` when handling
+`duplicate-active`.
 
 #### Polling Job Status
 
@@ -1050,9 +1050,9 @@ outcome. Publish jobs additionally include a terminal `disposition` of
 `published` or `already-published` on success. On failure they instead include
 an `error` object such as
 `{ "code": "job-failed", "message": "..." }` (or code `job-timeout`), so
-clients do not need to parse logs. These publish-specific fields are optional
-for compatibility with jobs created before this API addition. The `since`
-parameter can be used for pagination, and to stream logs to the user.
+clients do not need to parse logs. Neither field is present while the job is
+unfinished. The `since` parameter can be used for pagination, and to stream
+logs to the user.
 
 #### Authenticated Operations
 
