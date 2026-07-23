@@ -118,9 +118,16 @@ The registry responds immediately with a job ID that can be polled for status:
 
 ```json
 {
-  "jobId": "01234567-89ab-cdef-0123-456789abcdef"
+  "jobId": "01234567-89ab-cdef-0123-456789abcdef",
+  "disposition": "created"
 }
 ```
+
+The publish response disposition is `created` for a new job,
+`duplicate-active` when an unfinished job already owns the package version, or
+`already-published` when an equivalent successful publish job exists. New jobs
+return HTTP 201, while `duplicate-active` and `already-published` responses
+return HTTP 200.
 
 #### Step 2: Source Fetched and Validated
 
@@ -620,10 +627,12 @@ Next, the registry will use the provided [`Location`](#location) to fetch the pa
 
 1. The manifest MUST be usable to produce a well-formed [`Manifest`](#33-manifest).
 2. The manifest package name and JSON payload package name MUST match.
-3. The manifest location and JSON payload location (if provided) MUST match.
-4. The manifest version MUST NOT have been published or unpublished before, according to the metadata file.
-5. Either a `resolutions` key was provided in the JSON payload, in which case the resolutions MUST include every dependency listed in the manifest dependencies at a version within the specified version bounds for each dependency, OR the manifest dependencies MUST be solvable by the registry solver. ALL package versions indicated in the resolutions MUST already be registered.
-6. If the package source code includes a LICENSE file and/or a license listed in a bower.json or package.json manifest, then all licenses MUST match with the license specified in the PureScript [`Manifest`](#33-manifest). For example, if the package.json file specifies the "MIT" license and a LICENSE file specifies "BSD-3-Clause", then the PureScript license should admit at least "MIT AND BSD-3-Clause".
+3. The manifest version and JSON payload version MUST match.
+4. The manifest ref and JSON payload ref MUST match.
+5. The manifest location MUST match the authoritative registry metadata location (and therefore the JSON payload location, when provided).
+6. The manifest version MUST NOT have been unpublished before, according to the metadata file. A version already present in metadata, the manifest index, storage, and Pursuit is treated as an idempotent success; incomplete prior publications are reconciled.
+7. Either a `resolutions` key was provided in the JSON payload, in which case the resolutions MUST include every dependency listed in the manifest dependencies at a version within the specified version bounds for each dependency, OR the manifest dependencies MUST be solvable by the registry solver. ALL package versions indicated in the resolutions MUST already be registered.
+8. If the package source code includes a LICENSE file and/or a license listed in a bower.json or package.json manifest, then all licenses MUST match with the license specified in the PureScript [`Manifest`](#33-manifest). For example, if the package.json file specifies the "MIT" license and a LICENSE file specifies "BSD-3-Clause", then the PureScript license should admit at least "MIT AND BSD-3-Clause".
 
 Next, the registry will verify the package source code.
 
@@ -988,11 +997,21 @@ POST to `/api/v1/publish` with a JSON body matching the [`PublishData`](#51-publ
 }
 ```
 
-The response contains a job ID:
+The response contains a job ID and a publish submission disposition:
 
 ```json
-{ "jobId": "01234567-89ab-cdef-0123-456789abcdef" }
+{
+  "jobId": "01234567-89ab-cdef-0123-456789abcdef",
+  "disposition": "created"
+}
 ```
+
+`disposition` is one of `created`, `duplicate-active`, or
+`already-published`. New jobs return HTTP 201; `duplicate-active` and
+`already-published` responses return HTTP 200. An active job owns its package
+name and version even if its payload differs, because registry package versions
+are immutable; clients can inspect the returned job's `payload` when handling
+`duplicate-active`.
 
 #### Polling Job Status
 
@@ -1011,6 +1030,7 @@ The response contains job status and logs:
   "startedAt": "2024-01-15T10:30:01.0Z",
   "finishedAt": "2024-01-15T10:31:00.0Z",
   "success": true,
+  "disposition": "published",
   "logs": [
     {
       "level": "INFO",
@@ -1025,7 +1045,14 @@ The response contains job status and logs:
 }
 ```
 
-Poll until `finishedAt` is present, then check `success` to determine the outcome. The `since` parameter can be used for pagination, and to stream logs to the user.
+Poll until `finishedAt` is present, then check `success` to determine the
+outcome. Publish jobs additionally include a terminal `disposition` of
+`published` or `already-published` on success. On failure they instead include
+an `error` object such as
+`{ "code": "job-failed", "message": "..." }` (or code `job-timeout`), so
+clients do not need to parse logs. Neither field is present while the job is
+unfinished. The `since` parameter can be used for pagination, and to stream
+logs to the user.
 
 #### Authenticated Operations
 

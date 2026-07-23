@@ -69,8 +69,59 @@ const _insertJob = (db, table, columns, job) => {
 };
 
 export const insertPublishJobImpl = (db, job) => {
-  const columns = ['jobId', 'packageName', 'packageVersion', 'payload']
-  return _insertJob(db, PUBLISH_JOBS_TABLE, columns, job);
+  const columns = ['jobId', 'packageName', 'packageVersion', 'payload'];
+  const insert = db.transaction((job) => {
+    // An active job owns this package/version regardless of payload. This
+    // prevents two different refs from publishing the same immutable version
+    // concurrently.
+    const active = db.prepare(`
+      SELECT job.jobId
+      FROM ${PUBLISH_JOBS_TABLE} job
+      JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
+      WHERE job.packageName = ? AND job.packageVersion = ?
+        AND info.finishedAt IS NULL
+      ORDER BY info.createdAt ASC LIMIT 1
+    `).get(job.packageName, job.packageVersion);
+
+    if (active) {
+      return { jobId: active.jobId, status: 1 };
+    }
+
+    // A successful job is idempotently reusable only for the exact submitted
+    // payload. A later successful unpublish invalidates that result so the new
+    // publish attempt can run and report the authoritative unpublished error.
+    const successful = db.prepare(`
+      SELECT job.jobId, info.finishedAt
+      FROM ${PUBLISH_JOBS_TABLE} job
+      JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
+      WHERE job.packageName = ? AND job.packageVersion = ?
+        AND job.payload = ? AND info.finishedAt IS NOT NULL AND info.success = 1
+      ORDER BY info.finishedAt DESC LIMIT 1
+    `).get(job.packageName, job.packageVersion, job.payload);
+
+    if (successful) {
+      const laterUnpublish = db.prepare(`
+        SELECT unpublish.jobId
+        FROM ${UNPUBLISH_JOBS_TABLE} unpublish
+        JOIN ${JOB_INFO_TABLE} info ON unpublish.jobId = info.jobId
+        WHERE unpublish.packageName = ? AND unpublish.packageVersion = ?
+          AND info.finishedAt IS NOT NULL AND info.success = 1
+          AND info.finishedAt >= ?
+        ORDER BY info.finishedAt DESC LIMIT 1
+      `).get(job.packageName, job.packageVersion, successful.finishedAt);
+
+      if (!laterUnpublish) {
+        return { jobId: successful.jobId, status: 2 };
+      }
+    }
+
+    _insertJob(db, PUBLISH_JOBS_TABLE, columns, job);
+    return { jobId: job.jobId, status: 0 };
+  });
+
+  // Acquire the write lock before duplicate detection. This keeps the read and
+  // possible insert atomic if the server ever uses multiple SQLite connections.
+  return insert.immediate(job);
 };
 
 export const insertUnpublishJobImpl = (db, job) => {
@@ -136,8 +187,12 @@ const _selectJob = (db, { table, jobId, packageName, packageVersion }) => {
   return stmt.get(...params);
 }
 
-export const selectPublishJobImpl = (db, { jobId, packageName, packageVersion }) => {
-  return _selectJob(db, { table: PUBLISH_JOBS_TABLE, jobId, packageName, packageVersion });
+export const selectPublishJobByIdImpl = (db, jobId) => {
+  return _selectJob(db, { table: PUBLISH_JOBS_TABLE, jobId });
+};
+
+export const selectNextPublishJobImpl = (db) => {
+  return _selectJob(db, { table: PUBLISH_JOBS_TABLE });
 };
 
 export const selectUnpublishJobImpl = (db, { jobId, packageName, packageVersion }) => {
@@ -220,7 +275,11 @@ export const startJobImpl = (db, args) => {
 export const finishJobImpl = (db, args) => {
   const stmt = db.prepare(`
     UPDATE ${JOB_INFO_TABLE}
-    SET success = @success, finishedAt = @finishedAt
+    SET success = @success,
+        finishedAt = @finishedAt,
+        disposition = @disposition,
+        errorCode = @errorCode,
+        errorMessage = @errorMessage
     WHERE jobId = @jobId
   `);
   return stmt.run(args);

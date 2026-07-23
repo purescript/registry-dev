@@ -50,9 +50,25 @@ spec = do
       unless hasDependencyError do
         Assert.fail $ "Expected dependency resolution error, got:\n" <> String.joinWith "\n" logMessages
 
+      case consoleJob of
+        V1.PublishJob { disposition, error: Just error } -> do
+          Assert.shouldEqual disposition Nothing
+          Assert.shouldEqual error.code V1.JobFailed
+          unless (String.contains (String.Pattern "Could not produce valid dependencies") error.message) do
+            Assert.fail $ "Expected structured dependency error, got: " <> error.message
+        V1.PublishJob { error: Nothing } -> Assert.fail "Expected a structured terminal publish error."
+        _ -> Assert.fail "Expected a publish job."
+
       consoleUploadOccurred <- Env.hasStorageUpload Fixtures.console
       when consoleUploadOccurred do
         Assert.fail "Expected no tarball upload for console@6.1.0 after failed publish"
+
+      retry <- Client.publish Fixtures.consolePublishData
+      Assert.shouldEqual retry.disposition (Just V1.Created)
+      when (retry.jobId == consoleJobId) do
+        Assert.fail "Expected a new publish job after terminal failure."
+      _ <- Env.pollJobExpectFailure retry.jobId
+      pure unit
 
     Spec.it "unpublishing a package fails when dependents exist in manifest index" do
       { jobId: effectJobId } <- Client.publish Fixtures.effectPublishData
