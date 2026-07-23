@@ -187,8 +187,12 @@ const _selectJob = (db, { table, jobId, packageName, packageVersion }) => {
   return stmt.get(...params);
 }
 
-export const selectPublishJobImpl = (db, { jobId, packageName, packageVersion }) => {
-  return _selectJob(db, { table: PUBLISH_JOBS_TABLE, jobId, packageName, packageVersion });
+export const selectPublishJobByIdImpl = (db, jobId) => {
+  return _selectJob(db, { table: PUBLISH_JOBS_TABLE, jobId });
+};
+
+export const selectNextPublishJobImpl = (db) => {
+  return _selectJob(db, { table: PUBLISH_JOBS_TABLE });
 };
 
 export const selectUnpublishJobImpl = (db, { jobId, packageName, packageVersion }) => {

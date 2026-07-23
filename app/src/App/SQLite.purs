@@ -229,8 +229,7 @@ selectJob db { level: maybeLogLevel, since, until, order, jobId: JobId jobId } =
       Nothing -> next
 
   selectPublishJobById logs = ExceptT do
-    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db
-      { jobId: notNull jobId, packageName: null, packageVersion: null }
+    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobByIdImpl db jobId
     pure $ traverse
       ( map (PublishJob <<< Record.merge { logs, jobType: Proxy :: _ "publish" })
           <<< publishJobDetailsFromJSRep
@@ -377,19 +376,15 @@ publishJobDetailsFromJSRep { jobId, packageName, packageVersion, payload, create
     , payload: parsed
     }
 
-type SelectPublishParams =
-  { jobId :: Nullable String
-  , packageName :: Nullable String
-  , packageVersion :: Nullable String
-  }
+foreign import selectPublishJobByIdImpl :: EffectFn2 SQLite String (Nullable JSPublishJobDetails)
 
-foreign import selectPublishJobImpl :: EffectFn2 SQLite SelectPublishParams (Nullable JSPublishJobDetails)
+foreign import selectNextPublishJobImpl :: EffectFn1 SQLite (Nullable JSPublishJobDetails)
 
 foreign import selectPublishJobsImpl :: EffectFn5 SQLite String String Boolean String (Array JSPublishJobDetails)
 
 selectNextPublishJob :: SQLite -> Effect (Either String (Maybe PublishJobDetails))
 selectNextPublishJob db = do
-  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db { jobId: null, packageName: null, packageVersion: null }
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn1 selectNextPublishJobImpl db
   pure $ traverse publishJobDetailsFromJSRep maybeJobDetails
 
 type InsertPublishJob =
