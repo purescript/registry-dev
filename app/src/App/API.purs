@@ -74,6 +74,8 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets (Change(..), PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
+import Registry.App.Effect.PackageStorage (PACKAGE_STORAGE)
+import Registry.App.Effect.PackageStorage as PackageStorage
 import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY, REGISTRY_READ)
@@ -81,8 +83,6 @@ import Registry.App.Effect.Registry as ManifestIndex
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source (SOURCE)
 import Registry.App.Effect.Source as Source
-import Registry.App.Effect.Storage (STORAGE)
-import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Manifest as Legacy.Manifest
 import Registry.App.Legacy.Types (RawPackageName(..), rawPackageNameMapCodec)
 import Registry.App.Manifest.SpagoYaml as SpagoYaml
@@ -242,7 +242,7 @@ packageSetUpdate details = do
       Registry.mirrorPackageSet packageSet
       Log.notice "Mirrored a new legacy package set."
 
-type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + LOG + EXCEPT String + AFF + EFFECT + r)
+type AuthenticatedEffects r = (REGISTRY + PACKAGE_STORAGE + GITHUB + PACCHETTIBOTTI_ENV + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Run an authenticated package operation, ie. an unpublish or a transfer.
 authenticated :: forall r. AuthenticatedData -> Run (AuthenticatedEffects + r) Unit
@@ -304,7 +304,7 @@ authenticated auth = case auth.payload of
         -- violations before performing any irreversible side effects like deleting
         -- the tarball from storage.
         Registry.deleteManifest payload.name payload.version
-        Storage.delete payload.name payload.version
+        PackageStorage.delete payload.name payload.version
         Registry.writeMetadata payload.name updated
         Log.notice $ "Unpublished " <> formatted <> "!"
 
@@ -339,7 +339,7 @@ authenticated auth = case auth.payload of
         Registry.writeMetadata payload.name updated
         Log.notice "Successfully transferred your package!"
 
-type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + PACKAGE_STORAGE + SOURCE + GITHUB + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
 
 -- | Resolve both compiler and resolutions for a publish operation.
 -- | Will come up with some sort of plan if not provided with a compiler and/or resolutions.
@@ -734,7 +734,7 @@ publish payload = do
     reconcileExistingPublication info = do
       let storedPackageDirname = PackageName.print receivedManifest.name <> "-" <> Version.print receivedManifest.version
       let storedTarballPath = Path.concat [ tmp, "stored-" <> storedPackageDirname <> ".tar.gz" ]
-      Storage.download receivedManifest.name receivedManifest.version storedTarballPath { hash: info.hash, bytes: info.bytes }
+      PackageStorage.download receivedManifest.name receivedManifest.version storedTarballPath { hash: info.hash, bytes: info.bytes }
       when (isNothing existingManifest) do
         Tar.extract { cwd: tmp, archive: storedTarballPath }
         storedManifest <- Run.liftAff (readJsonFile Manifest.codec (Path.concat [ tmp, storedPackageDirname, "purs.json" ])) >>= case _ of
@@ -965,13 +965,13 @@ publish payload = do
       Log.info $ "Tarball size of " <> show bytes <> " bytes is acceptable."
       Log.info $ "Tarball hash: " <> Sha256.print hash
 
-      Except.runExcept (Storage.upload receivedManifest.name receivedManifest.version tarballPath) >>= case _ of
+      Except.runExcept (PackageStorage.upload receivedManifest.name receivedManifest.version tarballPath) >>= case _ of
         Right _ -> pure unit
         Left uploadError -> do
-          Except.runExcept (Storage.query receivedManifest.name) >>= case _ of
+          Except.runExcept (PackageStorage.query receivedManifest.name) >>= case _ of
             Right storedVersions | Set.member receivedManifest.version storedVersions -> do
               let storedTarballPath = tarballPath <> ".stored"
-              Except.runExcept (Storage.download receivedManifest.name receivedManifest.version storedTarballPath { hash, bytes }) >>= case _ of
+              Except.runExcept (PackageStorage.download receivedManifest.name receivedManifest.version storedTarballPath { hash, bytes }) >>= case _ of
                 Left error ->
                   Except.throw $ "Cannot resume publishing " <> formatPackageVersion receivedManifest.name receivedManifest.version <> " because the existing tarball in storage could not be verified against the package source: " <> error
                 Right _ ->
@@ -1067,7 +1067,7 @@ type FindAllCompilersResult =
 findAllCompilers
   :: forall r
    . { source :: FilePath, manifest :: Manifest, compilers :: NonEmptyArray Version }
-  -> Run (REGISTRY_READ + STORAGE + COMPILER_CACHE + LOG + AFF + EFFECT + EXCEPT String + r) FindAllCompilersResult
+  -> Run (REGISTRY_READ + PACKAGE_STORAGE + COMPILER_CACHE + LOG + AFF + EFFECT + EXCEPT String + r) FindAllCompilersResult
 findAllCompilers { source, manifest, compilers } = do
   compilerIndex <- MatrixBuilder.readCompilerIndex
   checkedCompilers <- for compilers \target -> do

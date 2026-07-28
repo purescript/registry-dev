@@ -21,6 +21,7 @@ package:
     - ordered-collections
     - prelude
     - registry-app
+    - registry-docgen
     - registry-foreign
     - registry-lib
     - run

@@ -1,13 +1,13 @@
--- | An effect for reading and writing to the registry storage backend.
-module Registry.App.Effect.Storage
+-- | An effect for reading and writing package tarballs in the registry storage backend.
+module Registry.App.Effect.PackageStorage
   ( S3Env
   , IntegrityCheck
-  , STORAGE
-  , STORAGE_CACHE
-  , Storage(..)
-  , StorageCache
-  , _storage
-  , _storageCache
+  , PACKAGE_STORAGE
+  , PACKAGE_STORAGE_CACHE
+  , PackageStorage(..)
+  , PackageStorageCache
+  , _packageStorage
+  , _packageStorageCache
   , delete
   , download
   , handleReadOnly
@@ -48,41 +48,41 @@ import Run.Except as Except
 -- | Expected integrity values for downloaded packages.
 type IntegrityCheck = { hash :: Sha256, bytes :: Number }
 
--- | The Storage effect, which describes uploading, downloading, and deleting
--- | tarballs from the registry storage backend.
-data Storage a
+-- | The package storage effect, which describes uploading, downloading, and
+-- | deleting tarballs from the registry storage backend.
+data PackageStorage a
   = Upload PackageName Version FilePath (Either String Unit -> a)
   | Download PackageName Version FilePath IntegrityCheck (Either String Unit -> a)
   | Delete PackageName Version (Either String Unit -> a)
   | Query PackageName (Either String (Set Version) -> a)
 
-derive instance Functor Storage
+derive instance Functor PackageStorage
 
-type STORAGE r = (storage :: Storage | r)
+type PACKAGE_STORAGE r = (packageStorage :: PackageStorage | r)
 
-_storage :: Proxy "storage"
-_storage = Proxy
+_packageStorage :: Proxy "packageStorage"
+_packageStorage = Proxy
 
 -- | Upload a package tarball to the storage backend from the given path.
-upload :: forall r. PackageName -> Version -> FilePath -> Run (STORAGE + EXCEPT String + r) Unit
-upload name version file = Except.rethrow =<< Run.lift _storage (Upload name version file identity)
+upload :: forall r. PackageName -> Version -> FilePath -> Run (PACKAGE_STORAGE + EXCEPT String + r) Unit
+upload name version file = Except.rethrow =<< Run.lift _packageStorage (Upload name version file identity)
 
 -- | Download a package tarball from the storage backend to the given path,
 -- | verifying its integrity against the expected hash and size.
-download :: forall r. PackageName -> Version -> FilePath -> IntegrityCheck -> Run (STORAGE + EXCEPT String + r) Unit
-download name version file integrity = Except.rethrow =<< Run.lift _storage (Download name version file integrity identity)
+download :: forall r. PackageName -> Version -> FilePath -> IntegrityCheck -> Run (PACKAGE_STORAGE + EXCEPT String + r) Unit
+download name version file integrity = Except.rethrow =<< Run.lift _packageStorage (Download name version file integrity identity)
 
 -- | Delete a package tarball from the storage backend.
-delete :: forall r. PackageName -> Version -> Run (STORAGE + EXCEPT String + r) Unit
-delete name version = Except.rethrow =<< Run.lift _storage (Delete name version identity)
+delete :: forall r. PackageName -> Version -> Run (PACKAGE_STORAGE + EXCEPT String + r) Unit
+delete name version = Except.rethrow =<< Run.lift _packageStorage (Delete name version identity)
 
--- | Interpret the STORAGE effect, given a handler.
-interpret :: forall r a. (Storage ~> Run r) -> Run (STORAGE + r) a -> Run r a
-interpret handler = Run.interpret (Run.on _storage handler Run.send)
+-- | Interpret the PACKAGE_STORAGE effect, given a handler.
+interpret :: forall r a. (PackageStorage ~> Run r) -> Run (PACKAGE_STORAGE + r) a -> Run r a
+interpret handler = Run.interpret (Run.on _packageStorage handler Run.send)
 
 -- | Query what tarballs exist for a package in the storage backend
-query :: forall r. PackageName -> Run (STORAGE + EXCEPT String + r) (Set Version)
-query name = Except.rethrow =<< Run.lift _storage (Query name identity)
+query :: forall r. PackageName -> Run (PACKAGE_STORAGE + EXCEPT String + r) (Set Version)
+query name = Except.rethrow =<< Run.lift _packageStorage (Query name identity)
 
 formatPackagePath :: PackageName -> Version -> String
 formatPackagePath name version = Array.fold
@@ -131,8 +131,8 @@ type S3Env =
   }
 
 -- | Handle package storage using a remote S3 bucket.
-handleS3 :: forall r a. S3Env -> Storage a -> Run (RESOURCE_ENV + LOG + AFF + EFFECT + r) a
-handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case _ of
+handleS3 :: forall r a. S3Env -> PackageStorage a -> Run (RESOURCE_ENV + LOG + AFF + EFFECT + r) a
+handleS3 env = Cache.interpret _packageStorageCache (Cache.handleFs env.cache) <<< case _ of
   Query name reply -> map (map reply) Except.runExcept do
     s3 <- connectS3 env.s3
     resources <- Except.rethrow =<< Run.liftAff (withRetryListObjects s3 name)
@@ -142,10 +142,10 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
 
   Download name version path integrity reply -> map (map reply) Except.runExcept do
     let package = formatPackageVersion name version
-    buffer <- Cache.get _storageCache (Package name version) >>= case _ of
+    buffer <- Cache.get _packageStorageCache (Package name version) >>= case _ of
       Nothing -> do
         buffer <- downloadS3 name version integrity
-        Cache.put _storageCache (Package name version) buffer
+        Cache.put _packageStorageCache (Package name version) buffer
         pure buffer
       Just cached -> do
         archiveHash <- Run.liftEffect $ Sha256.hashBuffer cached
@@ -154,9 +154,9 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
           pure cached
         else do
           Log.warn $ "Cached tarball for " <> package <> " failed integrity check, evicting and re-downloading..."
-          Cache.delete _storageCache (Package name version)
+          Cache.delete _packageStorageCache (Package name version)
           buffer <- downloadS3 name version integrity
-          Cache.put _storageCache (Package name version) buffer
+          Cache.put _packageStorageCache (Package name version) buffer
           pure buffer
     Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
       Left error -> do
@@ -216,15 +216,15 @@ handleS3 env = Cache.interpret _storageCache (Cache.handleFs env.cache) <<< case
           Except.throw $ "Could not delete package " <> package <> " due to an error connecting to the storage backend."
         Succeeded _ -> do
           Log.debug $ "Deleted release of " <> package <> " from S3 at the path " <> packagePath
-          Cache.delete _storageCache (Package name version)
+          Cache.delete _packageStorageCache (Package name version)
           pure unit
     else do
       Log.error $ packagePath <> " does not exist on S3 (available: " <> String.joinWith ", " published <> ")"
       Except.throw $ "Could not delete " <> package <> " because it does not exist in the storage backend."
 
 -- | A storage effect that reads from the registry but does not write to it.
-handleReadOnly :: forall r a. FilePath -> Storage a -> Run (RESOURCE_ENV + LOG + AFF + EFFECT + r) a
-handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< case _ of
+handleReadOnly :: forall r a. FilePath -> PackageStorage a -> Run (RESOURCE_ENV + LOG + AFF + EFFECT + r) a
+handleReadOnly cache = Cache.interpret _packageStorageCache (Cache.handleFs cache) <<< case _ of
   -- TODO: is there a way to do this without S3 credentials?
   Query _ reply -> do
     pure $ reply $ Left "Cannot query in read-only mode."
@@ -239,7 +239,7 @@ handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< 
         Except.throw $ "Could not cache package " <> package <> " due to a file system error."
       Right buf ->
         pure buf
-    Cache.put _storageCache (Package name version) buffer
+    Cache.put _packageStorageCache (Package name version) buffer
 
   Delete name version reply -> do
     packageUrl <- formatPackageUrl name version
@@ -248,10 +248,10 @@ handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< 
 
   Download name version path integrity reply -> map (map reply) Except.runExcept do
     let package = formatPackageVersion name version
-    buffer <- Cache.get _storageCache (Package name version) >>= case _ of
+    buffer <- Cache.get _packageStorageCache (Package name version) >>= case _ of
       Nothing -> do
         buffer <- downloadS3 name version integrity
-        Cache.put _storageCache (Package name version) buffer
+        Cache.put _packageStorageCache (Package name version) buffer
         pure buffer
       Just cached -> do
         archiveHash <- Run.liftEffect $ Sha256.hashBuffer cached
@@ -260,9 +260,9 @@ handleReadOnly cache = Cache.interpret _storageCache (Cache.handleFs cache) <<< 
           pure cached
         else do
           Log.warn $ "Cached tarball for " <> package <> " failed integrity check, evicting and re-downloading..."
-          Cache.delete _storageCache (Package name version)
+          Cache.delete _packageStorageCache (Package name version)
           buffer <- downloadS3 name version integrity
-          Cache.put _storageCache (Package name version) buffer
+          Cache.put _packageStorageCache (Package name version) buffer
           pure buffer
     Run.liftAff (Aff.attempt (FS.Aff.writeFile path buffer)) >>= case _ of
       Left error -> do
@@ -328,19 +328,19 @@ withRetryListObjects s3 name = do
     Succeeded objects ->
       pure $ map _.key objects
 
--- | A key type for the storage cache. Only supports packages identified by
--- | their name and version.
-data StorageCache (c :: Type -> Type -> Type) a = Package PackageName Version (c Buffer a)
+-- | A key type for the package storage cache. Only supports packages identified
+-- | by their name and version.
+data PackageStorageCache (c :: Type -> Type -> Type) a = Package PackageName Version (c Buffer a)
 
-instance Functor2 c => Functor (StorageCache c) where
+instance Functor2 c => Functor (PackageStorageCache c) where
   map k (Package name version a) = Package name version (map2 k a)
 
-instance FsEncodable StorageCache where
+instance FsEncodable PackageStorageCache where
   encodeFs = case _ of
     Package name version next ->
       Exists.mkExists $ AsBuffer (PackageName.print name <> "-" <> Version.print version) next
 
-type STORAGE_CACHE r = (storageCache :: Cache StorageCache | r)
+type PACKAGE_STORAGE_CACHE r = (packageStorageCache :: Cache PackageStorageCache | r)
 
-_storageCache :: Proxy "storageCache"
-_storageCache = Proxy
+_packageStorageCache :: Proxy "packageStorageCache"
+_packageStorageCache = Proxy

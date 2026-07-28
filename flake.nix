@@ -37,6 +37,7 @@
           ./app
           ./app-e2e
           ./dashboard
+          ./docgen
           ./foreign
           ./lib
           ./scripts
@@ -281,6 +282,7 @@
                     # These env vars are known to Nix so we set them in advance.
                     # Others, like credentials, must be set in a .env file in
                     # the state directory, unless there are viable defaults.
+                    inherit (envDefaults) DOCS_BUCKET;
                     inherit
                       DHALL_PRELUDE
                       DHALL_TYPES

@@ -30,10 +30,10 @@ import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.PackageStorage (PACKAGE_STORAGE)
+import Registry.App.Effect.PackageStorage as PackageStorage
 import Registry.App.Effect.Registry (REGISTRY, REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Storage (STORAGE)
-import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Tmp as Tmp
 import Registry.ManifestIndex as ManifestIndex
@@ -48,7 +48,7 @@ import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
 
-runMatrixJob :: forall r. MatrixJobData -> Run (REGISTRY + STORAGE + LOG + AFF + EFFECT + EXCEPT String + r) (Map PackageName Range)
+runMatrixJob :: forall r. MatrixJobData -> Run (REGISTRY + PACKAGE_STORAGE + LOG + AFF + EFFECT + EXCEPT String + r) (Map PackageName Range)
 runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan } = do
   workdir <- Tmp.mkTmpDir
   let installed = Path.concat [ workdir, ".registry" ]
@@ -114,7 +114,7 @@ type BuildPlanEntry = { version :: Version, hash :: Sha256, bytes :: Number }
 
 -- | Install all dependencies indicated by the build plan to the specified
 -- | directory. Packages will be installed at 'dir/package-name-x.y.z'.
-installBuildPlan :: forall r. Map PackageName BuildPlanEntry -> FilePath -> Run (STORAGE + LOG + AFF + EXCEPT String + r) Unit
+installBuildPlan :: forall r. Map PackageName BuildPlanEntry -> FilePath -> Run (PACKAGE_STORAGE + LOG + AFF + EXCEPT String + r) Unit
 installBuildPlan resolutions dependenciesDir = do
   Run.liftAff $ FS.Extra.ensureDirectory dependenciesDir
   -- We fetch every dependency at its resolved version, unpack the tarball, and
@@ -125,7 +125,7 @@ installBuildPlan resolutions dependenciesDir = do
       -- unpacked, ie. package-name-major.minor.patch
       filename = PackageName.print name <> "-" <> Version.print version <> ".tar.gz"
       filepath = Path.concat [ dependenciesDir, filename ]
-    Storage.download name version filepath { hash, bytes }
+    PackageStorage.download name version filepath { hash, bytes }
     Run.liftAff (Aff.attempt (Tar.extract { cwd: dependenciesDir, archive: filename })) >>= case _ of
       Left error -> do
         Log.error $ "Failed to unpack " <> filename <> ": " <> Aff.message error

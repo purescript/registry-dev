@@ -1,10 +1,12 @@
 import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
+  GetObjectCommand,
   ListObjectsCommand,
   PutObjectCommand,
   S3,
 } from "@aws-sdk/client-s3";
+import { Buffer } from "node:buffer";
 
 export const connectImpl = ({ key, secret }, endpoint) =>
   new S3({
@@ -25,6 +27,11 @@ export const listObjectsImpl = async (s3, params) => {
 export const putObjectImpl = async (s3, params) => {
   const data = await s3.send(new PutObjectCommand(params));
   return data;
+};
+
+export const getObjectImpl = async (s3, params) => {
+  const data = await s3.send(new GetObjectCommand(params));
+  return Buffer.from(await data.Body.transformToByteArray());
 };
 
 export const deleteObjectImpl = async (s3, params) => {

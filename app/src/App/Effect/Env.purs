@@ -178,6 +178,10 @@ spacesKey = EnvKey { key: "SPACES_KEY", decode: pure }
 spacesSecret :: EnvKey String
 spacesSecret = EnvKey { key: "SPACES_SECRET", decode: pure }
 
+-- | The separate DigitalOcean Spaces bucket used for derived documentation.
+docsBucket :: EnvKey String
+docsBucket = EnvKey { key: "DOCS_BUCKET", decode: pure }
+
 type DatabaseUrl = { prefix :: String, path :: FilePath }
 
 -- | The location of the sqlite database.

@@ -27,6 +27,7 @@ spago test
 The registry is a significant PureScript application split into several runnable modules.
 
 - `app` is the main application and contains the registry server and the GitHub-based API. App code goes here.
+- `docgen` contains the registry's internal documentation model and codecs, legacy Pursuit conversion, re-export resolution, and HTML rendering. See the [`docgen` README](./docgen/README.md) for its architecture and ownership boundaries.
 - `foreign` contains library code for FFI bindings to JavaScript libraries. Any FFI you write should go here.
 - `lib` contains library code meant for other PureScript packages (such as Spago) to reuse. Core registry types and functions go here, and we are careful not to introduce breaking changes unless absolutely necessary.
 - `scripts` contains runnable modules written on top of the app for performing registry tasks like uploading and transferring packages.

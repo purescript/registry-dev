@@ -19,9 +19,9 @@ import Registry.App.API (LicenseValidationError(..), validateLicense)
 import Registry.App.API as API
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.PackageStorage as PackageStorage
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Storage as Storage
 import Registry.App.Legacy.Types (RawPackageName(..))
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
@@ -78,9 +78,9 @@ assertPublicationState
    . PackageName
   -> Version
   -> { manifest :: Boolean, metadata :: Boolean, storage :: Boolean }
-  -> Run (Registry.REGISTRY_READ + Storage.STORAGE + Except.EXCEPT String + r) Unit
+  -> Run (Registry.REGISTRY_READ + PackageStorage.PACKAGE_STORAGE + Except.EXCEPT String + r) Unit
 assertPublicationState name version expected = do
-  storedVersions <- Storage.query name
+  storedVersions <- PackageStorage.query name
   maybeMetadata <- Registry.readMetadata name
   maybeManifest <- Registry.readManifest name version
   let
@@ -107,7 +107,7 @@ runPipelineAssertion env action = do
     , metadata: env.metadata
     , pursuitExcludes: Set.empty
     , username: "jon"
-    , storage: env.storageDir
+    , packageStorage: env.storageDir
     , github: env.githubDir
     }
     action
@@ -154,7 +154,7 @@ spec = do
           , metadata
           , pursuitExcludes: Set.empty
           , username: "jon"
-          , storage: storageDir
+          , packageStorage: storageDir
           , github: githubDir
           }
 
@@ -184,7 +184,7 @@ spec = do
           Left err -> Except.throw $ "Failed to get published versions: " <> err
 
         -- As well as to the storage backend
-        Storage.query name >>= \versions ->
+        PackageStorage.query name >>= \versions ->
           unless (Set.member version versions) do
             Except.throw $ "Expected " <> formatPackageVersion name version <> " to be published to registry storage."
 
@@ -221,7 +221,7 @@ spec = do
         Right (Right _) -> pure unit
 
     Spec.describe "Publication retry reconciliation" do
-      -- Storage, metadata, and the manifest index are the only durable writes in
+      -- Package storage, metadata, and the manifest index are the only durable writes in
       -- the publication pipeline. Failures before storage leave no state to
       -- reconcile; failures after the manifest happen after core publication is
       -- complete. These cases cover each partial durable state plus an upload
@@ -229,7 +229,7 @@ spec = do
       Spec.it "Reconciles every partial durable publication state" \env -> do
         runPipelineAssertion env do
           Run.liftEffect $ Ref.write
-            [ Assert.Run.FailStorageUploadAfterWrite
+            [ Assert.Run.FailPackageStorageUploadAfterWrite
             , Assert.Run.FailMetadataWrite
             , Assert.Run.FailManifestWrite
             ]

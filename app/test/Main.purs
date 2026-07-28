@@ -9,6 +9,7 @@ import Test.Registry.App.CLI.Licensee as Test.CLI.Licensee
 import Test.Registry.App.CLI.Purs as Test.CLI.Purs
 import Test.Registry.App.CLI.PursVersions as Test.CLI.PursVersions
 import Test.Registry.App.CLI.Tar as Test.CLI.Tar
+import Test.Registry.App.Effect.DocsStorage as Test.Effect.DocsStorage
 import Test.Registry.App.Effect.PackageSets as Test.Effect.PackageSets
 import Test.Registry.App.Effect.Registry as Test.Effect.Registry
 import Test.Registry.App.GitHubIssue as Test.GitHubIssue
@@ -38,6 +39,7 @@ main = runSpecAndExitProcess' config [ consoleReporter ] do
     Spec.describe "PursVersions" Test.CLI.PursVersions.spec
 
   Spec.describe "Registry.App.Effect" do
+    Spec.describe "DocsStorage" Test.Effect.DocsStorage.spec
     Test.Effect.PackageSets.spec
     Spec.describe "Registry" Test.Effect.Registry.spec
 

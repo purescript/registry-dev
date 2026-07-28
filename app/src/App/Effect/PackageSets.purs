@@ -24,10 +24,10 @@ import Registry.App.CLI.Purs as Purs
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.PackageStorage (PACKAGE_STORAGE)
+import Registry.App.Effect.PackageStorage as PackageStorage
 import Registry.App.Effect.Registry (REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Storage (STORAGE)
-import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
@@ -86,7 +86,7 @@ type PackageSetsEnv =
 
 -- | A handler for the PACKAGE_SETS effect which compiles the package sets and
 -- | returns the results.
-handle :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY_READ + STORAGE + LOG + AFF + EFFECT + r) a
+handle :: forall r a. PackageSetsEnv -> PackageSets a -> Run (REGISTRY_READ + PACKAGE_STORAGE + LOG + AFF + EFFECT + r) a
 handle env = case _ of
   UpgradeAtomic oldSet@(PackageSet { packages }) compiler changes reply -> reply <$> Except.runExcept do
     Log.info $ "Performing atomic upgrade of package set " <> Version.print (un PackageSet oldSet).version
@@ -239,7 +239,7 @@ handle env = case _ of
         Nothing -> Except.throw $ "No metadata found for " <> formattedName
         Just { hash, bytes } -> do
           Log.debug $ "Installing " <> formattedName
-          Storage.download name version tarballPath { hash, bytes }
+          PackageStorage.download name version tarballPath { hash, bytes }
           Tar.extract { cwd: packagesWorkDir, archive: tarballName }
           FS.Extra.remove tarballPath
           Run.liftAff $ FS.Aff.rename extractedPath installPath
