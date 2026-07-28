@@ -28,7 +28,7 @@ import Registry.Docgen.Generate as Generate
 import Registry.Docgen.HTML as H
 import Registry.Docgen.Legacy.Docs as L
 import Registry.Docgen.Legacy.JSON as Legacy.JSON
-import Registry.Docgen.Package.Render (defaultPackageLinker, htmlCodeRenderer, renderDeclarationInfo)
+import Registry.Docgen.Package.Render (defaultPackageLinker, htmlCodeRenderer, renderDeclarationInfo, renderDocument)
 import Registry.Docgen.Reexports (ReexportError(..), modulesWithReexports, printReexportError)
 import Registry.License as License
 import Registry.Location (Location(..))
@@ -222,6 +222,12 @@ main = runSpecAndExitProcess [ consoleReporter ] do
       let markdown = unwrap (renderMarkdownHTML { safe: true } "<script>x</script> [bad](javascript:alert(1)) **<ok>**")
       String.contains (String.Pattern "<script>") markdown `Assert.shouldEqual` false
       String.contains (String.Pattern "javascript:") markdown `Assert.shouldEqual` false
+
+    Spec.it "renders complete UTF-8 HTML documents" do
+      let rendered = unwrap $ renderDocument { body: H.text "Documentation", title: "Example" }
+      String.indexOf (String.Pattern "<!DOCTYPE html>\n<html lang=\"en\">") rendered `Assert.shouldEqual` Just 0
+      shouldContainString rendered "<meta charset=\"utf-8\" />"
+      shouldContainString rendered "<title>Example</title>"
 
 shouldContainString :: String -> String -> Aff Unit
 shouldContainString actual expected = String.contains (String.Pattern expected) actual `Assert.shouldEqual` true

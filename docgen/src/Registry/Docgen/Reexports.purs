@@ -7,6 +7,9 @@ module Registry.Docgen.Reexports
 import Prelude
 
 import Control.Bind (bindFlipped)
+import Control.Monad.Error.Class (catchError, throwError)
+import Control.Monad.State.Class as State
+import Control.Monad.State.Trans (StateT, evalStateT)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
@@ -145,7 +148,7 @@ modulesWithReexports :: Array DocModule -> Array (CST.ModuleHeader Void) -> Eith
 modulesWithReexports allDocs allSourceModules = do
   case NonEmptyArray.fromArray missingHeaders of
     Just missing -> Left $ MissingSourceHeaders missing
-    Nothing -> traverse (resolve []) allDocs
+    Nothing -> evalStateT (traverse (resolve []) allDocs) Map.empty
   where
   sourceModulesByName = Map.fromFoldable $ map
     ( \(sourceModule@(CST.ModuleHeader { name: CST.Name { name } })) ->
@@ -163,22 +166,34 @@ modulesWithReexports allDocs allSourceModules = do
     | isPrim name = Map.empty
     | otherwise = maybe Map.empty (Map.delete name <<< reexportsOf) $ Map.lookup name sourceModulesByName
 
-  resolve chain (DocModule docs)
-    | Array.elem docs.name chain =
-        Left $ ReexportCycle $ NonEmptyArray.cons' docs.name (Array.drop 1 (Array.dropWhile (_ /= docs.name) chain) <> [ docs.name ])
-    | otherwise =
-        do
-          reexports <- traverse resolveDependency $ Map.toUnfoldable $ importsFor docs.name
-          pure $ DocModule docs { reexports = mergeReexports $ Array.concat reexports }
-        where
-        resolveDependency (Tuple dependency refs) = case Map.lookup dependency docsByName of
-          Nothing -> Left $ MissingDocsTarget docs.name dependency
-          Just dependencyDocs -> case resolve (Array.snoc chain docs.name) dependencyDocs of
-            Left err@(ReexportCycle _) -> Left err
-            Left err -> Left $ TransitivelyBlocked docs.name dependency err
-            Right resolved -> Right $ map
-              (\(Tuple moduleName declarations) -> DocReexport { moduleName, declarations: NonEmptyArray.toArray declarations })
-              (matchingExportsOf refs resolved)
+  resolve :: Array ModuleName -> DocModule -> StateT (Map ModuleName DocModule) (Either ReexportError) DocModule
+  resolve chain (DocModule docs) = do
+    cache <- State.get
+    case Map.lookup docs.name cache of
+      Just resolved ->
+        pure resolved
+      Nothing
+        | Array.elem docs.name chain ->
+            throwError $ ReexportCycle $ NonEmptyArray.cons' docs.name (Array.drop 1 (Array.dropWhile (_ /= docs.name) chain) <> [ docs.name ])
+        | otherwise ->
+            do
+              reexports <- traverse resolveDependency $ Map.toUnfoldable $ importsFor docs.name
+              let resolved = DocModule docs { reexports = mergeReexports $ Array.concat reexports }
+              State.modify_ $ Map.insert docs.name resolved
+              pure resolved
+            where
+            resolveDependency (Tuple dependency refs) = case Map.lookup dependency docsByName of
+              Nothing ->
+                throwError $ MissingDocsTarget docs.name dependency
+              Just dependencyDocs -> do
+                resolved <- catchError
+                  (resolve (Array.snoc chain docs.name) dependencyDocs)
+                  case _ of
+                    err@(ReexportCycle _) -> throwError err
+                    err -> throwError $ TransitivelyBlocked docs.name dependency err
+                pure $ map
+                  (\(Tuple moduleName declarations) -> DocReexport { moduleName, declarations: NonEmptyArray.toArray declarations })
+                  (matchingExportsOf refs resolved)
 
 matchingExportsOf :: RefSet ModuleMemberSet -> DocModule -> Array (Tuple ModuleName (NonEmptyArray DocDeclaration))
 matchingExportsOf refSet (DocModule { declarations, name, reexports }) =
@@ -278,9 +293,6 @@ declInMemberSet (ModuleMemberSet members) decl@(DocDeclaration { children, info,
         pure decl
   _ ->
     []
-  where
-  unqualify :: forall a. Qualified a -> a
-  unqualify (Qualified { name }) = name
 
 declNotInMemberSet :: ModuleMemberSet -> DocDeclaration -> Array DocDeclaration
 declNotInMemberSet (ModuleMemberSet members) decl@(DocDeclaration declaration@{ children, info }) = case info of
@@ -310,8 +322,8 @@ declNotInMemberSet (ModuleMemberSet members) decl@(DocDeclaration declaration@{ 
     DocChildDeclaration { info: ChildDeclConstructor { name } } -> keep $ unqualify name
     _ -> true
 
-  unqualify :: forall a. Qualified a -> a
-  unqualify (Qualified { name }) = name
+unqualify :: forall a. Qualified a -> a
+unqualify (Qualified { name }) = name
 
 promotedMemberSignature :: Qualified TypeName -> Array TypeVar -> DocType -> DocType
 promotedMemberSignature className vars signature =

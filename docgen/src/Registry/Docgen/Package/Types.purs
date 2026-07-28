@@ -1,9 +1,7 @@
 module Registry.Docgen.Package.Types where
 
 import Data.Maybe (Maybe)
-import Data.Version (Version)
 import Registry.Docgen.Docs (ModuleName)
-import Registry.PackageName (PackageName)
 
 -- | References point to either a Type or Value namespace.
 data Namespace
@@ -16,20 +14,3 @@ data Namespace
 data ModuleRef
   = ModuleRef (Maybe ModuleName) Namespace
   | Local
-
-type ExactPackage =
-  { packageName :: PackageName
-  , version :: Version
-  }
-
-type ExactModule =
-  { moduleName :: ModuleName
-  , packageName :: PackageName
-  , version :: Version
-  }
-
-type ExactRef =
-  { module :: ExactModule
-  , namespace :: Namespace
-  , ref :: String
-  }

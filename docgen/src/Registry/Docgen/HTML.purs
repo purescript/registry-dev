@@ -69,9 +69,6 @@ pre = element "pre"
 code :: Array Attribute -> Array HTML -> HTML
 code = element "code"
 
-section :: Array Attribute -> Array HTML -> HTML
-section = element "section"
-
 article :: Array Attribute -> Array HTML -> HTML
 article = element "article"
 
@@ -90,35 +87,14 @@ h3 = element "h3"
 h4 :: Array Attribute -> Array HTML -> HTML
 h4 = element "h4"
 
-h5 :: Array Attribute -> Array HTML -> HTML
-h5 = element "h5"
-
-h6 :: Array Attribute -> Array HTML -> HTML
-h6 = element "h6"
-
 ul :: Array Attribute -> Array HTML -> HTML
 ul = element "ul"
-
-ol :: Array Attribute -> Array HTML -> HTML
-ol = element "ol"
 
 li :: Array Attribute -> Array HTML -> HTML
 li = element "li"
 
 a :: Array Attribute -> Array HTML -> HTML
 a = element "a"
-
-button :: Array Attribute -> Array HTML -> HTML
-button = element "button"
-
-form :: Array Attribute -> Array HTML -> HTML
-form = element "form"
-
-img :: Array Attribute -> HTML
-img = leafElement "img"
-
-input :: Array Attribute -> HTML
-input = leafElement "input"
 
 meta :: Array Attribute -> HTML
 meta = leafElement "meta"
@@ -159,29 +135,14 @@ href = attr "href"
 lang :: String -> Attribute
 lang = attr "lang"
 
-src :: String -> Attribute
-src = attr "src"
-
-alt :: String -> Attribute
-alt = attr "alt"
-
 type_ :: String -> Attribute
 type_ = attr "type"
-
-name :: String -> Attribute
-name = attr "name"
 
 title :: String -> Attribute
 title = attr "title"
 
-value :: String -> Attribute
-value = attr "value"
-
 rel :: String -> Attribute
 rel = attr "rel"
-
-placeholder :: String -> Attribute
-placeholder = attr "placeholder"
 
 html :: Array Attribute -> Array HTML -> HTML
 html = element "html"

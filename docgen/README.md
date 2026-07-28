@@ -63,3 +63,17 @@ purs-tidy check docgen
 
 Outside an interactive shell which has loaded `direnv`, prefix these commands
 with `direnv exec .`.
+
+## Render an artifact
+
+Use the `render-docs` script to turn a canonical documentation JSON artifact
+into static package and module pages:
+
+```sh
+nix run .#render-docs -- docgen/fixtures/undefined-1.0.2.json scratch/docs-preview
+```
+
+The script prints the generated package directory. Serve the output root with
+any static file server and open the corresponding `/packages/<name>/<version>/`
+path. Links between the package page and its module pages use the same paths as
+Pursuit.

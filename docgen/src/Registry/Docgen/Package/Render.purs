@@ -203,33 +203,35 @@ htmlCodeRenderer { getRefLink } currentModule =
 
 renderDocument :: { body :: HTML, title :: String } -> HTML
 renderDocument { body, title } =
-  H.html [ H.lang "en" ]
-    [ H.head
-        [ H.htmlTitle
-            [ H.text title ]
-        , H.link
-            [ H.href "https://fonts.googleapis.com/css?family=Roboto+Mono|Roboto:300,400,400i,700,700i"
-            , H.type_ "text/css"
-            , H.rel "stylesheet"
-            ]
-        , H.link
-            [ H.href "https://pursuit.purescript.org/static/res/css/normalize.css?etag=fKzu1nci"
-            , H.type_ "text/css"
-            , H.rel "stylesheet"
-            ]
-        , H.link
-            [ H.href "https://pursuit.purescript.org/static/res/css/pursuit.css?etag=5eIKlitR"
-            , H.type_ "text/css"
-            , H.rel "stylesheet"
-            ]
-        , H.link
-            [ H.href "https://pursuit.purescript.org/static/res/css/extra.css?etag=d4aey1o-"
-            , H.type_ "text/css"
-            , H.rel "stylesheet"
-            ]
-        ]
-    , H.body [] [ body ]
-    ]
+  H.doctype <>
+    H.html [ H.lang "en" ]
+      [ H.head
+          [ H.meta [ H.attr "charset" "utf-8" ]
+          , H.htmlTitle
+              [ H.text title ]
+          , H.link
+              [ H.href "https://fonts.googleapis.com/css?family=Roboto+Mono|Roboto:300,400,400i,700,700i"
+              , H.type_ "text/css"
+              , H.rel "stylesheet"
+              ]
+          , H.link
+              [ H.href "https://pursuit.purescript.org/static/res/css/normalize.css?etag=fKzu1nci"
+              , H.type_ "text/css"
+              , H.rel "stylesheet"
+              ]
+          , H.link
+              [ H.href "https://pursuit.purescript.org/static/res/css/pursuit.css?etag=5eIKlitR"
+              , H.type_ "text/css"
+              , H.rel "stylesheet"
+              ]
+          , H.link
+              [ H.href "https://pursuit.purescript.org/static/res/css/extra.css?etag=d4aey1o-"
+              , H.type_ "text/css"
+              , H.rel "stylesheet"
+              ]
+          ]
+      , H.body [] [ body ]
+      ]
 
 renderContainer :: { anchorId :: String, content :: HTML } -> HTML
 renderContainer { anchorId, content } =

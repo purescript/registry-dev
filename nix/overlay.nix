@@ -62,6 +62,10 @@ let
       module = "Registry.Scripts.PackageTransferrer";
       description = "Check for moved packages and submit transfer jobs";
     };
+    render-docs = {
+      module = "Registry.Scripts.RenderDocs";
+      description = "Render canonical package documentation to HTML";
+    };
     verify-integrity = {
       module = "Registry.Scripts.VerifyIntegrity";
       description = "Verify registry and registry-index consistency";

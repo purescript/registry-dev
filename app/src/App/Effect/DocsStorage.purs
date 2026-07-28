@@ -23,6 +23,7 @@ import Codec.JSON.DecodeError as DecodeError
 import Data.Array as Array
 import Effect.Aff as Aff
 import Node.Buffer as Buffer
+import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Registry.App.Effect.Env (RESOURCE_ENV)
@@ -41,6 +42,7 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
+import Unsafe.Coerce (unsafeCoerce)
 
 data DocsStorage a
   = Upload DocPackage (Either String Unit -> a)
@@ -82,15 +84,17 @@ handleFs root = case _ of
   Upload docs reply -> do
     let { name, version } = packageIdentity docs
     let path = Path.concat [ root, formatDocsPath name version ]
-    present <- Run.liftEffect $ FS.Sync.exists path
-    if present then
-      pure $ reply $ Left $ "Documentation for " <> formatPackageVersion name version <> " already exists."
-    else
-      reply <$> writeDocsFile path docs
+    result <- writeDocsFile FS.Aff.link path docs
+    pure $ reply case result of
+      Left error
+        | nodeErrorCode error == "EEXIST" ->
+            Left $ "Documentation for " <> formatPackageVersion name version <> " already exists."
+      other -> lmap Aff.message other
 
   Replace docs reply -> do
     let { name, version } = packageIdentity docs
-    reply <$> writeDocsFile (Path.concat [ root, formatDocsPath name version ]) docs
+    result <- writeDocsFile FS.Aff.rename (Path.concat [ root, formatDocsPath name version ]) docs
+    pure $ reply $ lmap Aff.message result
 
   Download name version reply -> do
     let path = Path.concat [ root, formatDocsPath name version ]
@@ -109,9 +113,16 @@ handleFs root = case _ of
     result <- if present then Run.liftAff $ Aff.attempt $ FS.Extra.remove path else pure $ Right unit
     pure $ reply $ lmap (\error -> "Could not delete documentation for " <> formatPackageVersion name version <> ": " <> Aff.message error) result
   where
-  writeDocsFile path docs = map (lmap Aff.message) $ Run.liftAff $ Aff.attempt do
+  writeDocsFile install path docs = Run.liftAff $ Aff.attempt do
     FS.Extra.ensureDirectory $ Path.dirname path
-    writeJsonFile Docgen.Codec.docPackage path docs
+    tempDir <- FS.Aff.mkdtemp $ Path.concat [ Path.dirname path, ".docs-" ]
+    Aff.finally (FS.Extra.remove tempDir) do
+      let tempPath = Path.concat [ tempDir, Path.basename path ]
+      writeJsonFile Docgen.Codec.docPackage tempPath docs
+      install tempPath path
+
+  nodeErrorCode :: Aff.Error -> String
+  nodeErrorCode error = (unsafeCoerce error :: { code :: String }).code
 
 type S3Env =
   { bucket :: String
@@ -123,6 +134,8 @@ handleS3 env = case _ of
   Upload docs reply -> map (map reply) Except.runExcept do
     let { name, version } = packageIdentity docs
     s3 <- connectS3 env
+    -- Spaces does not support conditional PutObject requests, so this
+    -- preflight check is best-effort rather than an atomic create.
     whenM (objectExists s3 name version) do
       Except.throw $ "Documentation for " <> formatPackageVersion name version <> " already exists."
     putDocs s3 docs

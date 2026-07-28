@@ -2,6 +2,8 @@ module Test.Registry.App.Effect.DocsStorage (spec) where
 
 import Registry.App.Prelude
 
+import Control.Parallel (parSequence)
+import Data.Array as Array
 import Data.Codec.JSON as CJ
 import Data.Map as Map
 import Data.String as String
@@ -62,6 +64,22 @@ spec = do
       runFs tmp $ DocsStorage.delete name version
       runFs tmp (DocsStorage.exists name version) >>= (_ `Assert.shouldEqual` false)
       runFs tmp $ DocsStorage.delete name version
+
+  Spec.it "allows only one concurrent immutable upload" do
+    Aff.bracket Tmp.mkTmpDir FS.Extra.remove \tmp -> do
+      results <- parSequence
+        [ Aff.attempt $ runFs tmp $ DocsStorage.upload docs
+        , Aff.attempt $ runFs tmp $ DocsStorage.upload replacement
+        ]
+      Array.length (Array.mapMaybe hush results) `Assert.shouldEqual` 1
+      let failures = Array.mapMaybe (either Just (const Nothing)) results
+      case failures of
+        [ error ] -> String.contains (String.Pattern "already exists") (Aff.message error) `Assert.shouldEqual` true
+        _ -> Assert.fail "Expected exactly one immutable upload to fail"
+
+      stored <- runFs tmp $ DocsStorage.download packageName packageVersion
+      let encoded = CJ.encode Docgen.Codec.docPackage stored
+      Array.elem encoded [ CJ.encode Docgen.Codec.docPackage docs, CJ.encode Docgen.Codec.docPackage replacement ] `Assert.shouldEqual` true
 
 runFs
   :: forall a
