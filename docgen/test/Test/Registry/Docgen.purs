@@ -31,9 +31,13 @@ import Registry.Docgen.Legacy.JSON as Legacy.JSON
 import Registry.Docgen.Package.Render (defaultPackageLinker, htmlCodeRenderer, renderDeclarationInfo, renderDocument, renderModule)
 import Registry.Docgen.Reexports (ReexportError(..), modulesWithReexports, printReexportError)
 import Registry.License as License
+import Registry.LimitedString as LimitedString
 import Registry.Location (Location(..))
+import Registry.Manifest (Manifest(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Range (Range)
+import Registry.Range as Range
 import Registry.Sha256 as Sha256
 import Registry.Test.Assert as Assert
 import Registry.Test.Utils as Utils
@@ -82,8 +86,8 @@ main = runSpecAndExitProcess [ consoleReporter ] do
       let readme = Readme { content: "# Undefined", extension: Just "md" }
       let
         conversionInput =
-          { dependencies: Map.empty
-          , readme: Just readme
+          { readme: Just readme
+          , manifest: undefinedManifest
           , sourceArtifact: sourceArtifactFixture
           , sourcePaths: Map.singleton (ModuleName "Undefined") "custom/Undefined.purs"
           }
@@ -99,10 +103,33 @@ main = runSpecAndExitProcess [ consoleReporter ] do
           span.path `Assert.shouldEqual` "custom/Undefined.purs"
         _ ->
           Assert.fail "Expected one converted declaration with a source span"
-      let manifestDependencies = Map.singleton (packageName "prelude") (RawRange ">=4.0.0 <5.0.0")
-      case Convert.fromLegacyPackage (conversionInput { dependencies = manifestDependencies }) legacy of
-        Right (DocPackage { dependencies }) -> dependencies `Assert.shouldEqual` manifestDependencies
-        Left err -> Assert.fail $ "Failed to convert historical fixture with manifest dependencies: " <> err
+      let Manifest manifest = undefinedManifest
+      let canonicalDescription = Utils.fromRight "description" $ LimitedString.parse "Canonical package metadata"
+      let manifestDependencies = Map.singleton (packageName "prelude") (range ">=4.0.0 <5.0.0")
+      let
+        authoritativeManifest = Manifest $ manifest
+          { dependencies = manifestDependencies
+          , description = Just canonicalDescription
+          , license = Utils.fromRight "license" $ License.parse "BSD-3-Clause"
+          , location = Git { url: "https://example.com/undefined.git", subdir: Nothing }
+          , ref = "release-1.0.2"
+          }
+      case Convert.fromLegacyPackage (conversionInput { manifest = authoritativeManifest }) legacy of
+        Right (DocPackage convertedPackage) -> do
+          convertedPackage.dependencies `Assert.shouldEqual` Map.singleton (packageName "prelude") (RawRange ">=4.0.0 <5.0.0")
+          convertedPackage.description `Assert.shouldEqual` Just "Canonical package metadata"
+          convertedPackage.license `Assert.shouldEqual` (Utils.fromRight "license" $ License.parse "BSD-3-Clause")
+          convertedPackage.location `Assert.shouldEqual` Git { url: "https://example.com/undefined.git", subdir: Nothing }
+          convertedPackage.locationRef `Assert.shouldEqual` Just "release-1.0.2"
+        Left err -> Assert.fail $ "Failed to convert historical fixture with authoritative manifest: " <> err
+      let mismatchedManifest = Manifest $ manifest { name = packageName "other" }
+      case Convert.fromLegacyPackage (conversionInput { manifest = mismatchedManifest }) legacy of
+        Left err -> shouldContainString err "does not match manifest package other"
+        Right _ -> Assert.fail "Conversion unexpectedly accepted a mismatched manifest"
+      let mismatchedVersion = Manifest $ manifest { version = version "2.0.0" }
+      case Convert.fromLegacyPackage (conversionInput { manifest = mismatchedVersion }) legacy of
+        Left err -> shouldContainString err "does not match manifest version 2.0.0"
+        Right _ -> Assert.fail "Conversion unexpectedly accepted a mismatched manifest version"
       case Convert.fromLegacyPackage (conversionInput { sourcePaths = Map.empty }) legacy of
         Left err -> shouldContainString err "Missing package-relative source path for module Undefined"
         Right _ -> Assert.fail "Conversion unexpectedly accepted a missing module source path"
@@ -128,7 +155,13 @@ main = runSpecAndExitProcess [ consoleReporter ] do
         let reversed = Utils.fromRight "Reversed generation failed" $ Generate.generatePackage generationInput { modules = Array.reverse generationInput.modules }
         Codec.encode Docgen.Codec.docPackage generated `Assert.shouldEqual` Codec.encode Docgen.Codec.docPackage reversed
         case generated of
-          DocPackage { modules: [ DocModule { name: ModuleName "A", reexports: [ DocReexport { moduleName: ModuleName "B", declarations: [ DocDeclaration { sourceSpan: Just (SourceSpan { path: "src/B.purs" }) } ] } ] } ], resolvedModulePackages } -> do
+          DocPackage { dependencies, description, location, locationRef, modules: [ DocModule { name: ModuleName "A", reexports: [ DocReexport { moduleName: ModuleName "B", declarations: [ DocDeclaration { sourceSpan: Just (SourceSpan { path: "src/B.purs" }) } ] } ] } ], name, resolvedModulePackages, version: generatedVersion } -> do
+            dependencies `Assert.shouldEqual` Map.singleton dependency (RawRange ">=2.0.0 <3.0.0")
+            description `Assert.shouldEqual` Just "Example"
+            location `Assert.shouldEqual` Git { url: "https://example.com/repo.git", subdir: Just "packages/example" }
+            locationRef `Assert.shouldEqual` Just "v1.0.0"
+            name `Assert.shouldEqual` packageName "example"
+            generatedVersion `Assert.shouldEqual` version "1.0.0"
             Map.lookup (ModuleName "A") resolvedModulePackages `Assert.shouldEqual` Just (packageName "example")
             Map.lookup (ModuleName "B") resolvedModulePackages `Assert.shouldEqual` Just dependency
           _ -> Assert.fail "Generated package did not preserve deterministic ownership, reexports, and source paths"
@@ -138,7 +171,7 @@ main = runSpecAndExitProcess [ consoleReporter ] do
         case Generate.generatePackage duplicate of
           Left (DuplicateModule (ModuleName "B")) -> pure unit
           _ -> Assert.fail "Generation unexpectedly accepted a duplicate module"
-        let absolute = generationInput { modules = map (\moduleInput -> if moduleInput.package == generationInput.name then moduleInput { sourcePath = "/tmp/A.purs" } else moduleInput) generationInput.modules }
+        let absolute = generationInput { modules = map (\moduleInput -> if moduleInput.package == packageName "example" then moduleInput { sourcePath = "/tmp/A.purs" } else moduleInput) generationInput.modules }
         case Generate.generatePackage absolute of
           Left (InvalidSourcePath (ModuleName "A") "/tmp/A.purs") -> pure unit
           _ -> Assert.fail "Generation unexpectedly accepted an absolute source path"
@@ -438,11 +471,7 @@ legacyValue title signature span = L.Declaration
 generationInput :: Generate.PackageInput
 generationInput =
   { compilerVersion: version "0.15.15"
-  , dependencies: Map.singleton dependency (RawRange ">=2.0.0 <3.0.0")
-  , description: Just "Example"
-  , license: Utils.fromRight "license" $ License.parse "BSD-3-Clause"
-  , location: Git { url: "https://example.com/repo.git", subdir: Just "packages/example" }
-  , locationRef: Nothing
+  , manifest: generationManifest
   , modules:
       [ { docs: legacyModuleWithDeclaration "B" (legacyValue "value" (L.TypeVar "a") (Just sourceSpan))
         , package: dependency
@@ -455,11 +484,37 @@ generationInput =
         , sourcePath: "custom/A.purs"
         }
       ]
-  , name: packageName "example"
   , readme: Just $ Readme { content: "# Example", extension: Just "md" }
   , resolvedDependencies: Map.singleton dependency (version "2.3.4")
   , sourceArtifact: sourceArtifactFixture
+  }
+
+generationManifest :: Manifest
+generationManifest = Manifest
+  { dependencies: Map.singleton dependency (range ">=2.0.0 <3.0.0")
+  , description: Just $ Utils.fromRight "description" $ LimitedString.parse "Example"
+  , excludeFiles: Nothing
+  , includeFiles: Nothing
+  , license: Utils.fromRight "license" $ License.parse "BSD-3-Clause"
+  , location: Git { url: "https://example.com/repo.git", subdir: Just "packages/example" }
+  , name: packageName "example"
+  , owners: Nothing
+  , ref: "v1.0.0"
   , version: version "1.0.0"
+  }
+
+undefinedManifest :: Manifest
+undefinedManifest = Manifest
+  { dependencies: Map.empty
+  , description: Just $ Utils.fromRight "description" $ LimitedString.parse "Package containing the undefined value."
+  , excludeFiles: Nothing
+  , includeFiles: Nothing
+  , license: Utils.fromRight "license" $ License.parse "MIT"
+  , location: GitHub { owner: "bklaric", repo: "purescript-undefined", subdir: Nothing }
+  , name: packageName "undefined"
+  , owners: Nothing
+  , ref: "v1.0.2"
+  , version: version "1.0.2"
   }
 
 package :: DocPackage
@@ -488,6 +543,9 @@ packageName = Utils.fromRight "package name" <<< PackageName.parse
 
 version :: String -> Version
 version = Utils.fromRight "version" <<< Version.parse
+
+range :: String -> Range
+range = Utils.fromRight "range" <<< Range.parse
 
 sourceArtifactFixture :: SourceArtifact
 sourceArtifactFixture = SourceArtifact

@@ -32,6 +32,11 @@ artifact. Pursuit, search, and static rendering consume it; they do not define
 it. This is why `docgen` is a top-level workspace package rather than part of a
 Pursuit application or the public `registry-lib` package.
 
+Package metadata always comes from the canonical `purs.json` stored in the
+registry tarball. Historical Pursuit JSON is used during migration only for
+compiler-produced documentation and resolution data; it is not an alternative
+source for package identity, metadata, dependencies, or source files.
+
 The main modules are:
 
 - `Registry.Docgen.Docs`: the canonical in-memory documentation model.

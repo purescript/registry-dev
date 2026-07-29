@@ -22,14 +22,15 @@ import Data.String as String
 import Data.Tuple (Tuple(..))
 import PureScript.CST.Types as CST
 import Registry.Docgen.Convert as Convert
-import Registry.Docgen.Docs (DocModule(..), DocPackage(..), ModuleName, RawRange, Readme, SourceArtifact, schemaVersion)
+import Registry.Docgen.Docs (DocModule(..), DocPackage(..), ModuleName, RawRange(..), Readme, SourceArtifact, schemaVersion)
 import Registry.Docgen.Legacy.Docs as Legacy
 import Registry.Docgen.Reexports (ReexportError)
 import Registry.Docgen.Reexports as Reexports
-import Registry.License (License)
-import Registry.Location (Location)
+import Registry.LimitedString as LimitedString
+import Registry.Manifest (Manifest(..))
 import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Range as Range
 import Registry.Version (Version)
 import Safe.Coerce (coerce)
 
@@ -42,17 +43,11 @@ type ModuleInput =
 
 type PackageInput =
   { compilerVersion :: Version
-  , dependencies :: Map PackageName RawRange
-  , description :: Maybe String
-  , license :: License
-  , location :: Location
-  , locationRef :: Maybe String
+  , manifest :: Manifest
   , modules :: Array ModuleInput
-  , name :: PackageName
   , readme :: Maybe Readme
   , resolvedDependencies :: Map PackageName Version
   , sourceArtifact :: SourceArtifact
-  , version :: Version
   }
 
 data GenerationError
@@ -79,12 +74,12 @@ printGenerationError = case _ of
     Reexports.printReexportError error
 
 generatePackage :: PackageInput -> Either GenerationError DocPackage
-generatePackage input = do
+generatePackage input@{ manifest: Manifest manifest } = do
   let sortedInputs = Array.sortBy (comparing docsModuleName) input.modules
   _ <- foldM validateModule Set.empty sortedInputs
-  let packageModules = Array.filter (_.package >>> eq input.name) sortedInputs
+  let packageModules = Array.filter (_.package >>> eq manifest.name) sortedInputs
   if Array.null packageModules then
-    Left $ NoPackageModules input.name
+    Left $ NoPackageModules manifest.name
   else do
     let sourcePaths = Map.fromFoldable $ map (\moduleInput -> Tuple (docsModuleName moduleInput) moduleInput.sourcePath) sortedInputs
     let converted = map (Convert.fromLegacyModule sourcePaths <<< _.docs) sortedInputs
@@ -94,17 +89,17 @@ generatePackage input = do
       { schemaVersion
       , compilerVersion: input.compilerVersion
       , sourceArtifact: input.sourceArtifact
-      , dependencies: input.dependencies
-      , description: input.description
-      , license: input.license
-      , location: input.location
-      , locationRef: input.locationRef
-      , modules: Array.filter (\(DocModule { name }) -> Map.lookup name modulePackages == Just input.name) resolved
-      , name: input.name
+      , dependencies: map (RawRange <<< Range.print) manifest.dependencies
+      , description: map LimitedString.print manifest.description
+      , license: manifest.license
+      , location: manifest.location
+      , locationRef: Just manifest.ref
+      , modules: Array.filter (\(DocModule { name }) -> Map.lookup name modulePackages == Just manifest.name) resolved
+      , name: manifest.name
       , readme: input.readme
       , resolvedDependencies: input.resolvedDependencies
       , resolvedModulePackages: modulePackages
-      , version: input.version
+      , version: manifest.version
       }
   where
   validateModule seen moduleInput = do
@@ -116,7 +111,7 @@ generatePackage input = do
       Left $ DuplicateModule docsName
     else if not (isPackageRelativePath moduleInput.sourcePath) then
       Left $ InvalidSourcePath docsName moduleInput.sourcePath
-    else if moduleInput.package /= input.name && not (Map.member moduleInput.package input.resolvedDependencies) then
+    else if moduleInput.package /= manifest.name && not (Map.member moduleInput.package input.resolvedDependencies) then
       Left $ UnknownModulePackage docsName moduleInput.package
     else
       Right $ Set.insert docsName seen

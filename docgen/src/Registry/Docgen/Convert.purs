@@ -15,43 +15,51 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
 import Data.String as String
 import Data.Traversable (traverse)
-import Registry.Docgen.Docs (DataConstructorName(..), DocChildDeclaration(..), DocChildDeclarationInfo(..), DocConstraint(..), DocDeclaration(..), DocDeclarationInfo(..), DocModule(..), DocPackage(..), DocReexport(..), DocType(..), ForallBinding(..), FunDep(..), Ident(..), InfixAlias(..), IntLiteral(..), ModuleName(..), OperatorName(..), Qualified(..), RawRange, Readme, RowLabel(..), RowRep, SourceArtifact, SourceSpan(..), StringLiteral, TypeName(..), TypeVar(..), ValueName(..), isPrim, schemaVersion)
+import Registry.Docgen.Docs (DataConstructorName(..), DocChildDeclaration(..), DocChildDeclarationInfo(..), DocConstraint(..), DocDeclaration(..), DocDeclarationInfo(..), DocModule(..), DocPackage(..), DocReexport(..), DocType(..), ForallBinding(..), FunDep(..), Ident(..), InfixAlias(..), IntLiteral(..), ModuleName(..), OperatorName(..), Qualified(..), RawRange(..), Readme, RowLabel(..), RowRep, SourceArtifact, SourceSpan(..), StringLiteral, TypeName(..), TypeVar(..), ValueName(..), isPrim, schemaVersion)
 import Registry.Docgen.Legacy.Docs (InPackage(..))
 import Registry.Docgen.Legacy.Docs as L
-import Registry.Location (Location(..))
-import Registry.PackageName (PackageName)
+import Registry.LimitedString as LimitedString
+import Registry.Manifest (Manifest(..))
+import Registry.PackageName as PackageName
+import Registry.Range as Range
 import Registry.Version as Version
 import Safe.Coerce (coerce)
 
--- | Convert historical Pursuit documentation while taking declared dependency
--- | ranges from the authoritative registry manifest.
+-- | Convert historical Pursuit documentation while taking all package metadata
+-- | from the authoritative registry manifest.
 fromLegacyPackage
-  :: { dependencies :: Map PackageName RawRange
+  :: { manifest :: Manifest
      , readme :: Maybe Readme
      , sourceArtifact :: SourceArtifact
      , sourcePaths :: Map ModuleName String
      }
   -> L.DocPackage
   -> Either String DocPackage
-fromLegacyPackage input (L.DocPackage pkg@{ github: L.GithubData github, packageMeta: L.DocPackageMeta meta }) = do
-  compilerVersion <- Version.parse pkg.compilerVersion
-  modules <- traverse convertModule pkg.modules
-  pure $ DocPackage
-    { schemaVersion
-    , compilerVersion
-    , sourceArtifact: input.sourceArtifact
-    , dependencies: input.dependencies
-    , description: meta.description
-    , license: meta.license
-    , location
-    , locationRef: Just pkg.versionTag
-    , name: coerce meta.name
-    , modules
-    , readme: input.readme
-    , resolvedDependencies: pkg.resolvedDependencies
-    , resolvedModulePackages: pkg.moduleMap
-    , version: pkg.version
-    }
+fromLegacyPackage input (L.DocPackage pkg@{ packageMeta: L.DocPackageMeta meta }) = do
+  let Manifest manifest = input.manifest
+  if meta.name /= manifest.name then
+    Left $ "Legacy documentation package " <> PackageName.print meta.name <> " does not match manifest package " <> PackageName.print manifest.name
+  else if pkg.version /= manifest.version then
+    Left $ "Legacy documentation version " <> Version.print pkg.version <> " does not match manifest version " <> Version.print manifest.version
+  else do
+    compilerVersion <- Version.parse pkg.compilerVersion
+    modules <- traverse convertModule pkg.modules
+    pure $ DocPackage
+      { schemaVersion
+      , compilerVersion
+      , sourceArtifact: input.sourceArtifact
+      , dependencies: map (RawRange <<< Range.print) manifest.dependencies
+      , description: map LimitedString.print manifest.description
+      , license: manifest.license
+      , location: manifest.location
+      , locationRef: Just manifest.ref
+      , name: manifest.name
+      , modules
+      , readme: input.readme
+      , resolvedDependencies: pkg.resolvedDependencies
+      , resolvedModulePackages: pkg.moduleMap
+      , version: manifest.version
+      }
   where
   convertModule legacy@(L.DocModule { name })
     | isPrim name = Right $ fromLegacyModule sourcePaths legacy
@@ -60,13 +68,6 @@ fromLegacyPackage input (L.DocPackage pkg@{ github: L.GithubData github, package
         Just _ -> Right $ fromLegacyModule sourcePaths legacy
 
   sourcePaths = input.sourcePaths
-
-  location :: Location
-  location = GitHub
-    { owner: github.user
-    , repo: github.repo
-    , subdir: Nothing
-    }
 
 fromLegacyModule :: Map ModuleName String -> L.DocModule -> DocModule
 fromLegacyModule sourcePaths (L.DocModule mod@{ name: ownerModule }) =
