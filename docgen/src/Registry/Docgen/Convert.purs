@@ -15,29 +15,39 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
 import Data.String as String
 import Data.Traversable (traverse)
-import Registry.Docgen.Docs (DataConstructorName(..), DocChildDeclaration(..), DocChildDeclarationInfo(..), DocConstraint(..), DocDeclaration(..), DocDeclarationInfo(..), DocModule(..), DocPackage(..), DocReexport(..), DocType(..), ForallBinding(..), FunDep(..), Ident(..), InfixAlias(..), IntLiteral(..), ModuleName(..), OperatorName(..), Qualified(..), Readme, RowLabel(..), RowRep, SourceArtifact, SourceSpan(..), StringLiteral, TypeName(..), TypeVar(..), ValueName(..), isPrim, schemaVersion)
+import Registry.Docgen.Docs (DataConstructorName(..), DocChildDeclaration(..), DocChildDeclarationInfo(..), DocConstraint(..), DocDeclaration(..), DocDeclarationInfo(..), DocModule(..), DocPackage(..), DocReexport(..), DocType(..), ForallBinding(..), FunDep(..), Ident(..), InfixAlias(..), IntLiteral(..), ModuleName(..), OperatorName(..), Qualified(..), RawRange, Readme, RowLabel(..), RowRep, SourceArtifact, SourceSpan(..), StringLiteral, TypeName(..), TypeVar(..), ValueName(..), isPrim, schemaVersion)
 import Registry.Docgen.Legacy.Docs (InPackage(..))
 import Registry.Docgen.Legacy.Docs as L
 import Registry.Location (Location(..))
+import Registry.PackageName (PackageName)
 import Registry.Version as Version
 import Safe.Coerce (coerce)
 
-fromLegacyPackage :: Map ModuleName String -> SourceArtifact -> Maybe Readme -> L.DocPackage -> Either String DocPackage
-fromLegacyPackage sourcePaths sourceArtifact readme (L.DocPackage pkg@{ github: L.GithubData github, packageMeta: L.DocPackageMeta meta }) = do
+-- | Convert historical Pursuit documentation while taking declared dependency
+-- | ranges from the authoritative registry manifest.
+fromLegacyPackage
+  :: { dependencies :: Map PackageName RawRange
+     , readme :: Maybe Readme
+     , sourceArtifact :: SourceArtifact
+     , sourcePaths :: Map ModuleName String
+     }
+  -> L.DocPackage
+  -> Either String DocPackage
+fromLegacyPackage input (L.DocPackage pkg@{ github: L.GithubData github, packageMeta: L.DocPackageMeta meta }) = do
   compilerVersion <- Version.parse pkg.compilerVersion
   modules <- traverse convertModule pkg.modules
   pure $ DocPackage
     { schemaVersion
     , compilerVersion
-    , sourceArtifact
-    , dependencies: meta.dependencies
+    , sourceArtifact: input.sourceArtifact
+    , dependencies: input.dependencies
     , description: meta.description
     , license: meta.license
     , location
     , locationRef: Just pkg.versionTag
     , name: coerce meta.name
     , modules
-    , readme
+    , readme: input.readme
     , resolvedDependencies: pkg.resolvedDependencies
     , resolvedModulePackages: pkg.moduleMap
     , version: pkg.version
@@ -48,6 +58,8 @@ fromLegacyPackage sourcePaths sourceArtifact readme (L.DocPackage pkg@{ github: 
     | otherwise = case Map.lookup name sourcePaths of
         Nothing -> Left $ "Missing package-relative source path for module " <> unwrap name
         Just _ -> Right $ fromLegacyModule sourcePaths legacy
+
+  sourcePaths = input.sourcePaths
 
   location :: Location
   location = GitHub

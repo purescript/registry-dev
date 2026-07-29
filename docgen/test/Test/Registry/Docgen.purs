@@ -80,7 +80,14 @@ main = runSpecAndExitProcess [ consoleReporter ] do
       let json = Utils.fromRight "Failed to parse historical fixture" $ JSON.parse historicalPackage
       let legacy = Utils.fromRight "Failed to decode historical fixture" $ Legacy.JSON.decodeDocPackage json
       let readme = Readme { content: "# Undefined", extension: Just "md" }
-      let converted = Utils.fromRight "Failed to convert historical fixture" $ Convert.fromLegacyPackage (Map.singleton (ModuleName "Undefined") "custom/Undefined.purs") sourceArtifactFixture (Just readme) legacy
+      let
+        conversionInput =
+          { dependencies: Map.empty
+          , readme: Just readme
+          , sourceArtifact: sourceArtifactFixture
+          , sourcePaths: Map.singleton (ModuleName "Undefined") "custom/Undefined.purs"
+          }
+      let converted = Utils.fromRight "Failed to convert historical fixture" $ Convert.fromLegacyPackage conversionInput legacy
       goldenSource <- FS.Aff.readTextFile UTF8 "docgen/fixtures/undefined-1.0.2.json"
       let golden = Utils.fromRight "Failed to parse canonical golden fixture" $ JSON.parse goldenSource
       Codec.encode Docgen.Codec.docPackage converted `Assert.shouldEqual` golden
@@ -92,7 +99,11 @@ main = runSpecAndExitProcess [ consoleReporter ] do
           span.path `Assert.shouldEqual` "custom/Undefined.purs"
         _ ->
           Assert.fail "Expected one converted declaration with a source span"
-      case Convert.fromLegacyPackage Map.empty sourceArtifactFixture (Just readme) legacy of
+      let manifestDependencies = Map.singleton (packageName "prelude") (RawRange ">=4.0.0 <5.0.0")
+      case Convert.fromLegacyPackage (conversionInput { dependencies = manifestDependencies }) legacy of
+        Right (DocPackage { dependencies }) -> dependencies `Assert.shouldEqual` manifestDependencies
+        Left err -> Assert.fail $ "Failed to convert historical fixture with manifest dependencies: " <> err
+      case Convert.fromLegacyPackage (conversionInput { sourcePaths = Map.empty }) legacy of
         Left err -> shouldContainString err "Missing package-relative source path for module Undefined"
         Right _ -> Assert.fail "Conversion unexpectedly accepted a missing module source path"
 
