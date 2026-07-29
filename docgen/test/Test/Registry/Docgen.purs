@@ -28,7 +28,7 @@ import Registry.Docgen.Generate as Generate
 import Registry.Docgen.HTML as H
 import Registry.Docgen.Legacy.Docs as L
 import Registry.Docgen.Legacy.JSON as Legacy.JSON
-import Registry.Docgen.Package.Render (defaultPackageLinker, htmlCodeRenderer, renderDeclarationInfo, renderDocument)
+import Registry.Docgen.Package.Render (defaultPackageLinker, htmlCodeRenderer, renderDeclarationInfo, renderDocument, renderModule)
 import Registry.Docgen.Reexports (ReexportError(..), modulesWithReexports, printReexportError)
 import Registry.License as License
 import Registry.Location (Location(..))
@@ -212,6 +212,11 @@ main = runSpecAndExitProcess [ consoleReporter ] do
         { href: "https://www.purescript.org/registry-package-viewer/#/dependency/2.3.4/custom/Dependency.purs#4-8"
         , title: "dependency@2.3.4/custom/Dependency.purs"
         }
+
+    Spec.it "links module pages back to their exact owning package" do
+      let linker = defaultPackageLinker package
+      let rendered = unwrap $ renderModule linker package (emptyModule "Main")
+      shouldContainString rendered "<a href=\"/packages/example/1.0.0\" title=\"example@1.0.0\">example</a>"
 
     Spec.it "renders foreign data, escapes HTML, and sanitizes unsafe Markdown" do
       let code = htmlCodeRenderer (defaultPackageLinker package) (ModuleName "Main")

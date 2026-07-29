@@ -288,7 +288,14 @@ renderModule
     , main: fold
         [ groupedList
             [ Tuple (H.text "Package")
-                [ H.text $ PackageName.print packageName ]
+                [ do
+                    let { href, title } = linker.getPackageLink packageName
+                    H.a
+                      [ H.href href
+                      , H.title title
+                      ]
+                      [ H.text $ PackageName.print packageName ]
+                ]
             , Tuple (H.text "Repository")
                 [ renderRepository location ]
             ]
