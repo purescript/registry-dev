@@ -15,12 +15,15 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
 import Data.String as String
 import Data.Traversable (traverse)
+import Data.Tuple (Tuple(..))
 import Registry.Docgen.Docs (DataConstructorName(..), DocChildDeclaration(..), DocChildDeclarationInfo(..), DocConstraint(..), DocDeclaration(..), DocDeclarationInfo(..), DocModule(..), DocPackage(..), DocReexport(..), DocType(..), ForallBinding(..), FunDep(..), Ident(..), InfixAlias(..), IntLiteral(..), ModuleName(..), OperatorName(..), Qualified(..), RawRange(..), Readme, RowLabel(..), RowRep, SourceArtifact, SourceSpan(..), StringLiteral, TypeName(..), TypeVar(..), ValueName(..), isPrim, schemaVersion)
 import Registry.Docgen.Legacy.Docs (InPackage(..))
 import Registry.Docgen.Legacy.Docs as L
 import Registry.LimitedString as LimitedString
 import Registry.Manifest (Manifest(..))
+import Registry.PackageName (PackageName)
 import Registry.PackageName as PackageName
+import Registry.Range (Range)
 import Registry.Range as Range
 import Registry.Version as Version
 import Safe.Coerce (coerce)
@@ -35,13 +38,14 @@ fromLegacyPackage
      }
   -> L.DocPackage
   -> Either String DocPackage
-fromLegacyPackage input (L.DocPackage pkg@{ packageMeta: L.DocPackageMeta meta }) = do
-  let Manifest manifest = input.manifest
+fromLegacyPackage input@{ manifest: Manifest manifest } (L.DocPackage pkg@{ packageMeta: L.DocPackageMeta meta }) = do
   if meta.name /= manifest.name then
     Left $ "Legacy documentation package " <> PackageName.print meta.name <> " does not match manifest package " <> PackageName.print manifest.name
   else if pkg.version /= manifest.version then
     Left $ "Legacy documentation version " <> Version.print pkg.version <> " does not match manifest version " <> Version.print manifest.version
   else do
+    _ <- traverse validateDependency (Map.toUnfoldable manifest.dependencies :: Array (Tuple PackageName Range))
+    _ <- traverse validateModuleOwner (Map.toUnfoldable pkg.moduleMap :: Array (Tuple ModuleName PackageName))
     compilerVersion <- Version.parse pkg.compilerVersion
     modules <- traverse convertModule pkg.modules
     pure $ DocPackage
@@ -61,6 +65,18 @@ fromLegacyPackage input (L.DocPackage pkg@{ packageMeta: L.DocPackageMeta meta }
       , version: manifest.version
       }
   where
+  validateDependency (Tuple dependency range) = case Map.lookup dependency pkg.resolvedDependencies of
+    Nothing ->
+      Left $ "Legacy documentation is missing an exact resolution for manifest dependency " <> PackageName.print dependency
+    Just resolved | not (Range.includes range resolved) ->
+      Left $ "Legacy documentation resolves " <> PackageName.print dependency <> "@" <> Version.print resolved <> " outside manifest range " <> Range.print range
+    Just _ ->
+      Right unit
+
+  validateModuleOwner (Tuple moduleName owner)
+    | owner == manifest.name || Map.member owner pkg.resolvedDependencies = Right unit
+    | otherwise = Left $ "Legacy documentation attributes module " <> unwrap moduleName <> " to unresolved package " <> PackageName.print owner
+
   convertModule legacy@(L.DocModule { name })
     | isPrim name = Right $ fromLegacyModule sourcePaths legacy
     | otherwise = case Map.lookup name sourcePaths of

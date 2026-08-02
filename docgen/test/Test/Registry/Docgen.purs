@@ -106,6 +106,7 @@ main = runSpecAndExitProcess [ consoleReporter ] do
       let Manifest manifest = undefinedManifest
       let canonicalDescription = Utils.fromRight "description" $ LimitedString.parse "Canonical package metadata"
       let manifestDependencies = Map.singleton (packageName "prelude") (range ">=4.0.0 <5.0.0")
+      let L.DocPackage legacyPackage = legacy
       let
         authoritativeManifest = Manifest $ manifest
           { dependencies = manifestDependencies
@@ -114,7 +115,8 @@ main = runSpecAndExitProcess [ consoleReporter ] do
           , location = Git { url: "https://example.com/undefined.git", subdir: Nothing }
           , ref = "release-1.0.2"
           }
-      case Convert.fromLegacyPackage (conversionInput { manifest = authoritativeManifest }) legacy of
+      let legacyWithResolution = L.DocPackage $ legacyPackage { resolvedDependencies = Map.singleton (packageName "prelude") (version "4.1.0") }
+      case Convert.fromLegacyPackage (conversionInput { manifest = authoritativeManifest }) legacyWithResolution of
         Right (DocPackage convertedPackage) -> do
           convertedPackage.dependencies `Assert.shouldEqual` Map.singleton (packageName "prelude") (RawRange ">=4.0.0 <5.0.0")
           convertedPackage.description `Assert.shouldEqual` Just "Canonical package metadata"
@@ -122,6 +124,17 @@ main = runSpecAndExitProcess [ consoleReporter ] do
           convertedPackage.location `Assert.shouldEqual` Git { url: "https://example.com/undefined.git", subdir: Nothing }
           convertedPackage.locationRef `Assert.shouldEqual` Just "release-1.0.2"
         Left err -> Assert.fail $ "Failed to convert historical fixture with authoritative manifest: " <> err
+      case Convert.fromLegacyPackage (conversionInput { manifest = authoritativeManifest }) legacy of
+        Left err -> shouldContainString err "missing an exact resolution for manifest dependency prelude"
+        Right _ -> Assert.fail "Conversion unexpectedly accepted a missing direct resolution"
+      let outOfRange = L.DocPackage $ legacyPackage { resolvedDependencies = Map.singleton (packageName "prelude") (version "3.0.0") }
+      case Convert.fromLegacyPackage (conversionInput { manifest = authoritativeManifest }) outOfRange of
+        Left err -> shouldContainString err "prelude@3.0.0 outside manifest range >=4.0.0 <5.0.0"
+        Right _ -> Assert.fail "Conversion unexpectedly accepted an out-of-range direct resolution"
+      let unknownOwner = L.DocPackage $ legacyPackage { moduleMap = Map.singleton (ModuleName "Dependency") (packageName "other") }
+      case Convert.fromLegacyPackage conversionInput unknownOwner of
+        Left err -> shouldContainString err "module Dependency to unresolved package other"
+        Right _ -> Assert.fail "Conversion unexpectedly accepted an unresolved module owner"
       let mismatchedManifest = Manifest $ manifest { name = packageName "other" }
       case Convert.fromLegacyPackage (conversionInput { manifest = mismatchedManifest }) legacy of
         Left err -> shouldContainString err "does not match manifest package other"

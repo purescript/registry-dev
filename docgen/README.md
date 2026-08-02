@@ -36,6 +36,9 @@ Package metadata always comes from the canonical `purs.json` stored in the
 registry tarball. Historical Pursuit JSON is used during migration only for
 compiler-produced documentation and resolution data; it is not an alternative
 source for package identity, metadata, dependencies, or source files.
+Migration accepts its exact resolutions and module ownership only when they are
+consistent with the canonical manifest; inconsistent artifacts must be
+regenerated through the registry documentation pipeline.
 
 The main modules are:
 
