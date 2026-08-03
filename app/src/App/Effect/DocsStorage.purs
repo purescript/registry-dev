@@ -20,8 +20,11 @@ module Registry.App.Effect.DocsStorage
 import Registry.App.Prelude
 
 import Codec.JSON.DecodeError as DecodeError
+import Control.Monad.Except (runExcept)
 import Data.Array as Array
 import Effect.Aff as Aff
+import Foreign (readString, unsafeToForeign)
+import Foreign.Index (readProp)
 import Node.Buffer as Buffer
 import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
@@ -42,7 +45,6 @@ import Run (AFF, EFFECT, Run)
 import Run as Run
 import Run.Except (EXCEPT)
 import Run.Except as Except
-import Unsafe.Coerce (unsafeCoerce)
 
 data DocsStorage a
   = Upload DocPackage (Either String Unit -> a)
@@ -87,7 +89,7 @@ handleFs root = case _ of
     result <- writeDocsFile FS.Aff.link path docs
     pure $ reply case result of
       Left error
-        | nodeErrorCode error == "EEXIST" ->
+        | nodeErrorCode error == Just "EEXIST" ->
             Left $ "Documentation for " <> formatPackageVersion name version <> " already exists."
       other -> lmap Aff.message other
 
@@ -121,8 +123,8 @@ handleFs root = case _ of
       writeJsonFile Docgen.Codec.docPackage tempPath docs
       install tempPath path
 
-  nodeErrorCode :: Aff.Error -> String
-  nodeErrorCode error = (unsafeCoerce error :: { code :: String }).code
+  nodeErrorCode :: Aff.Error -> Maybe String
+  nodeErrorCode error = hush $ runExcept $ readProp "code" (unsafeToForeign error) >>= readString
 
 type S3Env =
   { bucket :: String

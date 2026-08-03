@@ -252,6 +252,14 @@ main = runSpecAndExitProcess [ consoleReporter ] do
           Left err -> Assert.fail $ "Unexpected re-export error: " <> printReexportError err
           Right _ -> Assert.fail "Missing source header unexpectedly resolved"
 
+      Spec.it "reports transitive re-exports blocked by missing documentation" do
+        let sources = map parseHeader [ directReexport "A" "B", directReexport "B" "Missing" ]
+        case modulesWithReexports [ emptyModule "A", emptyModule "B" ] sources of
+          Left err@(TransitivelyBlocked (ModuleName "A") (ModuleName "B") (MissingDocsTarget (ModuleName "B") (ModuleName "Missing"))) ->
+            printReexportError err `Assert.shouldEqual` "Module A is blocked by reexport B: Module B reexports missing documentation module Missing"
+          Left err -> Assert.fail $ "Unexpected re-export error: " <> printReexportError err
+          Right _ -> Assert.fail "Transitively blocked re-export unexpectedly resolved"
+
       Spec.it "reports the complete cycle chain" do
         let sources = map parseHeader [ directReexport "A" "B", directReexport "B" "A" ]
         case modulesWithReexports [ emptyModule "A", emptyModule "B" ] sources of

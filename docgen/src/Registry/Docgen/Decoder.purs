@@ -119,7 +119,7 @@ guardLength n = Star \arr ->
   if Array.length arr == n then
     pure unit
   else
-    throwError $ DecodeError.basic $ "Exected Array of length " <> show n
+    throwError $ DecodeError.basic $ "Expected Array of length " <> show n
 
 decodeString :: Decoder JSON String
 decodeString = Star \json ->
