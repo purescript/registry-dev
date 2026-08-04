@@ -65,6 +65,12 @@ let
     render-docs = {
       module = "Registry.Scripts.RenderDocs";
       description = "Render canonical package documentation to HTML";
+      extraInstall = ''
+        mkdir -p $out/share/registry-docgen-assets
+        cp -r ${../docgen/assets}/. $out/share/registry-docgen-assets/
+        wrapProgram $out/bin/registry-render-docs \
+          --set REGISTRY_DOCGEN_ASSETS $out/share/registry-docgen-assets
+      '';
     };
     verify-integrity = {
       module = "Registry.Scripts.VerifyIntegrity";
@@ -263,6 +269,7 @@ in
       description = info.description;
       src = ../scripts/src;
       spagoLock = final.registry-spago-lock;
+      extraInstall = info.extraInstall or "";
     }) { }
   )
 ) scripts

@@ -42,6 +42,21 @@ type PackageLinker =
   , getSourceLink :: { moduleName :: ModuleName, sourceSpan :: SourceSpan } -> Link
   }
 
+type DocumentAssets =
+  { extraStylesheet :: String
+  , fontStylesheet :: Maybe String
+  , normalizeStylesheet :: String
+  , pursuitStylesheet :: String
+  }
+
+vendoredDocumentAssets :: DocumentAssets
+vendoredDocumentAssets =
+  { extraStylesheet: "/static/css/extra.css"
+  , fontStylesheet: Just "https://fonts.googleapis.com/css?family=Roboto+Mono|Roboto:300,400,400i,700,700i"
+  , normalizeStylesheet: "/static/css/normalize.css"
+  , pursuitStylesheet: "/static/css/pursuit.css"
+  }
+
 type RenderedDeclInfo =
   { anchorId :: String
   , content :: HTML
@@ -201,37 +216,27 @@ htmlCodeRenderer { getRefLink } currentModule =
   isIdent =
     Regex.test $ unsafeRegex "^[a-z_][a-zA-Z0-9_']*" noFlags
 
-renderDocument :: { body :: HTML, title :: String } -> HTML
-renderDocument { body, title } =
+renderDocument :: DocumentAssets -> { body :: HTML, title :: String } -> HTML
+renderDocument assets { body, title } =
   H.doctype <>
     H.html [ H.lang "en" ]
       [ H.head
           [ H.meta [ H.attr "charset" "utf-8" ]
           , H.htmlTitle
               [ H.text title ]
-          , H.link
-              [ H.href "https://fonts.googleapis.com/css?family=Roboto+Mono|Roboto:300,400,400i,700,700i"
-              , H.type_ "text/css"
-              , H.rel "stylesheet"
-              ]
-          , H.link
-              [ H.href "https://pursuit.purescript.org/static/res/css/normalize.css?etag=fKzu1nci"
-              , H.type_ "text/css"
-              , H.rel "stylesheet"
-              ]
-          , H.link
-              [ H.href "https://pursuit.purescript.org/static/res/css/pursuit.css?etag=5eIKlitR"
-              , H.type_ "text/css"
-              , H.rel "stylesheet"
-              ]
-          , H.link
-              [ H.href "https://pursuit.purescript.org/static/res/css/extra.css?etag=d4aey1o-"
-              , H.type_ "text/css"
-              , H.rel "stylesheet"
-              ]
+          , foldMap stylesheet assets.fontStylesheet
+          , stylesheet assets.normalizeStylesheet
+          , stylesheet assets.pursuitStylesheet
+          , stylesheet assets.extraStylesheet
           ]
       , H.body [] [ body ]
       ]
+  where
+  stylesheet href = H.link
+    [ H.href href
+    , H.type_ "text/css"
+    , H.rel "stylesheet"
+    ]
 
 renderContainer :: { anchorId :: String, content :: HTML } -> HTML
 renderContainer { anchorId, content } =

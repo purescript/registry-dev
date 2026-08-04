@@ -42,13 +42,20 @@ renderDocs input output = do
     Left error -> Aff.throwError $ Aff.error $ "Could not decode " <> input <> ": " <> error
     Right value -> pure value
 
+  assetsPath <- fromMaybe "docgen/assets" <$> liftEffect (Process.lookupEnv "REGISTRY_DOCGEN_ASSETS")
+  FS.Extra.copy
+    { from: assetsPath
+    , preserveTimestamps: true
+    , to: Path.concat [ output, "static" ]
+    }
+
   let packagePath = Path.concat [ output, "packages", PackageName.print name, Version.print version ]
   FS.Extra.ensureDirectory packagePath
 
   let linker = Render.defaultPackageLinker docs
   let packageTitle = PackageName.print name <> "@" <> Version.print version
   writePage (Path.concat [ packagePath, "index.html" ])
-    $ Render.renderDocument
+    $ Render.renderDocument Render.vendoredDocumentAssets
         { body: Render.renderContainer
             { anchorId: packageTitle
             , content: Render.renderPackageIndex linker docs
@@ -60,7 +67,7 @@ renderDocs input output = do
     let modulePath = Path.concat [ packagePath, "docs", unwrap moduleName ]
     FS.Extra.ensureDirectory modulePath
     writePage (Path.concat [ modulePath, "index.html" ])
-      $ Render.renderDocument
+      $ Render.renderDocument Render.vendoredDocumentAssets
           { body: Render.renderContainer
               { anchorId: unwrap moduleName
               , content: Render.renderModule linker docs module_

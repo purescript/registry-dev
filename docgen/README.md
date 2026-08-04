@@ -54,6 +54,11 @@ The main modules are:
   source headers.
 - `Registry.Docgen.Package.Render`: package and module HTML rendering.
 
+The Pursuit stylesheets used by the renderer are preserved in `assets/css`.
+Rendered documents receive their asset URLs explicitly, so a Pursuit server or
+another consumer can serve the vendored files from its own static asset path.
+The `render-docs` script copies them to `/static/css` in its output directory.
+
 Filesystem access, compiler invocation, source archive handling, README
 acquisition, object storage, and executable migration tools belong in `app` or
 `scripts`. The `docgen` package should remain deterministic for the same

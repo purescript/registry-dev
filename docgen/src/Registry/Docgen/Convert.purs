@@ -342,6 +342,12 @@ derive instance Ord TypePrec
 
 precOfType :: DocType -> TypePrec
 precOfType = case _ of
+  TypeWildcard -> PrecAtom
+  TypeIdent _ -> PrecAtom
+  TypeString _ -> PrecAtom
+  TypeInt _ -> PrecAtom
+  TypeConstructor _ -> PrecAtom
+  TypeOperator _ -> PrecAtom
   TypeApp _ -> PrecApp
   TypeKindApp _ -> PrecApp
   TypeInfixApp _ -> PrecInfix
@@ -349,7 +355,9 @@ precOfType = case _ of
   TypeConstrained _ -> PrecArrow
   TypeFunction _ -> PrecArrow
   TypeKindSignature _ -> PrecKinded
-  _ -> PrecAtom
+  TypeRecord _ -> PrecAtom
+  TypeRow _ -> PrecAtom
+  TypeParens _ -> PrecAtom
 
 isFunction :: L.DocType -> Maybe L.DocType
 isFunction = case _ of

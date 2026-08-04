@@ -29,6 +29,7 @@ import Registry.Docgen.HTML as H
 import Registry.Docgen.Legacy.Docs as L
 import Registry.Docgen.Legacy.JSON as Legacy.JSON
 import Registry.Docgen.Package.Render (defaultPackageLinker, htmlCodeRenderer, renderDeclarationInfo, renderDocument, renderModule)
+import Registry.Docgen.Package.Render.Code as Render.Code
 import Registry.Docgen.Reexports (ReexportError(..), modulesWithReexports, printReexportError)
 import Registry.License as License
 import Registry.LimitedString as LimitedString
@@ -79,6 +80,12 @@ main = runSpecAndExitProcess [ consoleReporter ] do
       case Convert.fromLegacyModule Map.empty (legacyModuleWithDeclaration "A" (legacyValue "x" (L.KindApp (L.TypeVar "f") (L.TypeVar "k")) Nothing)) of
         DocModule { declarations: [ DocDeclaration { info: DeclValue { signature: TypeKindApp { function: TypeIdent (Ident "f"), arg: TypeIdent (Ident "k") } } } ] } -> pure unit
         _ -> Assert.fail "Legacy kind application was not preserved"
+
+    Spec.it "parenthesizes converted function and kind signatures used as type arguments" do
+      let functionArgument = L.TypeApp (L.TypeVar "f") (legacyFunction (L.TypeVar "a") (L.TypeVar "b"))
+      let kindArgument = L.TypeApp (L.TypeVar "f") (L.KindedType (L.TypeVar "a") primType)
+      renderLegacyType functionArgument `Assert.shouldEqual` Just "f (a -> b)"
+      renderLegacyType kindArgument `Assert.shouldEqual` Just "f (a :: Type)"
 
     Spec.it "converts historical Pursuit JSON using explicit package-relative source paths" do
       let json = Utils.fromRight "Failed to parse historical fixture" $ JSON.parse historicalPackage
@@ -294,10 +301,19 @@ main = runSpecAndExitProcess [ consoleReporter ] do
       String.contains (String.Pattern "javascript:") markdown `Assert.shouldEqual` false
 
     Spec.it "renders complete UTF-8 HTML documents" do
-      let rendered = unwrap $ renderDocument { body: H.text "Documentation", title: "Example" }
+      let
+        assets =
+          { extraStylesheet: "/assets/extra.css"
+          , fontStylesheet: Nothing
+          , normalizeStylesheet: "/assets/normalize.css"
+          , pursuitStylesheet: "/assets/pursuit.css"
+          }
+      let rendered = unwrap $ renderDocument assets { body: H.text "Documentation", title: "Example" }
       String.indexOf (String.Pattern "<!DOCTYPE html>\n<html lang=\"en\">") rendered `Assert.shouldEqual` Just 0
       shouldContainString rendered "<meta charset=\"utf-8\" />"
       shouldContainString rendered "<title>Example</title>"
+      shouldContainString rendered "href=\"/assets/pursuit.css\""
+      String.contains (String.Pattern "fonts.googleapis.com") rendered `Assert.shouldEqual` false
 
 shouldContainString :: String -> String -> Aff Unit
 shouldContainString actual expected = String.contains (String.Pattern expected) actual `Assert.shouldEqual` true
@@ -487,6 +503,32 @@ legacyValue title signature span = L.Declaration
   , kindInfo: Nothing
   , sourceSpan: span
   , title
+  }
+
+legacyFunction :: L.DocType -> L.DocType -> L.DocType
+legacyFunction arg result = L.TypeApp
+  (L.TypeApp (L.TypeConstructor (L.Qualified (L.ByModuleName (ModuleName "Prim")) (TypeName "Function"))) arg)
+  result
+
+primType :: L.DocType
+primType = L.TypeConstructor (L.Qualified (L.ByModuleName (ModuleName "Prim")) (TypeName "Type"))
+
+renderLegacyType :: L.DocType -> Maybe String
+renderLegacyType ty = case Convert.fromLegacyModule Map.empty (legacyModuleWithDeclaration "A" (legacyValue "x" ty Nothing)) of
+  DocModule { declarations: [ DocDeclaration { info: DeclValue { signature } } ] } ->
+    Just $ Render.Code.renderType plainCodeRenderer signature
+  _ ->
+    Nothing
+
+plainCodeRenderer :: Render.Code.CodeRenderer String
+plainCodeRenderer =
+  { keyword: identity
+  , label: identity
+  , line: \_ content -> content
+  , reference: \_ ref -> ref
+  , role: identity
+  , space: " "
+  , syntax: identity
   }
 
 generationInput :: Generate.PackageInput
