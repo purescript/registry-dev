@@ -287,9 +287,6 @@ handlePackageSetsMock = case _ of
   -- FIXME: Actually reply with a package set with a pure upgrade
   UpgradeAtomic _packageSet _compilerVersion _changeSet reply -> do
     pure $ reply $ Right $ Left ""
-  -- FIXME: Actually reply with a package sequential upgrade result
-  UpgradeSequential packageSet _compilerVersion changeSet reply ->
-    pure $ reply $ Right $ Just { failed: changeSet, succeeded: changeSet, result: packageSet }
 
 type StorageMockEnv =
   { storage :: FilePath

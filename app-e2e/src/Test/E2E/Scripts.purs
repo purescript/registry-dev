@@ -20,7 +20,10 @@ import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage as Storage
+import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
 import Registry.Location (Location(..))
 import Registry.Operation (AuthenticatedPackageOperation(..))
@@ -140,19 +143,20 @@ spec = do
       jobs <- Client.getJobs
       let packageSetJobs = Array.filter isPackageSetJob jobs
       case Array.head packageSetJobs of
-        Just (PackageSetJob { payload }) ->
-          case payload of
-            Operation.PackageSetUpdate { packages } ->
-              case Map.lookup typeEqualityName packages of
-                Just (Just _) -> pure unit
-                _ -> Assert.fail "Expected type-equality in package set update"
+        Just (PackageSetJob { payload }) -> do
+          let Operation.PackageSetUpdate { packages } = payload
+          case Map.lookup typeEqualityName packages of
+            Just (Just _) -> pure unit
+            _ -> Assert.fail "Expected type-equality in package set update"
         Just _ -> Assert.fail "Expected PackageSetJob but got different job type"
         Nothing -> Assert.fail "Expected package set job to be enqueued"
 
 -- | Common environment for running read-only registry scripts in E2E tests
 type RegistryScriptSetup =
-  { resourceEnv :: Env.ResourceEnv
+  { cache :: FilePath
+  , resourceEnv :: Env.ResourceEnv
   , registryEnv :: Registry.RegistryEnv
+  , workdir :: FilePath
   }
 
 type GitHubScriptSetup =
@@ -171,6 +175,9 @@ setupRegistryScript = do
   resourceEnv <- liftEffect Env.lookupResourceEnv
   registryCacheRef <- liftAff Cache.newCacheRef
   debouncer <- liftAff Registry.newDebouncer
+  let workdir = Path.concat [ stateDir, "scratch" ]
+  let cache = Path.concat [ workdir, ".cache" ]
+  liftAff $ FS.Extra.ensureDirectory cache
   let
     registryEnv :: Registry.RegistryEnv
     registryEnv =
@@ -178,11 +185,11 @@ setupRegistryScript = do
       , pull: Git.Autostash
       , write: Registry.ReadOnly
       , repos: Registry.defaultRepos
-      , workdir: Path.concat [ stateDir, "scratch" ]
+      , workdir
       , debouncer
       , cacheRef: registryCacheRef
       }
-  pure { resourceEnv, registryEnv }
+  pure { cache, resourceEnv, registryEnv, workdir }
 
 setupGitHubScript :: E2E GitHubScriptSetup
 setupGitHubScript = do
@@ -229,12 +236,15 @@ runPackageTransferrerScript = do
 -- | Run the PackageSetUpdater script in Submit mode
 runPackageSetUpdaterScript :: E2E Unit
 runPackageSetUpdaterScript = do
-  { resourceEnv, registryEnv } <- setupRegistryScript
+  { cache, resourceEnv, registryEnv, workdir } <- setupRegistryScript
   result <- liftAff
     $ PackageSetUpdater.runPackageSetUpdater PackageSetUpdater.Submit resourceEnv.registryApiUrl
+    # PackageSets.interpret (PackageSets.handle { workdir })
     # Except.runExcept
     # Registry.interpretRead (Registry.handleRead registryEnv)
+    # Storage.interpret (Storage.handleReadOnly cache)
     # Log.interpret (Log.handleTerminal Quiet)
+    # Env.runResourceEnv resourceEnv
     # Run.runBaseAff'
   case result of
     Left err -> liftAff $ Aff.throwError $ Aff.error $ "PackageSetUpdater failed: " <> err

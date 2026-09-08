@@ -41,7 +41,7 @@ import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (GitHubToken, IssueNumber(..), Octokit)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Format as Internal.Format
-import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation(..))
+import Registry.Operation (AuthenticatedData, AuthenticatedPackageOperation(..), PackageOperation(..), PackageSetOperation)
 import Registry.Operation as Operation
 import Run (AFF, EFFECT, Run)
 import Run as Run
@@ -86,9 +86,9 @@ runGitHubIssue env = do
   run do
     -- Determine endpoint and prepare the JSON payload
     { endpoint, jsonBody } <- case env.operation of
-      Left packageSetOp@(PackageSetUpdate payload) -> do
+      Left packageSetOp -> do
         -- Sign with pacchettibotti if submitter is a trustee
-        request <- signPackageSetIfTrustee packageSetOp payload
+        request <- signPackageSetIfTrustee packageSetOp
         pure
           { endpoint: "/v1/package-sets"
           , jsonBody: JSON.print $ CJ.encode Operation.packageSetUpdateRequestCodec request
@@ -366,7 +366,7 @@ readOperation eventPath = do
       let keys = CJ.Object.keys object
       let hasKeys = all (flip Array.elem keys)
       if hasKeys [ "packages" ] then
-        map (Left <<< PackageSetUpdate) (CJ.decode Operation.packageSetUpdateCodec json)
+        map Left (CJ.decode Operation.packageSetOperationCodec json)
       else if hasKeys [ "name", "ref", "version" ] then
         map (Right <<< Publish) (CJ.decode Operation.publishCodec json)
       else if hasKeys [ "payload", "signature" ] then
@@ -473,10 +473,9 @@ signPacchettiBottiIfTrustee auth = do
 signPackageSetIfTrustee
   :: forall r
    . PackageSetOperation
-  -> Operation.PackageSetUpdateData
   -> Run (GITHUB + PACCHETTIBOTTI_ENV + GITHUB_EVENT_ENV + LOG + EXCEPT String + r) Operation.PackageSetUpdateRequest
-signPackageSetIfTrustee packageSetOp payload = do
-  let rawPayload = JSON.print $ CJ.encode Operation.packageSetUpdateCodec payload
+signPackageSetIfTrustee packageSetOp = do
+  let rawPayload = JSON.print $ CJ.encode Operation.packageSetOperationCodec packageSetOp
   GitHub.listTeamMembers API.packagingTeam >>= case _ of
     Left githubError -> do
       Log.warn $ Array.fold

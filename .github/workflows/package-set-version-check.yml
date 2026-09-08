@@ -1,0 +1,55 @@
+name: Package set version check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: package-set-version-check
+  cancel-in-progress: false
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    # Planning performs at most 100 incremental compile probes against the
+    # package set, each of which downloads and compiles the proposed set.
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v14
+        with:
+          use-flakehub: false
+
+      - name: Generate compile-verified version check report
+        run: nix run .#package-set-version-checker -- --output version-check.md
+
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-set-version-check
+          path: version-check.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Open report issue
+        # The checker exits successfully without writing a report when there
+        # is no package set to check, so only open an issue when the report
+        # file exists.
+        if: ${{ hashFiles('version-check.md') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Package set version check ($(date --utc +%Y-%m-%d))" \
+            --body-file version-check.md

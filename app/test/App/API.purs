@@ -15,10 +15,13 @@ import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
+import Registry.API.V1 (JobId(..), PackageSetJobData)
 import Registry.App.API (LicenseValidationError(..), validateLicense)
 import Registry.App.API as API
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.PackageSets (Change(..))
+import Registry.App.Effect.PackageSets as PackageSets
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
@@ -29,7 +32,8 @@ import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
 import Registry.License as License
 import Registry.Location (Location(..))
-import Registry.Operation (PublishData)
+import Registry.ManifestIndex as ManifestIndex
+import Registry.Operation (PackageSetOperation(..), PackageSetUpdateData, PublishData)
 import Registry.PackageName as PackageName
 import Registry.Test.Assert as Assert
 import Registry.Test.Assert.Run as Assert.Run
@@ -39,6 +43,7 @@ import Run (EFFECT, Run)
 import Run as Run
 import Run.Except as Except
 import Test.Spec as Spec
+import Type.Proxy (Proxy(..))
 
 -- | The environment accessible to each assertion in the test suite, derived
 -- | from the fixtures.
@@ -130,6 +135,9 @@ spec :: Spec.Spec Unit
 spec = do
   Spec.describe "Verifies build plans" do
     checkBuildPlanToResolutions
+
+  Spec.describe "Applies package set updates" do
+    packageSetUpdateSpec
 
   Spec.describe "Parses source manifests" do
     parseSourceManifestSpec
@@ -358,6 +366,130 @@ spec = do
         , storageDir: Path.concat [ testFixtures, "registry-storage" ]
         , githubDir: Path.concat [ testFixtures, "github-packages" ]
         }
+
+type PackageSetUpdateCalls =
+  { atomicChanges :: Array PackageSets.ChangeSet
+  , writes :: Int
+  , mirrors :: Int
+  }
+
+packageSetUpdateSpec :: Spec.Spec Unit
+packageSetUpdateSpec = do
+  Spec.it "does not publish a sequential subset when the exact update fails to compile" do
+    let
+      operation = PackageSetUpdate packageSetUpdateData
+      expectedChanges = packageSetUpdateData.packages <#> maybe Remove Update
+    { calls, result } <- liftEffect $ runPackageSetUpdate operation
+
+    case result of
+      Left error -> error `Assert.shouldSatisfy` String.contains (Pattern "failed to compile atomically")
+      Right _ -> Assert.fail "Expected an atomically failing package set update to fail."
+    calls `Assert.shouldEqual` emptyPackageSetUpdateCalls { atomicChanges = [ expectedChanges ] }
+
+emptyPackageSetUpdateCalls :: PackageSetUpdateCalls
+emptyPackageSetUpdateCalls = { atomicChanges: [], writes: 0, mirrors: 0 }
+
+runPackageSetUpdate
+  :: PackageSetOperation
+  -> Effect { calls :: PackageSetUpdateCalls, result :: Either String Unit }
+runPackageSetUpdate operation = do
+  callsRef <- Ref.new emptyPackageSetUpdateCalls
+  result <- API.packageSetUpdate (packageSetJob operation)
+    # Registry.interpretWrite (handlePackageSetRegistryWrite callsRef)
+    # Registry.interpretRead handlePackageSetRegistryRead
+    # PackageSets.interpret (handlePackageSetCompileFailure callsRef)
+    # Log.interpret (\(Log.Log _ _ next) -> pure next)
+    # Except.runExcept
+    # Run.runBaseEffect
+  calls <- Ref.read callsRef
+  pure { calls, result }
+
+packageSetJob :: PackageSetOperation -> PackageSetJobData
+packageSetJob payload =
+  { jobId: JobId "package-set-update-test"
+  , jobType: Proxy
+  , createdAt: Utils.unsafeDateTime "2026-07-27T00:00:00.000Z"
+  , startedAt: Nothing
+  , finishedAt: Nothing
+  , success: false
+  , logs: []
+  , payload
+  }
+
+packageSetUpdateData :: PackageSetUpdateData
+packageSetUpdateData =
+  { compiler: Nothing
+  , packages: Map.fromFoldable
+      [ Tuple (Utils.unsafePackageName "aff") (Just (Utils.unsafeVersion "2.0.0"))
+      , Tuple (Utils.unsafePackageName "prelude") (Just (Utils.unsafeVersion "2.0.0"))
+      ]
+  }
+
+latestPackageSet :: PackageSet
+latestPackageSet = PackageSet
+  { compiler: Utils.unsafeVersion "0.15.15"
+  , packages: Map.fromFoldable
+      [ Tuple (Utils.unsafePackageName "aff") (Utils.unsafeVersion "1.0.0")
+      , Tuple (Utils.unsafePackageName "prelude") (Utils.unsafeVersion "1.0.0")
+      ]
+  , published: Utils.unsafeDate "2026-07-26"
+  , version: Utils.unsafeVersion "1.0.1"
+  }
+
+packageSetUpdateIndex :: ManifestIndex
+packageSetUpdateIndex = unsafeFromRight $ ManifestIndex.fromSet ManifestIndex.IgnoreRanges $ Set.fromFoldable
+  [ Utils.unsafeManifest "aff" "1.0.0" []
+  , Utils.unsafeManifest "aff" "2.0.0" []
+  , Utils.unsafeManifest "prelude" "1.0.0" []
+  , Utils.unsafeManifest "prelude" "2.0.0" []
+  ]
+
+handlePackageSetCompileFailure
+  :: forall r a
+   . Ref PackageSetUpdateCalls
+  -> PackageSets.PackageSets a
+  -> Run (EFFECT + r) a
+handlePackageSetCompileFailure callsRef = case _ of
+  PackageSets.UpgradeAtomic _ _ changes reply -> do
+    Run.liftEffect $ Ref.modify_ (\calls -> calls { atomicChanges = calls.atomicChanges <> [ changes ] }) callsRef
+    pure $ reply $ Right $ Left "injected multi-package compilation failure"
+
+handlePackageSetRegistryRead
+  :: forall r a
+   . Registry.RegistryRead a
+  -> Run r a
+handlePackageSetRegistryRead = case _ of
+  Registry.ReadManifest name version reply ->
+    pure $ reply $ Right $ ManifestIndex.lookup name version packageSetUpdateIndex
+  Registry.ReadAllManifests reply ->
+    pure $ reply $ Right packageSetUpdateIndex
+  Registry.ReadMetadata _ reply ->
+    pure $ reply $ Right Nothing
+  Registry.ReadAllMetadata reply ->
+    pure $ reply $ Right Map.empty
+  Registry.ReadLatestPackageSet reply ->
+    pure $ reply $ Right $ Just latestPackageSet
+  Registry.ReadAllPackageSets reply ->
+    pure $ reply $ Right $ Map.singleton (un PackageSet latestPackageSet).version latestPackageSet
+
+handlePackageSetRegistryWrite
+  :: forall r a
+   . Ref PackageSetUpdateCalls
+  -> Registry.RegistryWrite a
+  -> Run (EFFECT + r) a
+handlePackageSetRegistryWrite callsRef = case _ of
+  Registry.WriteManifest _ reply ->
+    pure $ reply $ Right unit
+  Registry.DeleteManifest _ _ reply ->
+    pure $ reply $ Right unit
+  Registry.WriteMetadata _ _ reply ->
+    pure $ reply $ Right unit
+  Registry.WritePackageSet _ _ reply -> do
+    Run.liftEffect $ Ref.modify_ (\calls -> calls { writes = calls.writes + 1 }) callsRef
+    pure $ reply $ Right unit
+  Registry.MirrorPackageSet _ reply -> do
+    Run.liftEffect $ Ref.modify_ (\calls -> calls { mirrors = calls.mirrors + 1 }) callsRef
+    pure $ reply $ Right unit
 
 checkBuildPlanToResolutions :: Spec.Spec Unit
 checkBuildPlanToResolutions = do
