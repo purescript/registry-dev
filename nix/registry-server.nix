@@ -16,8 +16,10 @@ let
     mkdir -p ${cfg.stateDir}/db
 
     set -o allexport
-    source ${envFile}
     [ -f ${cfg.stateDir}/.env ] && source ${cfg.stateDir}/.env
+    # Deployment-managed values must override state-dir values. Otherwise a
+    # stale non-secret setting such as DHALL_TYPES can survive a deployment.
+    source ${envFile}
     set +o allexport
 
     export DATABASE_URL="sqlite:${cfg.stateDir}/db/registry.sqlite3"
