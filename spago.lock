@@ -291,7 +291,11 @@
           ]
         },
         "test": {
-          "dependencies": []
+          "dependencies": [
+            "registry-test-utils",
+            "spec",
+            "spec-node"
+          ]
         }
       },
       "registry-test-utils": {

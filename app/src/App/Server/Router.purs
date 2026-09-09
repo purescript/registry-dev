@@ -20,7 +20,6 @@ import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
 import Registry.App.Server.Env (ServerEffects, ServerEnv, jsonCreated, jsonDecoder, jsonOk, runEffects)
-import Registry.Operation (PackageSetOperation(..))
 import Registry.Operation as Operation
 import Run (Run)
 import Run as Run
@@ -165,7 +164,7 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
 
     -- Check if the operation requires authentication (compiler change or package removal)
     let
-      PackageSetUpdate payload = request.payload
+      Operation.PackageSetUpdate payload = request.payload
       didChangeCompiler = isJust payload.compiler
       didRemovePackages = any isNothing payload.packages
       requiresAuth = didChangeCompiler || didRemovePackages

@@ -25,3 +25,9 @@ package:
     - registry-lib
     - run
     - strings
+  test:
+    main: Test.Registry.Scripts.Main
+    dependencies:
+      - registry-test-utils
+      - spec
+      - spec-node

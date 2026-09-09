@@ -1,6 +1,5 @@
--- | An effect for upgrading package sets, either in batch mode (all suggested
--- | changes must go in together) or in sequential mode (as many changes as
--- | possible will be added, and changes that would break the set are recorded.)
+-- | An effect for upgrading package sets atomically: all suggested changes
+-- | must compile together or the upgrade is rejected as a whole.
 module Registry.App.Effect.PackageSets where
 
 import Registry.App.Prelude
@@ -15,7 +14,6 @@ import Data.Monoid as Monoid
 import Data.Set as Set
 import Data.String as String
 import Data.Tuple (uncurry)
-import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.FS.Sync as FS.Sync
 import Node.Path as Path
@@ -44,15 +42,7 @@ derive instance Eq Change
 
 type ChangeSet = Map PackageName Change
 
-type SequentialUpgradeResult =
-  { failed :: ChangeSet
-  , succeeded :: ChangeSet
-  , result :: PackageSet
-  }
-
-data PackageSets a
-  = UpgradeAtomic PackageSet Version ChangeSet (Either String (Either String PackageSet) -> a)
-  | UpgradeSequential PackageSet Version ChangeSet (Either String (Maybe SequentialUpgradeResult) -> a)
+data PackageSets a = UpgradeAtomic PackageSet Version ChangeSet (Either String (Either String PackageSet) -> a)
 
 derive instance Functor PackageSets
 
@@ -67,15 +57,6 @@ _packageSets = Proxy
 -- | unsuccessful changes are returned.
 upgradeAtomic :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + EXCEPT String + r) (Either String PackageSet)
 upgradeAtomic oldSet compiler changes = Run.lift _packageSets (UpgradeAtomic oldSet compiler changes identity) >>= Except.rethrow
-
--- | Upgrade the given package set using the provided compiler version and set
--- | of changes. Any successful change is applied, and any unsuccessful changes
--- | are returned along with the new package set.
-upgradeSequential :: forall r. PackageSet -> Version -> ChangeSet -> Run (PACKAGE_SETS + EXCEPT String + r) (Maybe SequentialUpgradeResult)
-upgradeSequential oldSet compiler changes = do
-  upgradeAtomic oldSet compiler changes >>= case _ of
-    Left _ -> Run.lift _packageSets (UpgradeSequential oldSet compiler changes identity) >>= Except.rethrow
-    Right result -> pure $ Just { failed: Map.empty, succeeded: changes, result }
 
 interpret :: forall r a. (PackageSets ~> Run r) -> Run (PACKAGE_SETS + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _packageSets handler Run.send)
@@ -136,55 +117,6 @@ handle env = case _ of
         newSet <- updatePackageSetMetadata compiler { previous: oldSet, pending } changes
         validatePackageSet newSet
         pure (Right newSet)
-
-  UpgradeSequential oldSet@(PackageSet { packages }) compiler changes reply -> reply <$> Except.runExcept do
-    Log.info $ "Performing sequential upgrade of package set " <> Version.print (un PackageSet oldSet).version
-    index <- Registry.readAllManifests
-
-    let sortedBatch = orderChanges index packages changes
-
-    failRef <- Run.liftEffect $ Ref.new Map.empty
-    successRef <- Run.liftEffect $ Ref.new Map.empty
-    packageSetRef <- Run.liftEffect $ Ref.new oldSet
-
-    for_ sortedBatch \(Tuple name change) -> do
-      currentSet <- Run.liftEffect $ Ref.read packageSetRef
-      attemptPackage compiler currentSet name change >>= case _ of
-        -- If the package could not be processed, then the state of the
-        -- filesystem is rolled back by attemptPackage. We just need to insert
-        -- the package into the failures map.
-        Left compilerError -> do
-          Run.liftEffect $ Ref.modify_ (Map.insert name change) failRef
-          Log.warn $ case change of
-            Remove -> "Could not remove " <> PackageName.print name
-            Update version -> "Could not add or update " <> formatPackageVersion name version
-          case compilerError of
-            MissingCompiler -> Except.throw $ printMissingCompiler compiler
-            UnknownError error -> Except.throw $ printUnknownError error
-            CompilationError errors -> Log.info $ printCompilationError errors
-
-        -- If the package could be processed, then the state of the filesystem
-        -- is stepped and we need to record the success of this package and
-        -- step the package set in memory for the next package.
-        Right newSet -> do
-          Log.debug "Writing successful result and new package set to refs."
-          Run.liftEffect do
-            Ref.modify_ (Map.insert name change) successRef
-            Ref.write newSet packageSetRef
-          Log.info $ case change of
-            Remove -> "Removed " <> PackageName.print name
-            Update version -> "Added or updated " <> formatPackageVersion name version
-
-    failed <- Run.liftEffect $ Ref.read failRef
-    succeeded <- Run.liftEffect $ Ref.read successRef
-    pending <- Run.liftEffect $ Ref.read packageSetRef
-
-    case Map.size succeeded of
-      0 -> pure $ Nothing
-      _ -> do
-        newSet <- updatePackageSetMetadata compiler { previous: oldSet, pending } succeeded
-        validatePackageSet newSet
-        pure $ Just { failed, succeeded, result: newSet }
 
   where
   packagesWorkDir :: FilePath
@@ -296,36 +228,6 @@ handle env = case _ of
             Update version -> Map.insert name version existingSet
           newSet = foldlWithIndex foldFn set.packages changes
         pure $ Right $ PackageSet $ set { packages = newSet }
-
-  -- Attempt to add, update, or remove a package in the package set. This
-  -- operation will be rolled back if the addition fails.
-  --
-  -- NOTE: You must have previously built a package set.
-  attemptPackage :: Version -> PackageSet -> PackageName -> Change -> Run _ (Either CompilerFailure PackageSet)
-  attemptPackage compiler (PackageSet set) package change = do
-    FS.Extra.copy { from: outputWorkDir, to: backupWorkDir, preserveTimestamps: true }
-    let maybeOldVersion = Map.lookup package set.packages
-    for_ maybeOldVersion (removePackage package)
-    case change of
-      Remove -> pure unit
-      Update version -> installPackage package version
-    compileInstalledPackages compiler >>= case _ of
-      Left err -> do
-        Log.info $ case change of
-          Remove -> "Failed to build set without " <> PackageName.print package
-          Update version -> "Failed to build set with " <> formatPackageVersion package version
-        FS.Extra.remove outputWorkDir
-        FS.Extra.copy { from: backupWorkDir, to: outputWorkDir, preserveTimestamps: true }
-        case change of
-          Remove -> pure unit
-          Update version -> removePackage package version
-        for_ maybeOldVersion (installPackage package)
-        pure $ Left err
-      Right _ -> do
-        FS.Extra.remove backupWorkDir
-        pure $ Right $ PackageSet $ case change of
-          Remove -> set { packages = Map.delete package set.packages }
-          Update version -> set { packages = Map.insert package version set.packages }
 
 -- | Computes commit mesage for new package set publication.
 -- | Note: The `PackageSet` argument is the old package set.
@@ -598,31 +500,3 @@ updatePackageSetMetadata compiler { previous, pending: PackageSet pending } chan
   let version = computeNewVersion compiler previous changes
   pure $ PackageSet (pending { compiler = compiler, version = version, published = DateTime.date now })
 
--- | Order a set of changes for sequential processing. Updates are processed in
--- | topological order (dependencies first), then removals are processed in
--- | reverse topological order (dependents first). This ensures:
--- | 1. Dependencies are updated before their dependents
--- | 2. Dependents are removed before their dependencies
--- |
--- | Updates are processed before removals because updates can enable removals
--- | (by removing dependencies on packages being removed), but removals never
--- | enable updates. For example, if A depends on B and both are in the change
--- | set where A is updated (to no longer depend on B) and B is removed, then
--- | A must be updated first so B's removal doesn't fail due to A's dependency.
-orderChanges :: ManifestIndex -> Map PackageName Version -> ChangeSet -> Array (Tuple PackageName Change)
-orderChanges index packages changes = sortedUpdates <> sortedRemovals
-  where
-  sortedPackages = ManifestIndex.toSortedArray ManifestIndex.IgnoreRanges index
-
-  -- Updates should be processed in topological order (dependencies first)
-  -- so that dependencies are updated before their dependents.
-  sortedUpdates = sortedPackages # Array.mapMaybe \(Manifest { name, version }) -> case Map.lookup name changes of
-    Just (Update updateVersion) | version == updateVersion -> Just (Tuple name (Update version))
-    _ -> Nothing
-
-  -- Removals should be processed in reverse topological order (dependents
-  -- first) so that dependents are removed before their dependencies.
-  sortedRemovals = sortedPackages # Array.reverse # Array.mapMaybe \(Manifest { name, version }) ->
-    case Map.lookup name changes, Map.lookup name packages of
-      Just Remove, Just prevVersion | version == prevVersion -> Just (Tuple name Remove)
-      _, _ -> Nothing

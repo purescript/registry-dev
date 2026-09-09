@@ -784,7 +784,7 @@ A package set update is an object with two keys: `compiler`, an optional field t
 ```jsonc
 { // Sets the package set compiler version to 0.15.2
   "compiler": "0.15.2",
-  "packages" {
+  "packages": {
     // Updates the `aff` package to v8.0.0
     "aff": "8.0.0",
     // Removes the `argonaut` package from the package sets altogether
@@ -812,13 +812,15 @@ The suggested new package set can only be released if:
 1. All packages in the set depend only on other packages in the set
 2. All packages in the set can be compiled together
 
+Package set self-containment concerns dependency names, not the version ranges in package manifests. Every dependency name must occur in the package set, but its manifest range need not include the exact version selected by the set. Compiling the exact package versions in the set with the set's exact compiler version is the authoritative validity check.
+
 To verify the package set, we take the following steps:
 
-1. We apply the suggested changes to the package set and verify that the package set is still self-contained. If not, the update is rejected.
+1. We apply all suggested changes to the package set as one exact batch and verify that the package set is still self-contained. If not, the update is rejected.
 2. We install the previous package set and compile it. This ensures we are beginning from a known good state.
 3. We install the new package set (uninstalling any packages that are removed) and compile the package set again. If compilation fails then the update is rejected.
 
-When we have verified the package set is self-contained and all packages compile together then we can release the package set.
+When we have verified the package set is self-contained and all packages compile together then we can release the package set. A submitted package set update is atomic: either its entire exact payload is released or it fails without releasing a subset.
 
 ##### Releasing the Package Set
 
@@ -874,27 +876,25 @@ If documentation publishing fails (for example, due to a transient network error
 
 #### 6.3 Publish to Package Sets
 
-The registry attempts to produce a new package set automatically every day, so long as packages have been uploaded that could be added or updated. No packages are ever dropped from a package set automatically; the only time packages are dropped from the package sets are during manual releases.
+The registry attempts to produce a new package set automatically every day when eligible package versions exist. The latest package set and its compiler version are the starting point for every automatic plan.
 
-Every day, the registry executes the following steps:
+Newer registry versions of packages already in the package set remain candidates until they are included or superseded by the package set itself. They do not cease to be candidates merely because an automatic run could not include them or because time has passed since publication. An automatic plan may coordinate upgrades to several packages and may select an intermediate newer version instead of only the latest release when that produces a valid set.
 
-First, we read the contents of the latest package set release and gather all package versions that have been uploaded to the registry since that release. These package versions are the "batch" of packages that we are considering for automatic inclusion to the next package set.
+Packages absent from the latest package set are proposed as additions while they are recent uploads. The candidate set is recursively expanded with any dependency names absent from the current package set so the planner can consider a self-contained plan; these dependencies are included whenever they were published, but they enter the released set only when a selected upgrade or addition actually requires them.
 
-Second, we filter out any packages where, based on their metadata and manifest files alone, we know they can't be added to the package set. This happens for one of three reasons:
+Every automatic plan must satisfy these constraints:
 
-1. They have a dependency that is neither in the package sets nor in the batch that is up for consideration
-2. They have had multiple releases since the last package set, in which case we only take the highest version
-3. They already have a higher version published in a previous package set
+1. It does not remove a package.
+2. It does not downgrade a package.
+3. It does not change the compiler version.
+4. Every dependency name in the resulting set occurs in that set. Manifest version ranges are ignored for this self-containment check.
+5. The exact resulting package set compiles as a whole with the unchanged, exact compiler version.
 
-Third, we attempt to add the rest of the batch of package versions to the package set. Processing the batch follows these steps:
+The whole-set compiler result is authoritative: manifest version ranges do not prevent an exact selection from being a valid package set, and manifest compatibility alone does not prove that a selection is valid. Each selected plan is submitted and released as one exact atomic package set update according to [Section 5.5 (Update the Package Set)](#55-update-the-package-set).
 
-1. We install the previous package set and compile it.
-2. We attempt to upgrade all package versions from the batch at once in the package set. Once the new versions are installed, we compile the package set. If it succeeds, then we're done.
-3. If we couldn't compile the whole batch, then we order the batch first by their dependencies and then by their upload time. Packages with no dependencies on other packages in the batch go first, and ties are broken by upload time: older uploads go first. Then, we attempt to add packages to the package set one-by-one.
-4. If a package fails to compile with the rest of the package set, then it is filtered from the batch.
-5. Once there are no more packages to consider in the batch, the new package set is ready.
+If an otherwise desirable upgrade requires removing packages, it is not an automatic plan. Registry Trustees handle such cases using the manual intervention process in [Section 9.5 (Package Sets)](#manual-intervention-in-the-package-sets-via-the-package-sets-api).
 
-Fourth, we release the new package set (if we could produce one). Automatic package sets follow the versioning policy described in [Section 5.5 (Update the Package Set)](#releasing-the-package-set).
+The automation reports residual upgrades it could not apply, including compiler evidence. It may report an exact removal-containing payload as compile-verified only after compiling that full payload against the package set it was planned from. Such payloads are advisory and are never submitted automatically; a Registry Trustee must decide whether to apply them. Infrastructure failures and bounded searches must be reported distinctly from package incompatibility.
 
 ## 7. Non-JavaScript Backends
 
