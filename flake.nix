@@ -261,7 +261,12 @@
         };
 
         registry =
-          { lib, modulesPath, ... }:
+          {
+            lib,
+            modulesPath,
+            pkgs,
+            ...
+          }:
           let
             host = "registry.purescript.org";
           in
@@ -283,9 +288,9 @@
                     # the state directory, unless there are viable defaults.
                     inherit
                       DHALL_PRELUDE
-                      DHALL_TYPES
                       GIT_TERMINAL_PROMPT
                       ;
+                    DHALL_TYPES = "${pkgs.registry-server}/bin/types";
                   };
                 };
                 system.stateVersion = "24.05";

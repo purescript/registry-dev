@@ -233,7 +233,12 @@ in
     description = "PureScript Registry API server";
     src = ../app;
     spagoLock = app;
-    extraInstall = "cp -r ${../db} $out/bin/db";
+    # Keep runtime schemas in the server closure rather than relying on a
+    # separately referenced source path in the deployed environment.
+    extraInstall = ''
+      cp -r ${../db} $out/bin/db
+      cp -r ${../types} $out/bin/types
+    '';
   }) { };
 
   registry-github-importer = prev.callPackage (buildRegistryPackage {
