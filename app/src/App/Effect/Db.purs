@@ -8,7 +8,7 @@ import Data.String as String
 import Registry.API.V1 (Job, JobId, LogLevel, LogLine, SortOrder)
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.SQLite (FinishJob, InsertMatrixJob, InsertPackageSetJob, InsertPublishJob, InsertTransferJob, InsertUnpublishJob, MatrixJobDetails, PackageSetJobDetails, PublishJobDetails, SQLite, SelectJobRequest, SelectJobsRequest, StartJob, TransferJobDetails, UnpublishJobDetails)
+import Registry.App.SQLite (FinishJob, InsertMatrixJob, InsertPackageSetJob, InsertPublishJob, InsertPublishJobResult, InsertTransferJob, InsertUnpublishJob, MatrixJobDetails, PackageSetJobDetails, PublishJobDetails, SQLite, SelectJobRequest, SelectJobsRequest, StartJob, TransferJobDetails, UnpublishJobDetails)
 import Registry.App.SQLite as SQLite
 import Registry.Operation (PackageSetOperation)
 import Run (EFFECT, Run)
@@ -26,7 +26,7 @@ import Run.Except as Except
 -- be part of app code we want to test.
 
 data Db a
-  = InsertPublishJob InsertPublishJob (JobId -> a)
+  = InsertPublishJob InsertPublishJob (InsertPublishJobResult -> a)
   | InsertUnpublishJob InsertUnpublishJob (JobId -> a)
   | InsertTransferJob InsertTransferJob (JobId -> a)
   | InsertMatrixJob InsertMatrixJob (JobId -> a)
@@ -40,7 +40,6 @@ data Db a
   | SelectNextTransferJob (Either String (Maybe TransferJobDetails) -> a)
   | SelectNextMatrixJob (Either String (Maybe MatrixJobDetails) -> a)
   | SelectNextPackageSetJob (Either String (Maybe PackageSetJobDetails) -> a)
-  | SelectPublishJob PackageName Version (Either String (Maybe PublishJobDetails) -> a)
   | SelectUnpublishJob PackageName Version (Either String (Maybe UnpublishJobDetails) -> a)
   | SelectTransferJob PackageName (Either String (Maybe TransferJobDetails) -> a)
   | SelectPackageSetJobByPayload PackageSetOperation (Either String (Maybe PackageSetJobDetails) -> a)
@@ -77,7 +76,7 @@ selectJobs :: forall r. SelectJobsRequest -> Run (DB + EXCEPT String + r) (Array
 selectJobs request = Run.lift _db (SelectJobs request identity)
 
 -- | Insert a new publish job into the database.
-insertPublishJob :: forall r. InsertPublishJob -> Run (DB + r) JobId
+insertPublishJob :: forall r. InsertPublishJob -> Run (DB + r) InsertPublishJobResult
 insertPublishJob job = Run.lift _db (InsertPublishJob job identity)
 
 -- | Insert a new unpublish job into the database.
@@ -119,10 +118,6 @@ selectNextMatrixJob = Run.lift _db (SelectNextMatrixJob identity) >>= Except.ret
 -- | Select the next package set job from the database.
 selectNextPackageSetJob :: forall r. Run (DB + EXCEPT String + r) (Maybe PackageSetJobDetails)
 selectNextPackageSetJob = Run.lift _db (SelectNextPackageSetJob identity) >>= Except.rethrow
-
--- | Lookup a publish job from the database by name and version.
-selectPublishJob :: forall r. PackageName -> Version -> Run (DB + EXCEPT String + r) (Maybe PublishJobDetails)
-selectPublishJob packageName packageVersion = Run.lift _db (SelectPublishJob packageName packageVersion identity) >>= Except.rethrow
 
 -- | Lookup an unpublish job from the database by name and version.
 selectUnpublishJob :: forall r. PackageName -> Version -> Run (DB + EXCEPT String + r) (Maybe UnpublishJobDetails)
@@ -206,10 +201,6 @@ handleSQLite env = case _ of
 
   SelectNextPackageSetJob reply -> do
     result <- Run.liftEffect $ SQLite.selectNextPackageSetJob env.db
-    pure $ reply result
-
-  SelectPublishJob packageName packageVersion reply -> do
-    result <- Run.liftEffect $ SQLite.selectPublishJob env.db packageName packageVersion
     pure $ reply result
 
   SelectUnpublishJob packageName packageVersion reply -> do

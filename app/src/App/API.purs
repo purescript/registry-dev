@@ -7,7 +7,9 @@ module Registry.App.API
   , PURS_GRAPH_CACHE
   , PackageSetUpdateEffects
   , ParsedManifest
+  , PublishedPackage
   , PublishEffects
+  , PublishResult
   , PursGraphCache(..)
   , _compilerCache
   , _pursGraphCache
@@ -58,7 +60,7 @@ import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
 import Parsing.Combinators.Array as Parsing.Combinators.Array
 import Parsing.String as Parsing.String
-import Registry.API.V1 (PackageSetJobData)
+import Registry.API.V1 (PackageSetJobData, PublishJobDisposition(..))
 import Registry.App.Auth as Auth
 import Registry.App.CLI.Licensee as Licensee
 import Registry.App.CLI.Purs (CompilerFailure(..), compilerFailureCodec)
@@ -341,6 +343,23 @@ authenticated auth = case auth.payload of
 
 type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
 
+type PublishedPackage =
+  { compiler :: Version
+  , dependencies :: Map PackageName Range
+  , version :: Version
+  }
+
+type PublishResult =
+  { disposition :: PublishJobDisposition
+  , matrix :: Maybe PublishedPackage
+  }
+
+toPublishResult :: Maybe PublishedPackage -> PublishResult
+toPublishResult matrix =
+  { disposition: if isJust matrix then Published else AlreadyPublished
+  , matrix
+  }
+
 -- | Resolve both compiler and resolutions for a publish operation.
 -- | Will come up with some sort of plan if not provided with a compiler and/or resolutions.
 resolveCompilerAndDeps
@@ -557,7 +576,7 @@ parseSourceManifest { packageDir, name, version, ref, location } = do
 -- | published before then it will be registered and the given version will be
 -- | upload. If it has been published before then the existing metadata will be
 -- | updated with the new version.
-publish :: forall r. PublishData -> Run (PublishEffects + r) (Maybe { compiler :: Version, dependencies :: Map PackageName Range, version :: Version })
+publish :: forall r. PublishData -> Run (PublishEffects + r) PublishResult
 publish payload = do
   let printedName = PackageName.print payload.name
 
@@ -642,6 +661,24 @@ publish payload = do
       , "). The manifest and API request must match."
       ]
 
+  unless (receivedManifest.version == payload.version) do
+    Except.throw $ Array.fold
+      [ "The manifest file specifies a package version ("
+      , Version.print receivedManifest.version
+      , ") that differs from the package version submitted to the API ("
+      , Version.print payload.version
+      , "). The manifest and API request must match."
+      ]
+
+  unless (receivedManifest.ref == payload.ref) do
+    Except.throw $ Array.fold
+      [ "The manifest file specifies a source ref ("
+      , receivedManifest.ref
+      , ") that differs from the ref submitted to the API ("
+      , payload.ref
+      , "). The manifest and API request must match."
+      ]
+
   unless (Operation.Validation.locationMatches (Manifest receivedManifest) (Metadata metadata)) do
     Except.throw $ Array.fold
       [ "The manifest file specifies a location ("
@@ -687,48 +724,48 @@ publish payload = do
         , "```"
         ]
 
-  -- Try to terminate early if metadata and a manifest are present and the docs
-  -- are on Pursuit. Metadata without a manifest is an incomplete publication
-  -- which must continue so the missing registry-index state can be repaired.
-  for_ existingPublishedVersion \info ->
-    when (isJust existingManifest) do
+  -- Metadata, an indexed manifest, and Pursuit docs together form a complete
+  -- prior publication. Metadata without a manifest is incomplete and must
+  -- continue so the missing registry-index state can be repaired.
+  existingPursuitUrl <- case existingPublishedVersion, existingManifest of
+    Just _, Just _ -> do
       published <- Pursuit.getPublishedVersions receivedManifest.name >>= case _ of
         Left error -> Except.throw error
         Right versions -> pure versions
-      for_ (Map.lookup receivedManifest.version published) \url ->
-        Except.throw $ String.joinWith "\n"
-          [ "You tried to upload a version that already exists: " <> Version.print receivedManifest.version
-          , ""
-          , "Its metadata is:"
-          , "```json"
-          , printJson Metadata.publishedMetadataCodec info
-          , "```"
-          , ""
-          , "and its documentation is available here:"
-          , url
-          ]
+      pure $ Map.lookup receivedManifest.version published
+    _, _ -> pure Nothing
 
   -- Resolve compiler and resolutions. If compiler was not provided,
   -- discover a compatible compiler based on dependencies.
-  Log.info "Verifying the package build plan..."
-  compilerIndex <- MatrixBuilder.readCompilerIndex
-  { compiler, resolutions: validatedResolutions } <- resolveCompilerAndDeps compilerIndex (Manifest receivedManifest) payload.compiler payload.resolutions
+  { compiler, resolutions: validatedResolutions } <- case existingPursuitUrl, existingPublishedVersion of
+    -- A complete prior publication has already had its build plan validated.
+    -- Reuse its recorded compiler so idempotent requests cannot fail because
+    -- today's solver state differs from the state at publication time.
+    Just _, Just info -> pure
+      { compiler: NonEmptyArray.head info.compilers
+      , resolutions: Map.empty
+      }
+    _, _ -> do
+      Log.info "Verifying the package build plan..."
+      compilerIndex <- MatrixBuilder.readCompilerIndex
+      resolveCompilerAndDeps compilerIndex (Manifest receivedManifest) payload.compiler payload.resolutions
   Log.info $ "Using compiler " <> Version.print compiler
 
   -- Validate PureScript module names now that we know the compiler.
   -- language-cst-parser only supports syntax back to 0.15.0, so we skip for older compilers.
-  Operation.Validation.validatePursModules srcPursFiles >>= case _ of
-    Left formattedError | compiler < Purs.minLanguageCSTParser -> do
-      Log.debug $ "Package failed to parse in validatePursModules: " <> formattedError
-      Log.debug $ "Skipping check because package is published with a pre-0.15.0 compiler (" <> Version.print compiler <> ")."
-    Left formattedError ->
-      Except.throw $ Array.fold
-        [ "This package has either malformed or disallowed PureScript module names "
-        , "in its source: "
-        , formattedError
-        ]
-    Right _ ->
-      Log.debug "Package contains well-formed .purs files in its src directory."
+  when (isNothing existingPursuitUrl) do
+    Operation.Validation.validatePursModules srcPursFiles >>= case _ of
+      Left formattedError | compiler < Purs.minLanguageCSTParser -> do
+        Log.debug $ "Package failed to parse in validatePursModules: " <> formattedError
+        Log.debug $ "Skipping check because package is published with a pre-0.15.0 compiler (" <> Version.print compiler <> ")."
+      Left formattedError ->
+        Except.throw $ Array.fold
+          [ "This package has either malformed or disallowed PureScript module names "
+          , "in its source: "
+          , formattedError
+          ]
+      Right _ ->
+        Log.debug "Package contains well-formed .purs files in its src directory."
 
   let
     reconcileExistingPublication info = do
@@ -757,6 +794,14 @@ publish payload = do
         Nothing
 
   case existingPublishedVersion of
+    Just _ | Just url <- existingPursuitUrl -> do
+      Log.notice $ Array.fold
+        [ "This version is already fully published in registry storage, metadata, the manifest index, and Pursuit: "
+        , url
+        ]
+      FS.Extra.remove tmp
+      pure $ toPublishResult Nothing
+
     -- If metadata already contains this version, first reconcile storage and
     -- both Git repositories, then retry any missing Pursuit documentation.
     Just info | compiler < Purs.minPursuitPublish -> do
@@ -767,7 +812,8 @@ publish payload = do
         , "registry using compiler versions prior to " <> Version.print Purs.minPursuitPublish
         , ". Please try with a later compiler."
         ]
-      pure reconciledResult
+      FS.Extra.remove tmp
+      pure $ toPublishResult reconciledResult
 
     Just info -> do
       reconcileExistingPublication info
@@ -803,7 +849,7 @@ publish payload = do
             Right _ -> do
               FS.Extra.remove tmp
               Log.notice "Successfully uploaded package docs to Pursuit! 🎉 🚀"
-          pure reconciledResult
+          pure $ toPublishResult reconciledResult
 
     -- In this case the package version has not been published, so we proceed
     -- with ordinary publishing.
@@ -1010,7 +1056,7 @@ publish payload = do
           ]
 
       FS.Extra.remove tmp
-      pure $ Just { compiler, dependencies: receivedManifest.dependencies, version: receivedManifest.version }
+      pure $ toPublishResult $ Just { compiler, dependencies: receivedManifest.dependencies, version: receivedManifest.version }
 
 validateResolutions :: forall r. Manifest -> Map PackageName Version -> Run (EXCEPT String + r) Unit
 validateResolutions manifest resolutions = do

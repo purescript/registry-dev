@@ -2,8 +2,15 @@ module Test.Registry.Operation (spec) where
 
 import Prelude
 
+import Codec.JSON.DecodeError as CJ.DecodeError
+import Data.Codec.JSON as CJ
+import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
+import JSON as JSON
+import Registry.API.V1 as V1
 import Registry.Operation as Operation
 import Registry.Test.Assert as Assert
+import Registry.Test.Utils as Utils
 import Test.Spec (Spec)
 import Test.Spec as Spec
 
@@ -26,6 +33,29 @@ spec = do
       [ { label: "unpublish", value: unpublish }
       , { label: "transfer", value: transfer }
       ]
+
+  Spec.it "Keeps publish submission responses compatible in both directions" do
+    let oldResponse = Utils.fromRight "Failed to parse old publish response" $ JSON.parse publishResponseOld
+    case CJ.decode V1.publishJobResponseCodec oldResponse of
+      Left err -> Assert.fail $ "New client failed to decode an old publish response: " <> CJ.DecodeError.print err
+      Right response -> response.disposition `Assert.shouldEqual` Nothing
+
+    let newResponse = Utils.fromRight "Failed to parse new publish response" $ JSON.parse publishResponseNew
+    case CJ.decode V1.jobCreatedResponseCodec newResponse of
+      Left err -> Assert.fail $ "Old client failed to decode a new publish response: " <> CJ.DecodeError.print err
+      Right _ -> pure unit
+
+    case CJ.decode V1.publishJobResponseCodec newResponse of
+      Left err -> Assert.fail $ "New client failed to decode a new publish response: " <> CJ.DecodeError.print err
+      Right response -> response.disposition `Assert.shouldEqual` Just V1.Created
+
+publishResponseOld :: String
+publishResponseOld =
+  """{"jobId":"01234567-89ab-cdef-0123-456789abcdef"}"""
+
+publishResponseNew :: String
+publishResponseNew =
+  """{"jobId":"01234567-89ab-cdef-0123-456789abcdef","disposition":"created"}"""
 
 minimalPackageSetUpdate :: String
 minimalPackageSetUpdate =

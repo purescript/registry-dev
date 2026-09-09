@@ -52,6 +52,18 @@ spec = do
       when existsAfter do
         Assert.fail "Expected version to be removed from manifest index after unpublish"
 
+      republish <- Client.publish Fixtures.effectPublishData
+      Assert.shouldEqual republish.disposition (Just V1.Created)
+      when (republish.jobId == publishJobId) do
+        Assert.fail "A later unpublish must invalidate successful publish-job deduplication."
+      republishJob <- Env.pollJobExpectFailure republish.jobId
+      case republishJob of
+        V1.PublishJob { error: Just error } ->
+          unless (String.contains (String.Pattern "has been unpublished") error.message) do
+            Assert.fail $ "Expected an unpublished-version error, got: " <> error.message
+        V1.PublishJob { error: Nothing } -> Assert.fail "Expected a structured republish error."
+        _ -> Assert.fail "Expected a publish job."
+
     -- Test race condition: submit unpublish while publish is still running.
     -- Job priority (Unpublish > Matrix) ensures unpublish runs before matrix jobs.
     Spec.it "unpublishing before matrix jobs complete causes them to fail gracefully" do

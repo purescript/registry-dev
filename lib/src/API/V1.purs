@@ -1,6 +1,8 @@
 -- | Types, codecs, and routes for the Registry HTTP API (v1).
 module Registry.API.V1
   ( JobCreatedResponse
+  , JobError
+  , JobErrorCode(..)
   , JobId(..)
   , JobInfo
   , JobType(..)
@@ -9,7 +11,10 @@ module Registry.API.V1
   , LogLine
   , MatrixJobData
   , PackageSetJobData
+  , PublishJobDisposition(..)
   , PublishJobData
+  , PublishJobResponse
+  , PublishSubmissionDisposition(..)
   , Route(..)
   , SortOrder(..)
   , TransferJobData
@@ -19,9 +24,15 @@ module Registry.API.V1
   , jobCreatedResponseCodec
   , logLevelFromPriority
   , logLevelToPriority
+  , parseJobErrorCode
+  , parsePublishJobDisposition
+  , printJobErrorCode
   , printJobType
   , printLogLevel
+  , printPublishJobDisposition
+  , printPublishSubmissionDisposition
   , printSortOrder
+  , publishJobResponseCodec
   , routes
   ) where
 
@@ -30,6 +41,7 @@ import Prelude hiding ((/))
 import Codec.JSON.DecodeError as CJ.DecodeError
 import Control.Alt ((<|>))
 import Control.Monad.Except (Except, except)
+import Data.Bifunctor (lmap)
 import Data.Codec as Codec
 import Data.Codec.JSON as CJ
 import Data.Codec.JSON.Record as CJ.Record
@@ -129,6 +141,108 @@ type JobCreatedResponse = { jobId :: JobId }
 jobCreatedResponseCodec :: CJ.Codec JobCreatedResponse
 jobCreatedResponseCodec = CJ.named "JobCreatedResponse" $ CJ.Record.object { jobId: jobIdCodec }
 
+-- | The outcome of submitting a publish request. The field is optional in the
+-- | response codec so clients remain able to decode responses from older
+-- | registry servers, but current servers always provide it.
+data PublishSubmissionDisposition
+  = Created
+  | DuplicateActive
+  | AlreadyPublishedSubmission
+
+derive instance Eq PublishSubmissionDisposition
+
+printPublishSubmissionDisposition :: PublishSubmissionDisposition -> String
+printPublishSubmissionDisposition = case _ of
+  Created -> "created"
+  DuplicateActive -> "duplicate-active"
+  AlreadyPublishedSubmission -> "already-published"
+
+publishSubmissionDispositionCodec :: CJ.Codec PublishSubmissionDisposition
+publishSubmissionDispositionCodec = CJ.named "PublishSubmissionDisposition" $ Codec.codec' decode encode
+  where
+  decode json = except do
+    value <- CJ.decode CJ.string json
+    case value of
+      "created" -> Right Created
+      "duplicate-active" -> Right DuplicateActive
+      "already-published" -> Right AlreadyPublishedSubmission
+      _ -> Left $ CJ.DecodeError.basic $ "Invalid publish submission disposition: " <> value
+
+  encode = CJ.encode CJ.string <<< printPublishSubmissionDisposition
+
+type PublishJobResponse =
+  { jobId :: JobId
+  , disposition :: Maybe PublishSubmissionDisposition
+  }
+
+publishJobResponseCodec :: CJ.Codec PublishJobResponse
+publishJobResponseCodec = CJ.named "PublishJobResponse" $ CJ.Record.object
+  { jobId: jobIdCodec
+  , disposition: CJ.Record.optional publishSubmissionDispositionCodec
+  }
+
+-- | The successful terminal outcome of a publish job.
+data PublishJobDisposition
+  = Published
+  | AlreadyPublished
+
+derive instance Eq PublishJobDisposition
+
+printPublishJobDisposition :: PublishJobDisposition -> String
+printPublishJobDisposition = case _ of
+  Published -> "published"
+  AlreadyPublished -> "already-published"
+
+parsePublishJobDisposition :: String -> Either String PublishJobDisposition
+parsePublishJobDisposition = case _ of
+  "published" -> Right Published
+  "already-published" -> Right AlreadyPublished
+  value -> Left $ "Invalid publish job disposition: " <> value
+
+publishJobDispositionCodec :: CJ.Codec PublishJobDisposition
+publishJobDispositionCodec = CJ.named "PublishJobDisposition" $ Codec.codec' decode encode
+  where
+  decode json = do
+    value <- Codec.decode CJ.string json
+    except $ lmap CJ.DecodeError.basic $ parsePublishJobDisposition value
+  encode = CJ.encode CJ.string <<< printPublishJobDisposition
+
+data JobErrorCode
+  = JobFailed
+  | JobTimedOut
+
+derive instance Eq JobErrorCode
+
+printJobErrorCode :: JobErrorCode -> String
+printJobErrorCode = case _ of
+  JobFailed -> "job-failed"
+  JobTimedOut -> "job-timeout"
+
+parseJobErrorCode :: String -> Either String JobErrorCode
+parseJobErrorCode = case _ of
+  "job-failed" -> Right JobFailed
+  "job-timeout" -> Right JobTimedOut
+  value -> Left $ "Invalid job error code: " <> value
+
+jobErrorCodeCodec :: CJ.Codec JobErrorCode
+jobErrorCodeCodec = CJ.named "JobErrorCode" $ Codec.codec' decode encode
+  where
+  decode json = do
+    value <- Codec.decode CJ.string json
+    except $ lmap CJ.DecodeError.basic $ parseJobErrorCode value
+  encode = CJ.encode CJ.string <<< printJobErrorCode
+
+type JobError =
+  { code :: JobErrorCode
+  , message :: String
+  }
+
+jobErrorCodec :: CJ.Codec JobError
+jobErrorCodec = CJ.named "JobError" $ CJ.Record.object
+  { code: jobErrorCodeCodec
+  , message: CJ.string
+  }
+
 data Job
   = PublishJob PublishJobData
   | UnpublishJob UnpublishJobData
@@ -150,6 +264,8 @@ type PublishJobData = JobInfo
   ( packageName :: PackageName
   , packageVersion :: Version
   , payload :: PublishData
+  , disposition :: Maybe PublishJobDisposition
+  , error :: Maybe JobError
   , jobType :: Proxy "publish"
   )
 
@@ -211,6 +327,8 @@ publishJobDataCodec = CJ.named "PublishJob" $ CJ.Record.object
   , packageName: PackageName.codec
   , packageVersion: Version.codec
   , payload: Operation.publishCodec
+  , disposition: CJ.Record.optional publishJobDispositionCodec
+  , error: CJ.Record.optional jobErrorCodec
   }
 
 symbolCodec :: forall sym. IsSymbol sym => Proxy sym -> CJ.Codec (Proxy sym)

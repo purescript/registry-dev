@@ -85,25 +85,44 @@ runJobExecutor env = runEffects env do
           let timeout = Aff.delay delay $> Nothing
           Parallel.sequential $ Parallel.parallel execute <|> Parallel.parallel timeout
 
-        success <- case jobResult of
+        outcome <- case jobResult of
           Nothing -> do
             now' <- nowUTC
             let Duration.Minutes mins = jobTimeout job
             let message = "Job timed out after " <> show (Int.floor mins) <> " minutes."
             Db.insertLog { level: V1.Error, message, jobId, timestamp: now' }
             Log.error $ "Job " <> unwrap jobId <> " timed out."
-            pure false
+            pure
+              { success: false
+              , disposition: Nothing
+              , error: Just { code: V1.JobTimedOut, message }
+              }
 
           Just (Left err) -> do
-            Log.warn $ "Job " <> unwrap jobId <> " failed:\n" <> Aff.message err
-            pure false
+            let message = Aff.message err
+            Log.warn $ "Job " <> unwrap jobId <> " failed:\n" <> message
+            pure
+              { success: false
+              , disposition: Nothing
+              , error: Just { code: V1.JobFailed, message }
+              }
 
-          Just (Right _) -> do
+          Just (Right disposition) -> do
             Log.info $ "Job " <> unwrap jobId <> " succeeded."
-            pure true
+            pure
+              { success: true
+              , disposition
+              , error: Nothing
+              }
 
         finishedAt <- nowUTC
-        Db.finishJob { jobId, finishedAt, success }
+        Db.finishJob
+          { jobId
+          , finishedAt
+          , success: outcome.success
+          , disposition: outcome.disposition
+          , error: outcome.error
+          }
         loop
 
 -- TODO: here we only get a single package for each operation, but really we should
@@ -125,15 +144,11 @@ jobTimeout = case _ of
   TransferJob _ -> Duration.Minutes 10.0
   UnpublishJob _ -> Duration.Minutes 10.0
 
-executeJob :: DateTime -> Job -> Run ServerEffects Unit
+executeJob :: DateTime -> Job -> Run ServerEffects (Maybe V1.PublishJobDisposition)
 executeJob _ = case _ of
   PublishJob { payload: payload@{ name } } -> do
-    -- `publish` will throw on error, or return `Nothing` if the pipeline
-    -- exited with a valid status but without publishing a package (for instance,
-    -- the package already existed), or return `Just` if a new version was
-    -- published and we need to queue matrix jobs.
-    maybeResult <- API.publish payload
-    for_ maybeResult \{ compiler, dependencies, version } -> do
+    result <- API.publish payload
+    for_ result.matrix \{ compiler, dependencies, version } -> do
       -- At this point this package has been verified with one compiler only.
       -- So we need to enqueue compilation jobs for (1) same package, all the other
       -- compilers, and (2) same compiler, all packages that depend on this one
@@ -157,8 +172,9 @@ executeJob _ = case _ of
           , packageName: solvedPackage
           , packageVersion: solvedVersion
           }
-  UnpublishJob { payload } -> API.authenticated payload
-  TransferJob { payload } -> API.authenticated payload
+    pure $ Just result.disposition
+  UnpublishJob { payload } -> API.authenticated payload $> Nothing
+  TransferJob { payload } -> API.authenticated payload $> Nothing
   MatrixJob details@{ packageName, packageVersion } -> do
     -- After publishing a matrix job, we check if any dependents need to also have
     -- a job queued (for instance a new compiler version came out, we want to have
@@ -184,7 +200,8 @@ executeJob _ = case _ of
         , packageName: solvedPackage
         , packageVersion: solvedVersion
         }
-  PackageSetJob payload -> API.packageSetUpdate payload
+    pure Nothing
+  PackageSetJob payload -> API.packageSetUpdate payload $> Nothing
 
 upgradeRegistryToNewCompiler :: forall r. Version -> Run (DB + LOG + EXCEPT String + REGISTRY_READ + r) Unit
 upgradeRegistryToNewCompiler newCompilerVersion = do
