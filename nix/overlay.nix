@@ -62,9 +62,23 @@ let
       module = "Registry.Scripts.PackageTransferrer";
       description = "Check for moved packages and submit transfer jobs";
     };
+    render-docs = {
+      module = "Registry.Scripts.RenderDocs";
+      description = "Render canonical package documentation to HTML";
+      extraInstall = ''
+        mkdir -p $out/share/registry-docgen-assets
+        cp -r ${../docgen/assets}/. $out/share/registry-docgen-assets/
+        wrapProgram $out/bin/registry-render-docs \
+          --set REGISTRY_DOCGEN_ASSETS $out/share/registry-docgen-assets
+      '';
+    };
     verify-integrity = {
       module = "Registry.Scripts.VerifyIntegrity";
       description = "Verify registry and registry-index consistency";
+    };
+    verify-legacy-docs = {
+      module = "Registry.Scripts.VerifyLegacyDocs";
+      description = "Verify historical Pursuit documentation artifacts";
     };
   };
 
@@ -176,11 +190,11 @@ in
       ++ prev.lib.optionals prev.stdenv.isDarwin [ prev.darwin.cctools ];
 
     # To update: run `nix build .#server` and copy the hash from the error
-    npmDepsHash = "sha256-qlHO3I/kb5/PDQA2aoVbSpvSnjS0CcJoEdGuCkAd+hA=";
+    npmDepsHash = "sha256-+ty3NbTVppue4S3ioR8YZRk7nPNtXH9teRoIalio958=";
 
     installPhase = ''
       mkdir -p $out
-      rm -f node_modules/{registry-app,registry-lib,registry-foreign}
+      rm -f node_modules/{registry-app,registry-docgen,registry-lib,registry-foreign}
       mv node_modules $out/
     '';
   };
@@ -260,6 +274,7 @@ in
       description = info.description;
       src = ../scripts/src;
       spagoLock = final.registry-spago-lock;
+      extraInstall = info.extraInstall or "";
     }) { }
   )
 ) scripts

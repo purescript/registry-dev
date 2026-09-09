@@ -3,6 +3,7 @@ module Test.E2E.Main (main) where
 import Registry.App.Prelude
 
 import Data.Time.Duration (Milliseconds(..))
+import Test.E2E.DocsStorage as DocsStorage
 import Test.E2E.Endpoint.Jobs as Jobs
 import Test.E2E.Endpoint.PackageSets as PackageSets
 import Test.E2E.Endpoint.Publish as Publish
@@ -33,6 +34,8 @@ main = do
         stashGitFixtures
 
     Spec.before_ resetTestState $ Spec.after_ assertReposClean $ Spec.describe "E2E Tests" do
+      Spec.describe "DocsStorage" DocsStorage.spec
+
       Spec.describe "Endpoints" do
         Spec.describe "Publish" Publish.spec
         Spec.describe "Jobs" Jobs.spec

@@ -977,6 +977,132 @@ let
       }
     ];
 
+  # Exercise the real DocsStorage S3 interpreter, including the new GetObject
+  # binding, against a stateful documentation object.
+  docsStorageMappings =
+    let
+      scenario = "docs-storage-test-1.0.0";
+      key = "docs-storage-test/1.0.0.json";
+      objectUrlPattern = "/docs-storage-test/1\\.0\\.0\\.json.*";
+      listUrlPattern = "/\\?.*prefix=docs-storage-test.*";
+      initialDocument = {
+        compilerVersion = "0.15.15";
+        dependencies = { };
+        license = "BSD-3-Clause";
+        location = {
+          githubOwner = "purescript";
+          githubRepo = "registry-dev";
+        };
+        modules = [ ];
+        name = "docs-storage-test";
+        resolvedDependencies = { };
+        resolvedModulePackages = { };
+        schemaVersion = 1;
+        sourceArtifact = {
+          bytes = 42;
+          hash = "sha256-fN9RUAzN21ZY4Y0UwqUSxwUPVz1g7/pcqoDvbJZoT04=";
+        };
+        version = "1.0.0";
+      };
+      replacementDocument = initialDocument // {
+        description = "Replacement";
+      };
+      presentContents = "<Contents><Key>${key}</Key><Size>1000</Size><ETag>\"abc123\"</ETag></Contents>";
+      listResponse = contents: "<ListBucketResult>${contents}</ListBucketResult>";
+      listMapping = state: contents: {
+        request = {
+          method = "GET";
+          urlPattern = listUrlPattern;
+        };
+        response = {
+          status = 200;
+          headers."Content-Type" = "application/xml";
+          body = listResponse contents;
+        };
+        scenarioName = scenario;
+        requiredScenarioState = state;
+      };
+    in
+    [
+      (listMapping "Started" "")
+      {
+        request = {
+          method = "PUT";
+          urlPattern = objectUrlPattern;
+          headers."x-amz-acl".equalTo = "public-read";
+        };
+        response = {
+          status = 200;
+          headers.ETag = ''"docs-initial"'';
+        };
+        scenarioName = scenario;
+        requiredScenarioState = "Started";
+        newScenarioState = "Present";
+      }
+      (listMapping "Present" presentContents)
+      {
+        request = {
+          method = "GET";
+          urlPattern = objectUrlPattern;
+        };
+        response = {
+          status = 200;
+          headers."Content-Type" = "application/json";
+          jsonBody = initialDocument;
+        };
+        scenarioName = scenario;
+        requiredScenarioState = "Present";
+      }
+      {
+        request = {
+          method = "PUT";
+          urlPattern = objectUrlPattern;
+          headers."x-amz-acl".equalTo = "public-read";
+        };
+        response = {
+          status = 200;
+          headers.ETag = ''"docs-replacement"'';
+        };
+        scenarioName = scenario;
+        requiredScenarioState = "Present";
+        newScenarioState = "Replaced";
+      }
+      (listMapping "Replaced" presentContents)
+      {
+        request = {
+          method = "GET";
+          urlPattern = objectUrlPattern;
+        };
+        response = {
+          status = 200;
+          headers."Content-Type" = "application/json";
+          jsonBody = replacementDocument;
+        };
+        scenarioName = scenario;
+        requiredScenarioState = "Replaced";
+      }
+      {
+        request = {
+          method = "DELETE";
+          urlPattern = objectUrlPattern;
+        };
+        response.status = 204;
+        scenarioName = scenario;
+        requiredScenarioState = "Replaced";
+        newScenarioState = "Deleted";
+      }
+      (listMapping "Deleted" "")
+      {
+        request = {
+          method = "DELETE";
+          urlPattern = objectUrlPattern;
+        };
+        response.status = 204;
+        scenarioName = scenario;
+        requiredScenarioState = "Deleted";
+      }
+    ];
+
   # Healthchecks API wiremock mappings (simple ping endpoint)
   healthchecksMappings = [
     {
@@ -991,8 +1117,8 @@ let
     }
   ];
 
-  # Combined storage mappings (S3 + bucket + Pursuit)
-  storageMappings = s3Mappings ++ bucketMappings ++ pursuitMappings;
+  # Combined storage mappings (S3 + bucket + docs + Pursuit)
+  storageMappings = s3Mappings ++ bucketMappings ++ docsStorageMappings ++ pursuitMappings;
   storageFiles = s3Files;
 
   # Wiremock root directory builder

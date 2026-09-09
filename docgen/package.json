@@ -1,0 +1,9 @@
+{
+  "name": "registry-docgen",
+  "private": true,
+  "type": "module",
+  "license": "BSD-3-Clause",
+  "dependencies": {
+    "commonmark": "^0.31.2"
+  }
+}

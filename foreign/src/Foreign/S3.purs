@@ -6,6 +6,7 @@ module Registry.Foreign.S3
   , connect
   , deleteAllObjects
   , deleteObject
+  , getObject
   , listObjects
   , putObject
   ) where
@@ -86,6 +87,22 @@ putObject space params = do
   let jsParams = { "Bucket": space.bucket, "Key": params.key, "Body": params.body, "ACL": jsACL }
   res <- liftAff $ Promise.toAffE (runEffectFn2 putObjectImpl space.conn jsParams)
   pure { eTag: res."ETag" }
+
+type JSGetParams =
+  { "Bucket" :: String
+  , "Key" :: String
+  }
+
+type GetParams =
+  { key :: String
+  }
+
+foreign import getObjectImpl :: EffectFn2 S3 JSGetParams (Promise Buffer)
+
+getObject :: forall m. MonadAff m => Space -> GetParams -> m Buffer
+getObject space params = do
+  let jsParams = { "Bucket": space.bucket, "Key": params.key }
+  liftAff $ Promise.toAffE (runEffectFn2 getObjectImpl space.conn jsParams)
 
 -- https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#deleteObject-property
 type JSDeleteParams =

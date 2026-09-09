@@ -1,0 +1,39 @@
+package:
+  name: registry-docgen
+  publish:
+    license: BSD-3-Clause
+    version: 0.0.1
+  dependencies:
+    - arrays
+    - codec
+    - codec-json
+    - control
+    - either
+    - filterable
+    - foldable-traversable
+    - functions
+    - json
+    - language-cst-parser
+    - lazy
+    - lists
+    - maybe
+    - newtype
+    - ordered-collections
+    - prelude
+    - profunctor
+    - profunctor-lenses
+    - registry-lib
+    - safe-coerce
+    - strings
+    - transformers
+    - tuples
+    - versions
+  test:
+    main: Test.Registry.Docgen
+    dependencies:
+      - aff
+      - node-buffer
+      - node-fs
+      - registry-test-utils
+      - spec
+      - spec-node

@@ -17,6 +17,8 @@ import Registry.App.Effect.Cache (CacheRef)
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Db (DB)
 import Registry.App.Effect.Db as Db
+import Registry.App.Effect.DocsStorage (DOCS_STORAGE)
+import Registry.App.Effect.DocsStorage as DocsStorage
 import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, RESOURCE_ENV, ResourceEnv)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
@@ -25,14 +27,14 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets (PACKAGE_SETS)
 import Registry.App.Effect.PackageSets as PackageSets
+import Registry.App.Effect.PackageStorage (PACKAGE_STORAGE)
+import Registry.App.Effect.PackageStorage as PackageStorage
 import Registry.App.Effect.Pursuit (PURSUIT)
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source (SOURCE)
 import Registry.App.Effect.Source as Source
-import Registry.App.Effect.Storage (STORAGE)
-import Registry.App.Effect.Storage as Storage
 import Registry.App.SQLite (SQLite)
 import Registry.App.SQLite as SQLite
 import Registry.Foreign.FSExtra as FS.Extra
@@ -50,6 +52,7 @@ type ServerEnvVars =
   , privateKey :: String
   , spacesKey :: String
   , spacesSecret :: String
+  , docsBucket :: String
   , resourceEnv :: ResourceEnv
   , readOnly :: Boolean
   }
@@ -63,9 +66,10 @@ readServerEnvVars = do
   privateKey <- Env.lookupRequired Env.pacchettibottiED25519
   spacesKey <- Env.lookupRequired Env.spacesKey
   spacesSecret <- Env.lookupRequired Env.spacesSecret
+  docsBucket <- Env.lookupWithDefault Env.docsBucket "purescript-registry-docs"
   resourceEnv <- Env.lookupResourceEnv
   isReadOnly <- Env.lookupWithDefault Env.readOnly false
-  pure { token, publicKey, privateKey, spacesKey, spacesSecret, resourceEnv, readOnly: isReadOnly }
+  pure { token, publicKey, privateKey, spacesKey, spacesSecret, docsBucket, resourceEnv, readOnly: isReadOnly }
 
 type ServerEnv =
   { cacheDir :: FilePath
@@ -113,7 +117,7 @@ createServerEnv = do
     , jobId: Nothing
     }
 
-type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + PACKAGE_SETS + STORAGE + PURSUIT + SOURCE + DB + GITHUB + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
+type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + PACKAGE_SETS + PACKAGE_STORAGE + DOCS_STORAGE + PURSUIT + SOURCE + DB + GITHUB + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT ())
 
 runServer
   :: ServerEnv
@@ -156,12 +160,18 @@ runEffects env operation = Aff.attempt do
       , debouncer: env.debouncer
       , cacheRef: env.registryCacheRef
       }
+    docsStorageEnv =
+      { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }
+      , bucket: env.vars.docsBucket
+      }
   operation
     # PackageSets.interpret (PackageSets.handle { workdir: scratchDir })
     # Registry.interpretWrite (Registry.handleWrite registryEnv)
     # Registry.interpretRead (Registry.handleRead registryEnv)
     # Pursuit.interpret (if env.vars.readOnly then Pursuit.handlePure else Pursuit.handleAff env.vars.token)
-    # Storage.interpret (if env.vars.readOnly then Storage.handleReadOnly env.cacheDir else Storage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
+    # PackageStorage.interpret (if env.vars.readOnly then PackageStorage.handleReadOnly env.cacheDir else PackageStorage.handleS3 { s3: { key: env.vars.spacesKey, secret: env.vars.spacesSecret }, cache: env.cacheDir })
+    # DocsStorage.interpret
+        (if env.vars.readOnly then DocsStorage.handleReadOnly docsStorageEnv else DocsStorage.handleS3 docsStorageEnv)
     # Source.interpret Source.handle
     # GitHub.interpret (GitHub.handle { octokit: env.octokit, cache: env.cacheDir, ref: env.githubCacheRef })
     # Cache.interpret _compilerCache (Cache.handleFs env.cacheDir)

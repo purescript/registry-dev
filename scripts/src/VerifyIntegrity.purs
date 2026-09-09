@@ -26,8 +26,8 @@ import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
+import Registry.App.Effect.PackageStorage as PackageStorage
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Internal.Format as Internal.Format
 import Registry.ManifestIndex as ManifestIndex
@@ -118,7 +118,7 @@ main = launchAff_ do
       interpret =
         Except.catch (\error -> Run.liftEffect (Console.log error *> Process.exit' 1))
           >>> Registry.interpretRead (Registry.handleRead registryEnv)
-          >>> Storage.interpret (Storage.handleS3 { s3, cache })
+          >>> PackageStorage.interpret (PackageStorage.handleS3 { s3, cache })
           >>> Env.runResourceEnv resourceEnv
           >>> Log.interpret (\log -> Log.handleTerminal Normal log *> Log.handleFs Verbose logPath log)
           >>> Run.runBaseAff'
@@ -134,7 +134,7 @@ main = launchAff_ do
 
       results <- for packages \name -> do
         result <- Except.runExcept do
-          published <- Storage.query name
+          published <- PackageStorage.query name
           verifyPackage allMetadata allManifests (Set.fromFoldable published) name
         result <$ case result of
           Left err -> do

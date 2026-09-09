@@ -46,10 +46,11 @@ else
       NODE_PATH = "${pkgs.registry-package-lock}/node_modules";
       # Use nss_wrapper to resolve S3 bucket subdomain in the Nix sandbox.
       # The AWS SDK uses virtual-hosted style URLs (bucket.endpoint/key), so
-      # purescript-registry.localhost must resolve to 127.0.0.1.
+      # each bucket's localhost subdomain must resolve to 127.0.0.1.
       NSS_WRAPPER_HOSTS = pkgs.writeText "hosts" ''
         127.0.0.1 localhost
         127.0.0.1 purescript-registry.localhost
+        127.0.0.1 purescript-registry-docs.localhost
       '';
       LD_PRELOAD = "${pkgs.nss_wrapper}/lib/libnss_wrapper.so";
     }

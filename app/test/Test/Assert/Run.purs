@@ -41,14 +41,14 @@ import Registry.App.Effect.Log (LOG, Log(..))
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets (PACKAGE_SETS, PackageSets(..))
 import Registry.App.Effect.PackageSets as PackageSets
+import Registry.App.Effect.PackageStorage (PACKAGE_STORAGE, PackageStorage)
+import Registry.App.Effect.PackageStorage as PackageStorage
 import Registry.App.Effect.Pursuit (PURSUIT, Pursuit(..))
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry (REGISTRY, RegistryRead(..), RegistryWrite(..))
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Source (FetchError(..), SOURCE, Source(..))
 import Registry.App.Effect.Source as Source
-import Registry.App.Effect.Storage (STORAGE, Storage)
-import Registry.App.Effect.Storage as Storage
 import Registry.App.Prelude as Either
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit (GitHubError(..), IssueNumber(..))
@@ -80,7 +80,7 @@ type TEST_EFFECTS =
   ( PURSUIT
       + REGISTRY
       + PACKAGE_SETS
-      + STORAGE
+      + PACKAGE_STORAGE
       + SOURCE
       + GITHUB
       + PACCHETTIBOTTI_ENV
@@ -100,7 +100,7 @@ type TEST_EFFECTS =
 -- | from the front of a plan, allowing one test to fail successive publication
 -- | retries at each durable boundary while preserving their shared state.
 data TestFailure
-  = FailStorageUploadAfterWrite
+  = FailPackageStorageUploadAfterWrite
   | FailMetadataWrite
   | FailManifestWrite
 
@@ -123,7 +123,7 @@ type TestEnv =
   , metadata :: Ref (Map PackageName Metadata)
   , index :: Ref ManifestIndex
   , pursuitExcludes :: Set PackageName
-  , storage :: FilePath
+  , packageStorage :: FilePath
   , github :: FilePath
   , username :: String
   }
@@ -149,7 +149,7 @@ runTestEffects env operation = Aff.attempt do
             }
         )
     # PackageSets.interpret handlePackageSetsMock
-    # Storage.interpret (handleStorageMock { storage: env.storage, failurePlan: env.failurePlan })
+    # PackageStorage.interpret (handlePackageStorageMock { packageStorage: env.packageStorage, failurePlan: env.failurePlan })
     # Source.interpret (handleSourceMock { github: env.github })
     # GitHub.interpret (handleGitHubMock { github: env.github })
     -- Environments
@@ -291,21 +291,21 @@ handlePackageSetsMock = case _ of
   UpgradeSequential packageSet _compilerVersion changeSet reply ->
     pure $ reply $ Right $ Just { failed: changeSet, succeeded: changeSet, result: packageSet }
 
-type StorageMockEnv =
-  { storage :: FilePath
+type PackageStorageMockEnv =
+  { packageStorage :: FilePath
   , failurePlan :: Ref (Array TestFailure)
   }
 
 -- We handle the storage effect by copying files to/from the provided
 -- upload/download directories, and listing versions based on the filenames.
-handleStorageMock :: forall r a. StorageMockEnv -> Storage a -> Run (AFF + EFFECT + r) a
-handleStorageMock env = case _ of
-  Storage.Upload name version sourcePath reply -> do
-    let destinationPath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
+handlePackageStorageMock :: forall r a. PackageStorageMockEnv -> PackageStorage a -> Run (AFF + EFFECT + r) a
+handlePackageStorageMock env = case _ of
+  PackageStorage.Upload name version sourcePath reply -> do
+    let destinationPath = Path.concat [ env.packageStorage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
     Run.liftAff (Aff.attempt (FS.Aff.stat destinationPath)) >>= case _ of
       Left _ -> do
         Run.liftAff $ FS.Extra.copy { from: sourcePath, to: destinationPath, preserveTimestamps: true }
-        failUpload <- consumeFailure FailStorageUploadAfterWrite env.failurePlan
+        failUpload <- consumeFailure FailPackageStorageUploadAfterWrite env.failurePlan
         if failUpload then
           pure $ reply $ Left "Injected storage upload failure after writing the tarball."
         else
@@ -313,10 +313,10 @@ handleStorageMock env = case _ of
       Right _ ->
         pure $ reply $ Left $ "Cannot upload " <> formatPackageVersion name version <> " because it already exists in storage at path " <> destinationPath
 
-  Storage.Download name version destinationPath integrity reply -> do
+  PackageStorage.Download name version destinationPath integrity reply -> do
     let
       package = formatPackageVersion name version
-      sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
+      sourcePath = Path.concat [ env.packageStorage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
     Run.liftAff (Aff.attempt (FS.Aff.readFile sourcePath)) >>= case _ of
       Left _ -> pure $ reply $ Left $ "Cannot copy " <> sourcePath <> " because it does not exist in download directory."
       Right buffer -> do
@@ -334,16 +334,16 @@ handleStorageMock env = case _ of
             Run.liftAff $ FS.Aff.writeFile destinationPath buffer
             pure $ reply $ Right unit
 
-  Storage.Delete name version reply -> do
-    let sourcePath = Path.concat [ env.storage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
+  PackageStorage.Delete name version reply -> do
+    let sourcePath = Path.concat [ env.packageStorage, PackageName.print name <> "-" <> Version.print version <> ".tar.gz" ]
     Run.liftAff (Aff.attempt (FS.Aff.stat sourcePath)) >>= case _ of
       Left _ -> pure $ reply $ Left $ "Cannot delete " <> sourcePath <> " because it does not exist in download directory."
       Right _ -> do
         Run.liftAff $ FS.Extra.remove sourcePath
         pure $ reply $ Right unit
 
-  Storage.Query name reply -> do
-    paths <- Run.liftAff $ FS.Aff.readdir env.storage
+  PackageStorage.Query name reply -> do
+    paths <- Run.liftAff $ FS.Aff.readdir env.packageStorage
     let
       extractVersion =
         String.stripPrefix (String.Pattern (PackageName.print name <> "-"))

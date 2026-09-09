@@ -57,6 +57,7 @@
             "profunctor",
             "record",
             "refs",
+            "registry-docgen",
             "registry-foreign",
             "registry-lib",
             "run",
@@ -98,6 +99,7 @@
             "node-process",
             "ordered-collections",
             "registry-app",
+            "registry-docgen",
             "registry-foreign",
             "registry-lib",
             "registry-scripts",
@@ -151,6 +153,47 @@
         },
         "test": {
           "dependencies": []
+        }
+      },
+      "registry-docgen": {
+        "path": "docgen",
+        "core": {
+          "dependencies": [
+            "arrays",
+            "codec",
+            "codec-json",
+            "control",
+            "either",
+            "filterable",
+            "foldable-traversable",
+            "functions",
+            "json",
+            "language-cst-parser",
+            "lazy",
+            "lists",
+            "maybe",
+            "newtype",
+            "ordered-collections",
+            "prelude",
+            "profunctor",
+            "profunctor-lenses",
+            "registry-lib",
+            "safe-coerce",
+            "strings",
+            "transformers",
+            "tuples",
+            "versions"
+          ]
+        },
+        "test": {
+          "dependencies": [
+            "aff",
+            "node-buffer",
+            "node-fs",
+            "registry-test-utils",
+            "spec",
+            "spec-node"
+          ]
         }
       },
       "registry-foreign": {
@@ -284,6 +327,7 @@
             "ordered-collections",
             "prelude",
             "registry-app",
+            "registry-docgen",
             "registry-foreign",
             "registry-lib",
             "run",
@@ -2969,6 +3013,23 @@
         "prelude",
         "type-equality",
         "unsafe-coerce"
+      ]
+    },
+    "versions": {
+      "type": "registry",
+      "version": "7.0.0",
+      "integrity": "sha256-44EWobX1pT/9T7DeQ3XMoPHPRiUm1Io/ivjt588eYVM=",
+      "dependencies": [
+        "control",
+        "either",
+        "foldable-traversable",
+        "integers",
+        "lists",
+        "maybe",
+        "parsing",
+        "prelude",
+        "strings",
+        "unicode"
       ]
     },
     "web-clipboard": {
