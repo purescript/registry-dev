@@ -62,6 +62,24 @@ cd app && spago run
 
 The server will load environment variables from the `.env` file in the project root and run on port 8080 by default.
 
+### Healthchecks Reporting
+
+Set `HEALTHCHECKS_URL` to a Healthchecks success ping URL to enable operational
+reports. After a one-minute startup allowance, the server sends a POST every
+five minutes, including a short diagnostic body. Configure the check with a
+five-minute period and ten minutes of grace.
+
+A successful database query and an operational job executor produce a success
+ping. An initializing, restarting, or livelock-paused executor, or a failed
+database query, produces a `/fail` ping. Idle and busy executors are both healthy;
+an individual failed package job does not mark the service unhealthy. Reports
+time out after ten seconds and retry on the next scheduled report indefinitely.
+
+This is an internal operational check, not a probe of public DNS, TLS, or nginx,
+and does not detect every possible stalled job or external dependency failure.
+`/api/v1/status` remains a simple HTTP liveness check. Ping URLs are secrets: do
+not commit them or expose them in logs.
+
 ## Quick Start: Running Integration Tests
 
 There are two kinds of tests we use to verify the registry server. The first is a smoke test which runs in a Nix VM and is used to verify deployment only. The second is a lightweight combination of the server with wiremock instances to mock external services. Here's how to run them:
