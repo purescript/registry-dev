@@ -156,5 +156,22 @@ else
         fi
       done
 
+      # SIGTERM must stop the HTTP server and its background loops, not just
+      # close the listening socket and wait for systemd to kill the process.
+      echo "Checking server shutdown..."
+      kill -TERM "$SERVER_PID"
+      for attempt in $(seq 1 50); do
+        if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+          break
+        fi
+        sleep 0.1
+      done
+      if kill -0 "$SERVER_PID" 2>/dev/null; then
+        echo "ERROR: Server did not exit within five seconds of SIGTERM"
+        kill -KILL "$SERVER_PID"
+        exit 1
+      fi
+      wait "$SERVER_PID"
+
       echo "E2E tests passed!" > $out
     ''
