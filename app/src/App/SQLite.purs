@@ -9,6 +9,7 @@ module Registry.App.SQLite
   , InsertMatrixJob
   , InsertPackageSetJob
   , InsertPublishJob
+  , InsertPublishJobResult(..)
   , InsertTransferJob
   , InsertUnpublishJob
   , JobInfo
@@ -39,7 +40,6 @@ module Registry.App.SQLite
   , selectNextTransferJob
   , selectNextUnpublishJob
   , selectPackageSetJobByPayload
-  , selectPublishJob
   , selectTransferJob
   , selectUnpublishJob
   , startJob
@@ -154,19 +154,27 @@ type FinishJob =
   { jobId :: JobId
   , success :: Boolean
   , finishedAt :: DateTime
+  , disposition :: Maybe V1.PublishJobDisposition
+  , error :: Maybe V1.JobError
   }
 
 type JSFinishJob =
   { jobId :: String
   , success :: Int
   , finishedAt :: String
+  , disposition :: Nullable String
+  , errorCode :: Nullable String
+  , errorMessage :: Nullable String
   }
 
 finishJobToJSRep :: FinishJob -> JSFinishJob
-finishJobToJSRep { jobId, success, finishedAt } =
+finishJobToJSRep { jobId, success, finishedAt, disposition, error } =
   { jobId: un JobId jobId
   , success: fromSuccess success
   , finishedAt: DateTime.format Internal.Format.iso8601DateTime finishedAt
+  , disposition: Nullable.toNullable $ map V1.printPublishJobDisposition disposition
+  , errorCode: Nullable.toNullable $ map (V1.printJobErrorCode <<< _.code) error
+  , errorMessage: Nullable.toNullable $ map _.message error
   }
 
 foreign import finishJobImpl :: EffectFn2 SQLite JSFinishJob Unit
@@ -221,8 +229,7 @@ selectJob db { level: maybeLogLevel, since, until, order, jobId: JobId jobId } =
       Nothing -> next
 
   selectPublishJobById logs = ExceptT do
-    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db
-      { jobId: notNull jobId, packageName: null, packageVersion: null }
+    maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobByIdImpl db jobId
     pure $ traverse
       ( map (PublishJob <<< Record.merge { logs, jobType: Proxy :: _ "publish" })
           <<< publishJobDetailsFromJSRep
@@ -319,6 +326,8 @@ type PublishJobDetails =
   , startedAt :: Maybe DateTime
   , finishedAt :: Maybe DateTime
   , success :: Boolean
+  , disposition :: Maybe V1.PublishJobDisposition
+  , error :: Maybe V1.JobError
   , packageName :: PackageName
   , packageVersion :: Version
   , payload :: PublishData
@@ -330,17 +339,27 @@ type JSPublishJobDetails =
   , startedAt :: Nullable String
   , finishedAt :: Nullable String
   , success :: Int
+  , disposition :: Nullable String
+  , errorCode :: Nullable String
+  , errorMessage :: Nullable String
   , packageName :: String
   , packageVersion :: String
   , payload :: String
   }
 
 publishJobDetailsFromJSRep :: JSPublishJobDetails -> Either String PublishJobDetails
-publishJobDetailsFromJSRep { jobId, packageName, packageVersion, payload, createdAt, startedAt, finishedAt, success } = do
+publishJobDetailsFromJSRep { jobId, packageName, packageVersion, payload, createdAt, startedAt, finishedAt, success, disposition, errorCode, errorMessage } = do
   created <- DateTime.unformat Internal.Format.iso8601DateTime createdAt
   started <- traverse (DateTime.unformat Internal.Format.iso8601DateTime) (toMaybe startedAt)
   finished <- traverse (DateTime.unformat Internal.Format.iso8601DateTime) (toMaybe finishedAt)
   s <- toSuccess success
+  parsedDisposition <- traverse V1.parsePublishJobDisposition (toMaybe disposition)
+  parsedError <- case toMaybe errorCode, toMaybe errorMessage of
+    Nothing, Nothing -> Right Nothing
+    Just code, Just message -> do
+      parsedCode <- V1.parseJobErrorCode code
+      Right $ Just { code: parsedCode, message }
+    _, _ -> Left "Publish job has incomplete error details."
   name <- PackageName.parse packageName
   version <- Version.parse packageVersion
   parsed <- lmap JSON.DecodeError.print $ parseJson Operation.publishCodec payload
@@ -350,33 +369,22 @@ publishJobDetailsFromJSRep { jobId, packageName, packageVersion, payload, create
     , startedAt: started
     , finishedAt: finished
     , success: s
+    , disposition: parsedDisposition
+    , error: parsedError
     , packageName: name
     , packageVersion: version
     , payload: parsed
     }
 
-type SelectPublishParams =
-  { jobId :: Nullable String
-  , packageName :: Nullable String
-  , packageVersion :: Nullable String
-  }
+foreign import selectPublishJobByIdImpl :: EffectFn2 SQLite String (Nullable JSPublishJobDetails)
 
-foreign import selectPublishJobImpl :: EffectFn2 SQLite SelectPublishParams (Nullable JSPublishJobDetails)
+foreign import selectNextPublishJobImpl :: EffectFn1 SQLite (Nullable JSPublishJobDetails)
 
 foreign import selectPublishJobsImpl :: EffectFn5 SQLite String String Boolean String (Array JSPublishJobDetails)
 
 selectNextPublishJob :: SQLite -> Effect (Either String (Maybe PublishJobDetails))
 selectNextPublishJob db = do
-  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db { jobId: null, packageName: null, packageVersion: null }
-  pure $ traverse publishJobDetailsFromJSRep maybeJobDetails
-
-selectPublishJob :: SQLite -> PackageName -> Version -> Effect (Either String (Maybe PublishJobDetails))
-selectPublishJob db packageName packageVersion = do
-  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn2 selectPublishJobImpl db
-    { jobId: null
-    , packageName: notNull $ PackageName.print packageName
-    , packageVersion: notNull $ Version.print packageVersion
-    }
+  maybeJobDetails <- map toMaybe $ Uncurried.runEffectFn1 selectNextPublishJobImpl db
   pure $ traverse publishJobDetailsFromJSRep maybeJobDetails
 
 type InsertPublishJob =
@@ -391,6 +399,16 @@ type JSInsertPublishJob =
   , createdAt :: String
   }
 
+type JSInsertPublishJobResult =
+  { jobId :: String
+  , status :: Int
+  }
+
+data InsertPublishJobResult
+  = PublishJobCreated JobId
+  | PublishJobDuplicateActive JobId
+  | PublishJobAlreadyPublished JobId
+
 insertPublishJobToJSRep :: JobId -> DateTime -> InsertPublishJob -> JSInsertPublishJob
 insertPublishJobToJSRep jobId now { payload } =
   { jobId: un JobId jobId
@@ -400,15 +418,21 @@ insertPublishJobToJSRep jobId now { payload } =
   , createdAt: DateTime.format Internal.Format.iso8601DateTime now
   }
 
-foreign import insertPublishJobImpl :: EffectFn2 SQLite JSInsertPublishJob Unit
+foreign import insertPublishJobImpl :: EffectFn2 SQLite JSInsertPublishJob JSInsertPublishJobResult
 
--- | Insert a new package job, ie. a publish, unpublish, or transfer.
-insertPublishJob :: SQLite -> InsertPublishJob -> Effect JobId
+-- | Atomically insert a publish job or return the active/equivalent successful
+-- | job which makes a new insertion unnecessary.
+insertPublishJob :: SQLite -> InsertPublishJob -> Effect InsertPublishJobResult
 insertPublishJob db job = do
   jobId <- newJobId
   now <- nowUTC
-  Uncurried.runEffectFn2 insertPublishJobImpl db $ insertPublishJobToJSRep jobId now job
-  pure jobId
+  result <- Uncurried.runEffectFn2 insertPublishJobImpl db $ insertPublishJobToJSRep jobId now job
+  let resultJobId = JobId result.jobId
+  pure case result.status of
+    0 -> PublishJobCreated resultJobId
+    1 -> PublishJobDuplicateActive resultJobId
+    2 -> PublishJobAlreadyPublished resultJobId
+    status -> unsafeCrashWith $ "Invalid publish job insertion status " <> show status
 
 --------------------------------------------------------------------------------
 -- unpublish_jobs table

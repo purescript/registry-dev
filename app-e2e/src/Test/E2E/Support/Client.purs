@@ -157,10 +157,10 @@ getStatus = do
       throw $ HttpError { status: response.status, body }
 
 -- | Publish a package
-publish :: PublishData -> E2E V1.JobCreatedResponse
+publish :: PublishData -> E2E V1.PublishJobResponse
 publish reqBody = do
   { clientConfig } <- ask
-  liftAff $ post Operation.publishCodec V1.jobCreatedResponseCodec clientConfig.baseUrl (printRoute Publish) reqBody
+  liftAff $ post Operation.publishCodec V1.publishJobResponseCodec clientConfig.baseUrl (printRoute Publish) reqBody
 
 -- | Unpublish a package (requires authentication)
 unpublish :: AuthenticatedData -> E2E V1.JobCreatedResponse

@@ -2,6 +2,7 @@ module Test.Registry.App.API (spec) where
 
 import Registry.App.Prelude
 
+import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable (traverse_)
 import Data.Map as Map
@@ -15,6 +16,7 @@ import Effect.Ref as Ref
 import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Node.Process as Process
+import Registry.API.V1 as V1
 import Registry.App.API (LicenseValidationError(..), validateLicense)
 import Registry.App.API as API
 import Registry.App.Effect.Env as Env
@@ -203,11 +205,11 @@ spec = do
             unless (many' == expected) do
               Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
-        -- Finally, we can verify that publishing the package again should fail
-        -- since it already exists.
+        -- Finally, publishing the same package again is an idempotent success.
         Except.runExcept (API.publish publishArgs) >>= case _ of
-          Left _ -> pure unit
-          Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to fail."
+          Right { disposition: V1.AlreadyPublished } -> pure unit
+          Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to report an already-published disposition."
+          Left err -> Except.throw $ "Expected an idempotent publish but got error: " <> err
 
       case result of
         Left exn -> do
@@ -219,6 +221,32 @@ spec = do
           Console.error $ String.joinWith "\n" (map (\(Tuple _ msg) -> msg) recorded)
           Assert.fail $ "Expected to publish effect@4.0.0 but got error: " <> err
         Right (Right _) -> pure unit
+
+    Spec.it "Rejects fetched manifest identity mismatches before durable writes" \env -> do
+      runPipelineAssertion env do
+        let
+          manifest name version ref owner = Array.fold
+            [ "{\"name\":\"" <> name
+            , "\",\"version\":\"" <> version
+            , "\",\"license\":\"BSD-3-Clause\",\"location\":{\"githubOwner\":\"" <> owner
+            , "\",\"githubRepo\":\"purescript-effect\"},\"ref\":\"" <> ref
+            , "\",\"description\":\"Native side effects\",\"dependencies\":{\"prelude\":\">=6.0.0 <7.0.0\"}}"
+            ]
+          cases =
+            [ { contents: manifest "effects" "4.0.0" "v4.0.0" "purescript", expected: "package name" }
+            , { contents: manifest "effect" "4.0.1" "v4.0.0" "purescript", expected: "package version" }
+            , { contents: manifest "effect" "4.0.0" "another-ref" "purescript", expected: "source ref" }
+            , { contents: manifest "effect" "4.0.0" "v4.0.0" "another-owner", expected: "location" }
+            ]
+          manifestPath = Path.concat [ env.githubDir, "effect-4.0.0", "purs.json" ]
+
+        for_ cases \testCase -> do
+          Run.liftAff $ FS.Aff.writeTextFile UTF8 manifestPath testCase.contents
+          Except.runExcept (API.publish effectPublishArgs) >>= case _ of
+            Left error | String.contains (Pattern testCase.expected) error -> pure unit
+            Left error -> Except.throw $ "Expected a " <> testCase.expected <> " mismatch but got: " <> error
+            Right _ -> Except.throw $ "Expected a " <> testCase.expected <> " mismatch to fail."
+          assertPublicationState effectName effectVersion { storage: false, metadata: false, manifest: false }
 
     Spec.describe "Publication retry reconciliation" do
       -- Storage, metadata, and the manifest index are the only durable writes in
@@ -280,8 +308,8 @@ spec = do
           Run.liftAff $ FS.Aff.writeTextFile UTF8 bowerPath originalBower
           Run.liftAff $ FS.Aff.writeTextFile UTF8 licensePath originalLicense
           API.publish effectPublishArgs >>= case _ of
-            Just _ -> pure unit
-            Nothing -> Except.throw "Expected retrying the incomplete publication to report a newly completed publication."
+            { matrix: Just _ } -> pure unit
+            _ -> Except.throw "Expected retrying the incomplete publication to report a newly completed publication."
           assertPublicationState effectName effectVersion { storage: true, metadata: true, manifest: true }
           resetPublicationState env
 

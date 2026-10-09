@@ -2,11 +2,13 @@ module Test.E2E.Endpoint.Publish (spec) where
 
 import Registry.App.Prelude
 
+import Control.Monad.Reader (ask, runReaderT)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
 import Data.Map as Map
 import Data.Set as Set
 import Data.String as String
+import Effect.Aff as Aff
 import Registry.API.V1 (Job(..))
 import Registry.API.V1 as V1
 import Registry.Manifest (Manifest(..))
@@ -25,9 +27,15 @@ spec :: E2ESpec
 spec = do
   Spec.describe "Publish workflow" do
     Spec.it "can publish effect@4.0.0 and verify all state changes" do
-      { jobId } <- Client.publish Fixtures.effectPublishData
+      { jobId, disposition: submissionDisposition } <- Client.publish Fixtures.effectPublishData
+      Assert.shouldEqual submissionDisposition (Just V1.Created)
       job <- Env.pollJobOrFail jobId
       Assert.shouldSatisfy (V1.jobInfo job).finishedAt isJust
+      case job of
+        PublishJob details -> do
+          Assert.shouldEqual details.disposition (Just V1.Published)
+          Assert.shouldEqual details.error Nothing
+        _ -> Assert.fail "Expected a publish job."
 
       uploadOccurred <- Env.hasStorageUpload Fixtures.effect
       unless uploadOccurred do
@@ -91,8 +99,38 @@ spec = do
         Assert.fail $ "Expected version " <> Version.print Fixtures.slug.version <> " in manifest index"
 
   Spec.describe "Publish state machine" do
-    Spec.it "returns same jobId for duplicate publish requests" do
-      { jobId: id1 } <- Client.publish Fixtures.effectPublishData
-      _ <- Env.pollJobOrFail id1
-      { jobId: id2 } <- Client.publish Fixtures.effectPublishData
-      Assert.shouldEqual id1 id2
+    Spec.it "atomically deduplicates concurrent active and equivalent successful requests" do
+      testEnv <- ask
+      responses <- liftAff do
+        fibers <- for (Array.range 1 5) \_ ->
+          Aff.forkAff $ runReaderT (Client.publish Fixtures.effectPublishData) testEnv
+        traverse Aff.joinFiber fibers
+
+      case Array.uncons responses of
+        Nothing -> Assert.fail "Expected publish responses."
+        Just { head, tail } -> do
+          unless (Array.all (_.jobId >>> (_ == head.jobId)) tail) do
+            Assert.fail "Expected concurrent publish requests to return one job ID."
+          let created = Array.filter (_.disposition >>> (_ == Just V1.Created)) responses
+          let duplicateActive = Array.filter (_.disposition >>> (_ == Just V1.DuplicateActive)) responses
+          Assert.shouldEqual (Array.length created) 1
+          Assert.shouldEqual (Array.length duplicateActive) 4
+
+          _ <- Env.pollJobOrFail head.jobId
+          completedDuplicate <- Client.publish Fixtures.effectPublishData
+          Assert.shouldEqual completedDuplicate.jobId head.jobId
+          Assert.shouldEqual completedDuplicate.disposition (Just V1.AlreadyPublishedSubmission)
+
+    Spec.it "reports an already-published package as idempotent success" do
+      created <- Client.publish Fixtures.effectAlreadyPublishedData
+      Assert.shouldEqual created.disposition (Just V1.Created)
+      job <- Env.pollJobOrFail created.jobId
+      case job of
+        PublishJob details -> do
+          Assert.shouldEqual details.disposition (Just V1.AlreadyPublished)
+          Assert.shouldEqual details.error Nothing
+        _ -> Assert.fail "Expected a publish job."
+
+      duplicate <- Client.publish Fixtures.effectAlreadyPublishedData
+      Assert.shouldEqual duplicate.jobId created.jobId
+      Assert.shouldEqual duplicate.disposition (Just V1.AlreadyPublishedSubmission)
