@@ -27,6 +27,7 @@ else
     envVars = testConfig.testEnv;
     stateDir = "/var/lib/registry-server";
     repoFixturesDir = "${stateDir}/repo-fixtures";
+    dhallTypes = "${pkgs.registry-server}/bin/types";
   in
   pkgs.testers.nixosTest {
     name = "registry-smoke";
@@ -60,6 +61,13 @@ else
 
       # Check that the service is still running (didn't crash)
       registry.succeed("systemctl is-active server.service")
+
+      # A stale state-dir value must not override deployment-managed schema paths.
+      pid = registry.succeed("systemctl show --value --property MainPID server.service").strip()
+      registry.succeed(
+          f"tr '\\0' '\\n' < /proc/{pid}/environ | grep -Fx 'DHALL_TYPES=${dhallTypes}'"
+      )
+      registry.succeed("test -f ${dhallTypes}/v1/Manifest.dhall")
 
       # Give the job executor a moment to start and potentially fail
       time.sleep(2)
@@ -96,6 +104,8 @@ else
           RemainAfterExit = true;
         };
         script = ''
+          mkdir -p ${stateDir}
+          echo 'DHALL_TYPES=/defunct/types' > ${stateDir}/.env
           ${testConfig.setupGitFixtures}/bin/setup-git-fixtures ${repoFixturesDir}
         '';
       };
@@ -108,6 +118,7 @@ else
         inherit stateDir;
         envVars = envVars // {
           REPO_FIXTURES_DIR = repoFixturesDir;
+          DHALL_TYPES = dhallTypes;
         };
       };
     };

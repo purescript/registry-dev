@@ -13,6 +13,7 @@ import Data.Map as Map
 import Data.Set as Set
 import Data.Time.Duration as Duration
 import Effect.Aff as Aff
+import Effect.Ref as Ref
 import Record as Record
 import Registry.API.V1 (Job(..))
 import Registry.API.V1 as V1
@@ -24,6 +25,7 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Server.Env (ServerEffects, ServerEnv, runEffects)
+import Registry.App.Server.Env as Env
 import Registry.App.Server.MatrixBuilder as MatrixBuilder
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
@@ -33,6 +35,7 @@ import Run.Except (EXCEPT)
 
 runJobExecutor :: ServerEnv -> Aff (Either Aff.Error Unit)
 runJobExecutor env = runEffects env do
+  liftEffect $ Ref.write Env.Initializing env.executorStatus
   Log.info "Starting Job Executor"
   -- Before starting the executor we check if we need to run a whole-registry
   -- compiler update: whenever a new compiler is published we need to see which
@@ -57,12 +60,14 @@ runJobExecutor env = runEffects env do
         <> " has been reset 3+ times. This indicates a persistent failure "
         <> "that requires investigation."
     Log.error $ "Pausing job processing for 5 minutes to allow investigation..."
+    liftEffect $ Ref.write Env.Paused env.executorStatus
     liftAff $ Aff.delay $ Duration.fromDuration $ Duration.Minutes 5.0
 
   loop
   where
   loop = do
     maybeJob <- findNextAvailableJob
+    liftEffect $ Ref.write Env.Operational env.executorStatus
     case maybeJob of
       Nothing -> do
         liftAff $ Aff.delay $ Duration.fromDuration $ Duration.Seconds 1.0

@@ -6,6 +6,7 @@ import Data.Codec.JSON as CJ
 import Data.Formatter.DateTime as Formatter.DateTime
 import Data.String as String
 import Effect.Aff as Aff
+import Effect.Ref as Ref
 import HTTPurple (JsonDecoder(..), JsonEncoder(..), Request, Response)
 import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
@@ -68,6 +69,8 @@ readServerEnvVars = do
   isReadOnly <- Env.lookupWithDefault Env.readOnly false
   pure { token, publicKey, privateKey, spacesKey, spacesSecret, resourceEnv, readOnly: isReadOnly }
 
+data ExecutorStatus = Initializing | Operational | Paused | Restarting
+
 type ServerEnv =
   { cacheDir :: FilePath
   , logsDir :: FilePath
@@ -78,6 +81,7 @@ type ServerEnv =
   , debouncer :: Registry.Debouncer
   , db :: SQLite
   , jobId :: Maybe JobId
+  , executorStatus :: Ref ExecutorStatus
   }
 
 createServerEnv :: Aff ServerEnv
@@ -93,6 +97,7 @@ createServerEnv = do
 
   octokit <- Octokit.newOctokit vars.token vars.resourceEnv.githubApiUrl
   debouncer <- Registry.newDebouncer
+  executorStatus <- liftEffect $ Ref.new Initializing
 
   db <- liftEffect $ SQLite.connect
     { database: vars.resourceEnv.databaseUrl.path
@@ -112,6 +117,7 @@ createServerEnv = do
     , octokit
     , db
     , jobId: Nothing
+    , executorStatus
     }
 
 type ServerEffects = (RESOURCE_ENV + PACCHETTIBOTTI_ENV + REGISTRY + PACKAGE_SETS + STORAGE + PURSUIT + SOURCE + DB + GITHUB + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT ())

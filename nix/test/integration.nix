@@ -24,10 +24,49 @@ else
         main();
         EOF
         esbuild entrypoint.js --bundle --outfile=e2e-tests.js --platform=node --packages=external
+        cat > healthcheck-test.js << 'EOF'
+        import assert from "node:assert/strict";
+        import { createServer } from "node:http";
+        import { report } from "./output/Registry.App.Server.Healthcheck/index.js";
+        import { runAff_ } from "./output/Effect.Aff/index.js";
+        import { Left, Right } from "./output/Data.Either/index.js";
+
+        const execute = aff => new Promise((resolve, reject) =>
+          runAff_(result => () => result instanceof Left ? reject(result.value0) : resolve(result.value0))(aff)());
+        async function main() {
+          let received, hang = false;
+          const server = createServer(async (req, res) => {
+            let requestBody = "";
+            for await (const chunk of req) requestBody += chunk;
+            received = { method: req.method, url: req.url, body: requestBody };
+            if (!hang) res.end("OK");
+          });
+          await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+          const url = `http://127.0.0.1:''${server.address().port}/check`;
+          try {
+            await execute(report(url)(new Left("Executor paused after repeated job resets")));
+            assert.equal(received.method, "POST");
+            assert.equal(received.url, "/check/fail");
+            assert.match(received.body, /paused after repeated job resets/);
+            hang = true;
+            // The outer deadline makes a broken timeout fail rather than hang CI.
+            await assert.rejects(Promise.race([
+              execute(report(url)(new Right(undefined))),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("outer deadline")), 15000).unref())
+            ]), /timed out/);
+            console.log("Healthchecks reporting tests passed");
+          } finally {
+            server.closeAllConnections();
+            await new Promise(resolve => server.close(resolve));
+          }
+        }
+        main().catch(error => { console.error(error); process.exit(1); });
+        EOF
+        esbuild healthcheck-test.js --bundle --outfile=healthcheck-tests.js --platform=node --packages=external
       '';
       installPhase = ''
         mkdir -p $out
-        cp e2e-tests.js $out/
+        cp e2e-tests.js healthcheck-tests.js $out/
       '';
     };
 
@@ -64,6 +103,9 @@ else
 
       mkdir -p $STATE_DIR
 
+      # Exercise reporting against a local HTTP server, including a hung request.
+      node ${e2eTestRunner}/healthcheck-tests.js
+
       # Start wiremock services
       echo "Starting WireMock services..."
       start-wiremock &
@@ -96,9 +138,40 @@ else
       done
       echo "Server ready"
 
-      # Run E2E tests
+      # Run E2E tests while the server's startup allowance elapses.
       echo "Running E2E tests..."
       node ${e2eTestRunner}/e2e-tests.js
+
+      # Verify the actual server reports operational health, not just HTTP
+      # liveness. The first report follows a one-minute startup allowance.
+      echo "Waiting for an operational Healthchecks report..."
+      elapsed=0
+      until curl --fail --silent "http://localhost:${toString ports.healthchecks}/__admin/requests" \
+        | jq -e 'any(.requests[]; .request.method == "POST" and .request.url == "/" and (.request.body | contains("executor operational")))' > /dev/null; do
+        sleep 1
+        elapsed=$((elapsed + 1))
+        if [ $elapsed -ge 90 ]; then
+          echo "ERROR: No operational Healthchecks report within 90s"
+          exit 1
+        fi
+      done
+
+      # SIGTERM must stop the HTTP server and its background loops, not just
+      # close the listening socket and wait for systemd to kill the process.
+      echo "Checking server shutdown..."
+      kill -TERM "$SERVER_PID"
+      for attempt in $(seq 1 50); do
+        if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+          break
+        fi
+        sleep 0.1
+      done
+      if kill -0 "$SERVER_PID" 2>/dev/null; then
+        echo "ERROR: Server did not exit within five seconds of SIGTERM"
+        kill -KILL "$SERVER_PID"
+        exit 1
+      fi
+      wait "$SERVER_PID"
 
       echo "E2E tests passed!" > $out
     ''
