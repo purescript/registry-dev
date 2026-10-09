@@ -977,11 +977,11 @@ let
       }
     ];
 
-  # Healthchecks API wiremock mappings (simple ping endpoint)
+  # Healthchecks API wiremock mappings (success and failure reports)
   healthchecksMappings = [
     {
       request = {
-        method = "GET";
+        method = "POST";
         urlPattern = "/.*";
       };
       response = {
