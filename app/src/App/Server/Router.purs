@@ -32,13 +32,14 @@ registryLaunch = DateTime date bottom
   where
   date = Date.canonicalDate (unsafePartial fromJust $ Enum.toEnum 2026) Date.January (unsafePartial fromJust $ Enum.toEnum 31)
 
-runRouter :: ServerEnv -> Effect Unit
+runRouter :: ServerEnv -> HTTPurple.ServerM
 runRouter env = do
   -- Read port from SERVER_PORT env var (optional, HTTPurple defaults to 8080)
   port <- liftEffect $ Env.lookupOptional Env.serverPort
-  void $ HTTPurple.serve
+  HTTPurple.serve
     { hostname: "0.0.0.0"
     , port
+    , closingHandler: HTTPurple.NoClosingHandler
     }
     { route: V1.routes
     , router: corsMiddleware runServer

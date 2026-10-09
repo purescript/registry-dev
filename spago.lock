@@ -42,6 +42,7 @@
             "newtype",
             "node-buffer",
             "node-child-process",
+            "node-event-emitter",
             "node-execa",
             "node-fs",
             "node-path",
