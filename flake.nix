@@ -2,8 +2,6 @@
   description = "The PureScript Registry";
 
   inputs = {
-    # NixOS 26.05 defaults to dbus-broker; live deployment keeps dbus-daemon running.
-    # After a successful deployment, manually reboot to activate dbus-broker.
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
 
