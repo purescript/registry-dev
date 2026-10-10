@@ -17,6 +17,7 @@ package:
     - const
     - control
     - datetime
+    - debug
     - dodo-printer
     - dotenv
     - effect
