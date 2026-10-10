@@ -64,9 +64,10 @@ spec = do
         Assert.fail "Expected no tarball upload for console@6.1.0 after failed publish"
 
       retry <- Client.publish Fixtures.consolePublishData
-      Assert.shouldEqual retry.disposition (Just V1.Created)
-      when (retry.jobId == consoleJobId) do
-        Assert.fail "Expected a new publish job after terminal failure."
+      Assert.shouldEqual retry.disposition Nothing
+      Assert.shouldEqual retry.jobId consoleJobId
+      changed <- Client.publish $ Fixtures.consolePublishData { ref = "different-ref" }
+      Assert.shouldEqual changed.jobId consoleJobId
       _ <- Env.pollJobExpectFailure retry.jobId
       pure unit
 

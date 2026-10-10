@@ -19,7 +19,6 @@ import Registry.App.Auth as Auth
 import Registry.App.Effect.Db as Db
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log as Log
-import Registry.App.SQLite (InsertPublishJobResult(..))
 import Registry.App.Server.Env (ServerEffects, ServerEnv, jsonCreated, jsonDecoder, jsonOk, runEffects)
 import Registry.Operation (PackageSetOperation(..))
 import Registry.Operation as Operation
@@ -82,15 +81,12 @@ router { route, method, body } = HTTPurple.usingCont case route, method of
     publish <- HTTPurple.fromJson (jsonDecoder Operation.publishCodec) body
     lift $ Log.info $ "Received Publish request: " <> printJson Operation.publishCodec publish
 
-    lift (Db.insertPublishJob { payload: publish }) >>= case _ of
-      PublishJobCreated jobId ->
-        jsonCreated V1.publishJobResponseCodec { jobId, disposition: Just V1.Created }
-      PublishJobDuplicateActive jobId -> do
-        lift $ Log.warn $ "Duplicate active publish job, returning existing one: " <> unwrap jobId
-        jsonOk V1.publishJobResponseCodec { jobId, disposition: Just V1.DuplicateActive }
-      PublishJobAlreadyPublished jobId -> do
-        lift $ Log.info $ "Equivalent publish job already succeeded, returning existing one: " <> unwrap jobId
-        jsonOk V1.publishJobResponseCodec { jobId, disposition: Just V1.AlreadyPublishedSubmission }
+    { jobId, created } <- lift $ Db.insertPublishJob { payload: publish }
+    if created then
+      jsonCreated V1.publishJobResponseCodec { jobId, disposition: Just V1.Created }
+    else do
+      lift $ Log.warn $ "Duplicate publish job, returning existing one without starting new work: " <> unwrap jobId
+      jsonOk V1.jobCreatedResponseCodec { jobId }
 
   Unpublish, Post -> do
     auth <- HTTPurple.fromJson (jsonDecoder Operation.authenticatedCodec) body
