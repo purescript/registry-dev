@@ -289,6 +289,30 @@ spec = do
         ]
 
   Spec.describe "Resolution contracts" do
+    Spec.it "Excludes broken dependencies belonging only to rejected versions" do
+      let
+        index = Map.fromFoldable
+          [ package "a" /\ Map.fromFoldable
+              [ version 1 /\ Map.singleton (package "orphan") (range 1 2)
+              , version 2 /\ Map.empty
+              ]
+          , package "orphan" /\ Map.singleton (version 1) (Map.singleton (package "missing") (range 1 2))
+          ]
+      solve index (Map.singleton (package "a") (range 1 3))
+        `Assert.shouldContain` Map.singleton (package "a") (version 2)
+
+    Spec.it "Preserves both bound roots and the child's local source in downstream errors" do
+      let
+        index = Map.fromFoldable
+          [ package "a" /\ Map.singleton (version 1) (Map.singleton (package "middle") (range 2 5))
+          , package "b" /\ Map.singleton (version 1) (Map.singleton (package "middle") (range 1 4))
+          , package "middle" /\ Map.singleton (version 2) (Map.singleton (package "missing") (range 1 2))
+          ]
+        goals = Map.fromFoldable [ package "a" /\ range 1 2, package "b" /\ range 1 2 ]
+        source = via "middle" 2 [ "a", "b" ]
+      solve index goals `Assert.shouldEqual`
+        Left (pure (Conflicts (Map.singleton (package "missing") (intersection 1 source 2 source))))
+
     Spec.it "Prefers the alphabetically first package, not the largest total versions" do
       let
         index = Map.fromFoldable
@@ -350,9 +374,8 @@ spec = do
                 )
             )
             names
-          solutions = Array.filter (valid index) assignments
         case solve index goals of
-          Left _ -> unless (Array.null solutions) $ Assert.fail $ "False unsatisfiability for graph " <> show seed
+          Left _ -> when (Array.any (valid index) assignments) $ Assert.fail $ "False unsatisfiability for graph " <> show seed
           Right plan -> unless (valid index plan) $ Assert.fail $ "Invalid resolution for graph " <> show seed
 
   Spec.describe "CompilerIndex" do

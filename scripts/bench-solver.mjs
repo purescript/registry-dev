@@ -179,7 +179,7 @@ if (profiler) {
 }
 if (process.env.BASELINE) {
   const before = JSON.parse(readFileSync(process.env.BASELINE));
-  assert.deepEqual(snapshotInfo, before.snapshot, "Different snapshots");
+  assert.equal(snapshotInfo?.sha256, before.snapshot?.sha256, "Different snapshots");
   assert.deepEqual(results.map((r) => r.label), before.results.map((r) => r.label), "Different workloads");
   for (const [i, r] of results.entries()) {
     assert.deepEqual(r.result, before.results[i].result, `${r.label}: changed resolution or diagnostics`);
