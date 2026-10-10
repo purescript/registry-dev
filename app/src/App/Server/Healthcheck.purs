@@ -11,6 +11,7 @@ import Fetch as Fetch
 import Registry.App.Effect.Db as Db
 import Registry.App.Server.Env (ServerEnv, runEffects)
 import Registry.App.Server.Env as Env
+import Registry.Foreign.Console as Console.Foreign
 
 -- | Give startup one minute, then wait five minutes after a delivered report.
 -- | Failed deliveries retry after one minute, indefinitely.
@@ -31,7 +32,8 @@ run env url = Aff.delay (Milliseconds 60_000.0) *> loop
     result <- Aff.attempt $ report url health
     case result of
       Left error -> do
-        Console.warn $ "Healthcheck report failed; retrying in one minute: " <> Aff.message error
+        Console.warn "Healthcheck report failed; retrying in one minute:"
+        liftEffect $ Console.Foreign.warnError error
         Aff.delay $ Milliseconds 60_000.0
       Right _ -> Aff.delay $ Milliseconds 300_000.0
     loop
