@@ -84,12 +84,12 @@ export const insertPublishJobImpl = (db, job) => {
     `).get(job.packageName, job.packageVersion);
 
     if (active) {
-      return { jobId: active.jobId, status: 1 };
+      return { jobId: active.jobId, created: false };
     }
 
     // A successful job is idempotently reusable only for the exact submitted
-    // payload. A later successful unpublish invalidates that result so the new
-    // publish attempt can run and report the authoritative unpublished error.
+    // payload. A later successful unpublish invalidates that result; in that
+    // case we fall back to the cached history below without starting new work.
     const successful = db.prepare(`
       SELECT job.jobId, info.finishedAt
       FROM ${PUBLISH_JOBS_TABLE} job
@@ -111,12 +111,26 @@ export const insertPublishJobImpl = (db, job) => {
       `).get(job.packageName, job.packageVersion, successful.finishedAt);
 
       if (!laterUnpublish) {
-        return { jobId: successful.jobId, status: 2 };
+        return { jobId: successful.jobId, created: false };
       }
     }
 
+    // Keep failed attempts cached too. Changing the payload must not bypass
+    // the cache and start another expensive publish for the same name/version.
+    const existing = db.prepare(`
+      SELECT job.jobId
+      FROM ${PUBLISH_JOBS_TABLE} job
+      JOIN ${JOB_INFO_TABLE} info ON job.jobId = info.jobId
+      WHERE job.packageName = ? AND job.packageVersion = ?
+      ORDER BY info.createdAt ASC LIMIT 1
+    `).get(job.packageName, job.packageVersion);
+
+    if (existing) {
+      return { jobId: existing.jobId, created: false };
+    }
+
     _insertJob(db, PUBLISH_JOBS_TABLE, columns, job);
-    return { jobId: job.jobId, status: 0 };
+    return { jobId: job.jobId, created: true };
   });
 
   // Acquire the write lock before duplicate detection. This keeps the read and

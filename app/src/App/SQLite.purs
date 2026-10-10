@@ -9,7 +9,7 @@ module Registry.App.SQLite
   , InsertMatrixJob
   , InsertPackageSetJob
   , InsertPublishJob
-  , InsertPublishJobResult(..)
+  , InsertPublishJobResult
   , InsertTransferJob
   , InsertUnpublishJob
   , JobInfo
@@ -401,13 +401,13 @@ type JSInsertPublishJob =
 
 type JSInsertPublishJobResult =
   { jobId :: String
-  , status :: Int
+  , created :: Boolean
   }
 
-data InsertPublishJobResult
-  = PublishJobCreated JobId
-  | PublishJobDuplicateActive JobId
-  | PublishJobAlreadyPublished JobId
+type InsertPublishJobResult =
+  { jobId :: JobId
+  , created :: Boolean
+  }
 
 insertPublishJobToJSRep :: JobId -> DateTime -> InsertPublishJob -> JSInsertPublishJob
 insertPublishJobToJSRep jobId now { payload } =
@@ -420,19 +420,14 @@ insertPublishJobToJSRep jobId now { payload } =
 
 foreign import insertPublishJobImpl :: EffectFn2 SQLite JSInsertPublishJob JSInsertPublishJobResult
 
--- | Atomically insert a publish job or return the active/equivalent successful
--- | job which makes a new insertion unnecessary.
+-- | Atomically insert a publish job only when no history exists for its name
+-- | and version. Prefer an active or equivalent successful job when available.
 insertPublishJob :: SQLite -> InsertPublishJob -> Effect InsertPublishJobResult
 insertPublishJob db job = do
   jobId <- newJobId
   now <- nowUTC
   result <- Uncurried.runEffectFn2 insertPublishJobImpl db $ insertPublishJobToJSRep jobId now job
-  let resultJobId = JobId result.jobId
-  pure case result.status of
-    0 -> PublishJobCreated resultJobId
-    1 -> PublishJobDuplicateActive resultJobId
-    2 -> PublishJobAlreadyPublished resultJobId
-    status -> unsafeCrashWith $ "Invalid publish job insertion status " <> show status
+  pure { jobId: JobId result.jobId, created: result.created }
 
 --------------------------------------------------------------------------------
 -- unpublish_jobs table

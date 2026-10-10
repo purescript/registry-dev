@@ -123,11 +123,10 @@ The registry responds immediately with a job ID that can be polled for status:
 }
 ```
 
-The publish response disposition is `created` for a new job,
-`duplicate-active` when an unfinished job already owns the package version, or
-`already-published` when an equivalent successful publish job exists. New jobs
-return HTTP 201, while `duplicate-active` and `already-published` responses
-return HTTP 200.
+New jobs return HTTP 201 with disposition `created`. If any publish job already
+exists for the package name and version, the server returns a cached job ID with
+HTTP 200 and no disposition, without starting another attempt. This includes
+failed jobs and requests with changed payloads. Poll the returned job for its outcome.
 
 #### Step 2: Source Fetched and Validated
 
@@ -867,7 +866,7 @@ After a package is successfully published to the registry, the registry attempts
 
 **Compiler Version Requirement**
 
-Documentation can only be published to Pursuit using compiler version 0.14.7 or later. Packages published with older compilers will skip this step. If documentation publishing was skipped due to an older compiler, you can retry by resubmitting a publish operation with a supported compiler version.
+Documentation can only be published to Pursuit using compiler version 0.14.7 or later. Packages published with older compilers will skip this step. If documentation publishing was skipped due to an older compiler, contact the registry trustees; resubmitting through the publish endpoint returns a cached job.
 
 **Publishing Process**
 
@@ -879,7 +878,7 @@ To publish documentation, the registry:
 
 **Retrying Failed Documentation Uploads**
 
-If documentation publishing fails (for example, due to a transient network error), you can retry by resubmitting a publish operation for the same package version. The registry will detect that the version is already published and skip the tarball upload, but will retry the Pursuit upload if documentation is missing.
+If documentation publishing fails (for example, due to a transient network error), contact the registry trustees. Resubmitting through the publish endpoint returns a cached job rather than starting another attempt.
 
 #### 6.3 Publish to Package Sets
 
@@ -997,7 +996,7 @@ POST to `/api/v1/publish` with a JSON body matching the [`PublishData`](#51-publ
 }
 ```
 
-The response contains a job ID and a publish submission disposition:
+The response contains a job ID and an optional publish submission disposition:
 
 ```json
 {
@@ -1006,12 +1005,14 @@ The response contains a job ID and a publish submission disposition:
 }
 ```
 
-`disposition` is one of `created`, `duplicate-active`, or
-`already-published`. New jobs return HTTP 201; `duplicate-active` and
-`already-published` responses return HTTP 200. An active job owns its package
-name and version even if its payload differs, because registry package versions
-are immutable; clients can inspect the returned job's `payload` when handling
-`duplicate-active`.
+New jobs return HTTP 201 with disposition `created`. If any publish job already
+exists for the package name and version, the response is HTTP 200 with only its
+job ID. The server prefers an active job, then a successful job with the exact
+same payload that has not been invalidated by a later successful unpublish.
+Otherwise it returns the oldest job for that name and version. Changed payloads
+and later unpublishing do not permit a new attempt. Poll the returned job for
+its original payload and outcome; a cached result is not a statement about the
+package's current publication state.
 
 #### Polling Job Status
 
