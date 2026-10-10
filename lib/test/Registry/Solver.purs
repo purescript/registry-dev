@@ -4,8 +4,9 @@ import Prelude
 
 import Data.Array as Array
 import Data.Either (Either(..))
-import Data.Foldable (for_)
+import Data.Foldable (all, for_)
 import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.Int as Int
 import Data.List.NonEmpty as NonEmptyList
 import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
@@ -138,7 +139,7 @@ spec = do
     Spec.it "Backtracks from broken ranges to find the highest valid range." do
       -- 'fixed-broken' works at version 0 and 1, but is broken at version 2.
       shouldSucceed
-        [ fixedBroken.package /\ range 0 2 ]
+        [ fixedBroken.package /\ range 0 3 ]
         [ fixedBroken.package /\ version 1, prelude.package /\ version 1 ]
 
   Spec.describe "Does not solve when no versions exist for the specified range" do
@@ -287,6 +288,73 @@ spec = do
           }
         ]
 
+  Spec.describe "Resolution contracts" do
+    Spec.it "Prefers the alphabetically first package, not the largest total versions" do
+      let
+        index = Map.fromFoldable
+          [ package "a" /\ Map.fromFoldable
+              [ version 1 /\ Map.singleton (package "z") (range 1 2)
+              , version 2 /\ Map.singleton (package "z") (range 2 3)
+              ]
+          , package "b" /\ Map.fromFoldable
+              [ version 1 /\ Map.singleton (package "z") (range 2 3)
+              , version 9 /\ Map.singleton (package "z") (range 1 2)
+              ]
+          , package "z" /\ Map.fromFoldable [ version 1 /\ Map.empty, version 2 /\ Map.empty ]
+          ]
+      solve index (Map.fromFoldable [ package "a" /\ range 1 3, package "b" /\ range 1 10 ])
+        `Assert.shouldContain` Map.fromFoldable [ package "a" /\ version 2, package "b" /\ version 1, package "z" /\ version 2 ]
+
+    Spec.it "Matches exhaustive assignments on 4096 small cyclic version graphs" do
+      -- Each of six package versions independently has no dependency, an exact
+      -- low/high dependency, or a broad dependency on the next package in a
+      -- three-package ring. Enumerating assignments (including absent packages)
+      -- is independent of the solver's propagation and backtracking algorithm.
+      let
+        names = map package [ "a", "b", "c" ]
+        assignments = do
+          a <- [ Nothing, Just (version 1), Just (version 2) ]
+          b <- [ Nothing, Just (version 1), Just (version 2) ]
+          c <- [ Nothing, Just (version 1), Just (version 2) ]
+          pure $ Map.fromFoldable $ Array.catMaybes $ Array.zipWith (\p -> map (Tuple p)) names [ a, b, c ]
+        goals = Map.singleton (package "a") (range 1 3)
+        satisfies plan deps = all
+          ( \(Tuple p bounds) -> case Map.lookup p plan of
+              Nothing -> false
+              Just v -> Range.includes bounds v
+          )
+          (Map.toUnfoldable deps :: Array (Tuple PackageName Range))
+        valid index plan = satisfies plan goals && all
+          ( \(Tuple p v) -> case Map.lookup p index >>= Map.lookup v of
+              Nothing -> false
+              Just deps -> satisfies plan deps
+          )
+          (Map.toUnfoldable plan :: Array (Tuple PackageName Version))
+      for_ (Array.range 0 4095) \seed -> do
+        let
+          index = Map.fromFoldable $ Array.mapWithIndex
+            ( \i p -> p /\ Map.fromFoldable
+                ( map
+                    ( \j -> do
+                        let
+                          digit = (seed / Int.pow 4 (i * 2 + j - 1)) `mod` 4
+                          next = package (if i == 0 then "b" else if i == 1 then "c" else "a")
+                          deps = case digit of
+                            0 -> Map.empty
+                            1 -> Map.singleton next (range 1 2)
+                            2 -> Map.singleton next (range 2 3)
+                            _ -> Map.singleton next (range 1 3)
+                        version j /\ deps
+                    )
+                    [ 1, 2 ]
+                )
+            )
+            names
+          solutions = Array.filter (valid index) assignments
+        case solve index goals of
+          Left _ -> unless (Array.null solutions) $ Assert.fail $ "False unsatisfiability for graph " <> show seed
+          Right plan -> unless (valid index plan) $ Assert.fail $ "Invalid resolution for graph " <> show seed
+
   Spec.describe "CompilerIndex" do
     let
       -- Package graph:
@@ -346,6 +414,27 @@ spec = do
         Right (Tuple _solvedCompiler resolutions) -> do
           Map.lookup (package "prelude") resolutions `Assert.shouldEqual` Just (unsafeVersion "6.0.1")
           Map.lookup (package "effect") resolutions `Assert.shouldEqual` Just (unsafeVersion "4.0.0")
+
+    Spec.it "Backtracks package versions for an exact compiler without changing flexible selection" do
+      let
+        metadata = Map.fromFoldable
+          [ unsafeMetadata "prelude" [ Tuple "6.0.1" [ "0.15.15", "0.15.16" ] ]
+          , unsafeMetadata "effect"
+              [ Tuple "4.0.0" [ "0.15.16" ]
+              , Tuple "5.0.0" [ "0.15.15" ]
+              ]
+          , unsafeMetadata "my-pkg" [ Tuple "1.0.0" [ "0.15.15" ] ]
+          ]
+        index = buildCompilerIndex compilers manifestIndex metadata
+        goals = Map.singleton (package "effect") (fromRight "bad range" (Range.parse ">=4.0.0 <6.0.0"))
+        expected compiler effect = Tuple (unsafeVersion compiler) $ Map.fromFoldable
+          [ package "effect" /\ unsafeVersion effect
+          , package "prelude" /\ unsafeVersion "6.0.1"
+          ]
+      solveWithCompiler (Range.exact (unsafeVersion "0.15.16")) index goals
+        `Assert.shouldContain` expected "0.15.16" "4.0.0"
+      solveWithCompiler (fromRight "bad compiler range" (Range.parse ">=0.15.15 <0.15.17")) index goals
+        `Assert.shouldContain` expected "0.15.15" "5.0.0"
 
     Spec.it "updateCompilerIndex produces same result as full rebuild" do
       -- Setup: effect has two versions (4.0.0 and 5.0.0) both supporting
