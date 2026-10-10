@@ -3,7 +3,6 @@ module Registry.App.Server.Healthcheck (run, report) where
 import Registry.App.Prelude
 
 import Control.Parallel as Parallel
-import Data.DateTime (diff)
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff as Aff
 import Effect.Class.Console as Console
@@ -12,15 +11,14 @@ import Fetch as Fetch
 import Registry.App.Effect.Db as Db
 import Registry.App.Server.Env (ServerEnv, runEffects)
 import Registry.App.Server.Env as Env
+import Registry.Foreign.Console as Console.Foreign
 
--- | Give startup one minute, then report on a five-minute cadence. Failures to
--- | deliver a ping never stop the reporter; the next scheduled ping retries.
+-- | Give startup one minute, then wait five minutes after a delivered report.
+-- | Failed deliveries retry after one minute, indefinitely.
 run :: ServerEnv -> String -> Aff Unit
 run env url = Aff.delay (Milliseconds 60_000.0) *> loop
   where
-  interval = Milliseconds 300_000.0
   loop = do
-    start <- nowUTC
     database <- runEffects env $ void Db.selectNextPublishJob
     executor <- liftEffect $ Ref.read env.executorStatus
     let
@@ -32,11 +30,12 @@ run env url = Aff.delay (Milliseconds 60_000.0) *> loop
           Env.Paused -> Left "Executor paused after repeated job resets"
           Env.Restarting -> Left "Executor restarting after unexpected exit; see server logs"
     result <- Aff.attempt $ report url health
-    for_ (either Just (const Nothing) result) \_ ->
-      Console.warn "Healthcheck report failed; retrying next scheduled report"
-    end <- nowUTC
-    let Milliseconds elapsed = end `diff` start
-    Aff.delay $ Milliseconds $ max 0.0 (unwrap interval - elapsed)
+    case result of
+      Left error -> do
+        Console.warn "Healthcheck report failed; retrying in one minute:"
+        liftEffect $ Console.Foreign.warnError error
+        Aff.delay $ Milliseconds 60_000.0
+      Right _ -> Aff.delay $ Milliseconds 300_000.0
     loop
 
 -- | Bound requests and use abortable fetch so an unreachable monitoring service
