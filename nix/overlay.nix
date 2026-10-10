@@ -138,15 +138,21 @@ let
 in
 {
   # Node.js 24.21.0 can abort when better-sqlite3 statements are garbage-collected.
-  # Backport the upstream cleanup-hook registry fix and its teardown UAF fix.
+  # Their destructors remove Node cleanup hooks without a current JS environment,
+  # triggering Node's assertion that the environment is non-null. Patch Node rather
+  # than changing better-sqlite3; remove these backports once Node includes both fixes.
   nodejs-slim_24 = prev.nodejs-slim_24.overrideAttrs (old: {
     patches = prev.lib.unique (
       old.patches
       ++ [
+        # Allow cleanup-hook removal without a current JS environment:
+        # https://github.com/nodejs/node/commit/abe1b673e9b12588abcb6d74b0facedf6a3136dd
         (prev.fetchurl {
           url = "https://github.com/nodejs/node/commit/abe1b673e9b12588abcb6d74b0facedf6a3136dd.patch";
           hash = "sha256-LQHgWopP3P3JW8iX9tkvsHV1OH4WY7I5lbevnVjsqOk=";
         })
+        # Fix a use-after-free during environment teardown introduced by that fix:
+        # https://github.com/nodejs/node/commit/03e2b9bc42ae9c7ed4fbab5509d70fa934863c44
         (prev.fetchurl {
           url = "https://github.com/nodejs/node/commit/03e2b9bc42ae9c7ed4fbab5509d70fa934863c44.patch";
           hash = "sha256-dA5jols9WyGJKlL4XMoII9TClpkat7h79wlYlRgGSYM=";
