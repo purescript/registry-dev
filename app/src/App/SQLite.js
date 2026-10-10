@@ -126,11 +126,6 @@ const _selectJob = (db, { table, jobId, packageName, packageVersion }) => {
       query += ` AND job.packageVersion = ?`;
       params.push(packageVersion);
     }
-    // Completed failures must not block a new publish attempt. Keep pending,
-    // running, and successful jobs deduplicated, and retain failed jobs by ID.
-    if (table === PUBLISH_JOBS_TABLE) {
-      query += ` AND (info.finishedAt IS NULL OR info.success = 1)`;
-    }
   } else {
     query += ` WHERE info.finishedAt IS NULL AND info.startedAt IS NULL`;
   }
