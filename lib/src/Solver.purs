@@ -37,6 +37,7 @@ import Data.Foldable (fold, foldMap, intercalate)
 import Data.FoldableWithIndex (anyWithIndex, foldMapWithIndex, foldlWithIndex, forWithIndex_)
 import Data.Functor.App (App(..))
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.List (List(..))
 import Data.List.NonEmpty as NEL
 import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
@@ -134,7 +135,7 @@ updateCompilerIndex (CompilerIndex index) (Manifest m) (Metadata { published }) 
 -- | a compiler range accepted by all dependencies.
 solveWithCompiler :: Range -> CompilerIndex -> Map PackageName Range -> Either SolverErrors (Tuple Version (Map PackageName Version))
 solveWithCompiler pursRange (CompilerIndex index) required = do
-  results <- solveFull { registry: initializeRegistry index, required: initializeRequired (Map.insert purs pursRange required) }
+  results <- solve index (Map.insert purs pursRange required)
   let pursVersion = Maybe.fromMaybe' (\_ -> Partial.unsafeCrashWith "Produced a compiler-derived build plan with no compiler!") $ Map.lookup purs results
   pure $ Tuple pursVersion $ Map.delete purs results
 
@@ -149,10 +150,15 @@ type DependencyIndex = Map PackageName (Map Version (Map PackageName Range))
 
 -- | Solve a map of requirements given a registry index.
 solve :: DependencyIndex -> Map PackageName Range -> Either SolverErrors (Map PackageName Version)
-solve index required =
+solve index required = do
+  let
+    initializedRequired = initializeRequired required
+    -- Attach diagnostic provenance only to reachable versions, not the entire
+    -- registry. Reachability depends on raw ranges, not on that provenance.
+    registry = initializeRegistry (gatherReachable index required)
   solveFull
-    { registry: initializeRegistry index
-    , required: initializeRequired required
+    { registry: map (addFrom initializedRequired) <$> registry
+    , required: initializedRequired
     }
 
 --------------------------------------------------------------------------------
@@ -300,7 +306,7 @@ type RRI = RR (inRange :: TransitivizedRegistry)
 -- | latest version of the alphabetically-smallest package that isn't pinned to
 -- | a single version yet.
 solveFull :: RR () -> Either SolverErrors (Map PackageName Version)
-solveFull = solveAux <<< solveSeed <<< withReachable
+solveFull = solveAux <<< solveSeed
   where
   solveAux
     :: RRU -> Either SolverErrors (Map PackageName Version)
@@ -575,17 +581,24 @@ requirementUpdates { registry: SemigroupMap registry, required: SemigroupMap req
           Just versions -> SemigroupMap $ Map.singleton package versions
           Nothing -> mempty
 
--- | Trim the registry down to only package versions that are reachable from
--- | the initial set of requirements. Only done once.
-gatherReachable :: forall r. RR r -> TransitivizedRegistry
-gatherReachable { registry, required } =
-  let
-    reachable0 :: SemigroupMap PackageName (SemigroupMap Version (SemigroupMap PackageName Intersection))
-    reachable0 = mapWithIndex (getPackageRange registry) required
-    moreReachable = (foldMap <<< foldMap) (mapWithIndex (getPackageRange registry))
-    reachable = fixEqM moreReachable reachable0
-  in
-    reachable
+-- | Visit each reachable package version once. Dependencies are immutable at
+-- | this point, so revisiting a version cannot discover any new edges. Track
+-- | versions, not just package names: a later edge may reach a disjoint range.
+gatherReachable :: DependencyIndex -> Map PackageName Range -> DependencyIndex
+gatherReachable registry required = go Map.empty (Map.toUnfoldable required)
+  where
+  go seen Nil = seen
+  go seen (Cons (Tuple package range) pending) = do
+    let
+      visited = fromMaybe Map.empty (Map.lookup package seen)
+      versions = fromMaybe Map.empty (Map.lookup package registry)
+      fresh = Map.filterKeys (\version -> Range.includes range version && not (Map.member version visited)) versions
+    if Map.isEmpty fresh then go seen pending
+    else do
+      let
+        next = foldMap Map.toUnfoldable fresh <> pending
+        seen' = Map.insert package (Map.union fresh visited) seen
+      go seen' next
 
 -- | Also helps with efficiency: remove package versions from the registry
 -- | that are outside of the global requirements. Done regularly.
@@ -632,22 +645,22 @@ instance Semigroup SolverPosition where
   append (Pos l1 g1) (Pos l2 g2) =
     Pos (l1 <> l2) (g1 <> g2)
 
-dependency :: SolverPosition -> SolverPosition -> SolverPosition
-dependency (Pos _ g1) (Pos l2 g2) = Pos l2 (g1 <> g2)
-
-dependencyOf :: forall z. Newtype z Sourced => SolverPosition -> z -> z
-dependencyOf p1 = coerce \(Sourced v p2) ->
-  Sourced v (dependency p1 p2)
+dependencyOf :: forall z. Newtype z Sourced => Set PackageName -> z -> z
+dependencyOf roots = coerce \(Sourced v (Pos local global)) ->
+  Sourced v (Pos local (roots <> global))
 
 asDependencyOf :: Intersection -> Intersection -> Intersection
-asDependencyOf (Intersection i1) (Intersection i2) =
+asDependencyOf (Intersection i1) (Intersection i2) = do
   let
-    pos = getPos i1.lower <> getPos i1.upper
-  in
-    Intersection
-      { lower: dependencyOf pos i2.lower
-      , upper: dependencyOf pos i2.upper
-      }
+    -- Only roots propagate from the parent. Combining its local provenance
+    -- would merge potentially large sets just to discard them immediately.
+    Pos _ lowerRoots = getPos i1.lower
+    Pos _ upperRoots = getPos i1.upper
+    roots = lowerRoots <> upperRoots
+  Intersection
+    { lower: dependencyOf roots i2.lower
+    , upper: dependencyOf roots i2.upper
+    }
 
 data Sourced = Sourced Version SolverPosition
 
@@ -742,9 +755,6 @@ fromLoose = coerce
 -- Data management
 --------------------------------------------------------------------------------
 
-withReachable :: forall r. RR r -> RR r
-withReachable r = r { registry = map (addFrom r.required) <$> gatherReachable r }
-
 withInRange :: RR () -> RRI
 withInRange r =
   { registry: r.registry
@@ -789,25 +799,6 @@ doubleton package version dat = coerce $ Map.alter (Just <<< helper) package
 
 accumulated :: forall a. Monoid a => Endo (->) a -> a
 accumulated (Endo f) = f mempty
-
-fixEq :: forall a. Eq a => (a -> a) -> (a -> a)
-fixEq f a = let b = f a in if b == a then a else fixEq f b
-
--- | An optimized fixpoint for semilattice closure operations, accumulating a
--- | full result while only running the function on the newly added bit.
--- |
--- | Invariant: f (acc <> lastAdded) = acc <> f lastAdded
-fixEqM :: forall a. Semigroup a => Eq a => (a -> a) -> (a -> a)
-fixEqM f = join go
-  where
-  go acc lastAdded =
-    let
-      moreAdded = f lastAdded
-      moreAcc = acc <> moreAdded
-    in
-      if moreAcc == acc then acc
-      else
-        go moreAcc moreAdded
 
 noUpdates :: forall r k v. { updated :: SemigroupMap k v | r } -> Boolean
 noUpdates { updated: SemigroupMap updated } = Map.isEmpty updated
