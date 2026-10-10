@@ -1,7 +1,8 @@
-module Test.Registry.App.SQLite (spec) where
+module Test.Registry.App.SQLite (spec, withDatabaseAff) where
 
 import Registry.App.Prelude
 
+import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Registry.API.V1 (SortOrder(..))
 import Registry.API.V1 as V1
@@ -13,6 +14,12 @@ import Registry.Test.Utils as Utils
 import Test.Spec as Spec
 
 foreign import withDatabase :: (SQLite -> Effect Unit) -> Effect Unit
+
+foreign import openDatabase :: Effect SQLite
+foreign import closeDatabase :: SQLite -> Effect Unit
+
+withDatabaseAff :: forall a. (SQLite -> Aff a) -> Aff a
+withDatabaseAff = Aff.bracket (liftEffect openDatabase) (liftEffect <<< closeDatabase)
 
 spec :: Spec.Spec Unit
 spec = Spec.it "allows failed publishes to be retried without losing deduplication or job history" $ liftEffect $ withDatabase \db -> do

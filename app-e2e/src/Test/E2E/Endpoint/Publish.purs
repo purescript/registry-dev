@@ -121,7 +121,7 @@ spec = do
           Assert.shouldEqual completedDuplicate.jobId head.jobId
           Assert.shouldEqual completedDuplicate.disposition (Just V1.AlreadyPublishedSubmission)
 
-    Spec.it "reports an already-published package as idempotent success" do
+    Spec.it "repairs matrix scheduling for an already-published package without republishing" do
       created <- Client.publish Fixtures.effectAlreadyPublishedData
       Assert.shouldEqual created.disposition (Just V1.Created)
       job <- Env.pollJobOrFail created.jobId
@@ -130,6 +130,15 @@ spec = do
           Assert.shouldEqual details.disposition (Just V1.AlreadyPublished)
           Assert.shouldEqual details.error Nothing
         _ -> Assert.fail "Expected a publish job."
+
+      -- The fixture is fully published but this test starts with no job history.
+      -- An idempotent retry must still enqueue its missing compiler checks.
+      jobs <- Client.getJobsWith Client.IncludeCompleted
+      let payload = Fixtures.effectAlreadyPublishedData
+      unless (Array.any (Env.isMatrixJobFor { name: payload.name, version: payload.version }) jobs) do
+        Assert.fail "Expected an already-published retry to enqueue matrix work."
+      uploaded <- Env.hasStorageUpload { name: payload.name, version: payload.version }
+      Assert.shouldEqual uploaded false
 
       duplicate <- Client.publish Fixtures.effectAlreadyPublishedData
       Assert.shouldEqual duplicate.jobId created.jobId

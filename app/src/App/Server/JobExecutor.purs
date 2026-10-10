@@ -10,7 +10,6 @@ import Data.Array as Array
 import Data.DateTime (DateTime)
 import Data.Int as Int
 import Data.Map as Map
-import Data.Set as Set
 import Data.Time.Duration as Duration
 import Effect.Aff as Aff
 import Effect.Ref as Ref
@@ -26,6 +25,7 @@ import Registry.App.Effect.Registry (REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Server.Env (ServerEffects, ServerEnv, runEffects)
 import Registry.App.Server.Env as Env
+import Registry.App.Server.MatrixBuilder (MatrixSolverResult)
 import Registry.App.Server.MatrixBuilder as MatrixBuilder
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
@@ -157,26 +157,10 @@ executeJob _ = case _ of
       -- At this point this package has been verified with one compiler only.
       -- So we need to enqueue compilation jobs for (1) same package, all the other
       -- compilers, and (2) same compiler, all packages that depend on this one
-      -- TODO here we are building the compiler index, but we should really cache it
-      compilerIndex <- MatrixBuilder.readCompilerIndex
-      let solverData = { compiler, name, version, dependencies, compilerIndex }
-      samePackageAllCompilers <- MatrixBuilder.solveForAllCompilers solverData
-      sameCompilerAllDependants <- MatrixBuilder.solveDependantsForCompiler solverData
-      for (Array.fromFoldable $ Set.union samePackageAllCompilers sameCompilerAllDependants) \{ compiler: solvedCompiler, resolutions, name: solvedPackage, version: solvedVersion } -> do
-        Log.info $ Array.fold
-          [ "Enqueuing matrix job: compiler "
-          , Version.print solvedCompiler
-          , ", package "
-          , PackageName.print solvedPackage
-          , "@"
-          , Version.print solvedVersion
-          ]
-        Db.insertMatrixJob
-          { payload: resolutions
-          , compilerVersion: solvedCompiler
-          , packageName: solvedPackage
-          , packageVersion: solvedVersion
-          }
+      snapshot <- MatrixBuilder.readMatrixSnapshot
+      let solverData = { compiler, name, version, dependencies, snapshot }
+      void $ MatrixBuilder.solveForAllCompilers solverData enqueueMatrixJob
+      void $ MatrixBuilder.solveDependantsForCompiler solverData enqueueMatrixJob
     pure $ Just result.disposition
   UnpublishJob { payload } -> API.authenticated payload $> Nothing
   TransferJob { payload } -> API.authenticated payload $> Nothing
@@ -186,27 +170,17 @@ executeJob _ = case _ of
     -- packages trigger jobs for their dependents so it cascades through the registry)
     dependencies <- MatrixBuilder.runMatrixJob details
 
-    -- TODO here we are building the compiler index, but we should really cache it
-    compilerIndex <- MatrixBuilder.readCompilerIndex
-    let solverData = { compiler: details.compilerVersion, name: packageName, version: packageVersion, dependencies, compilerIndex }
-    sameCompilerAllDependants <- MatrixBuilder.solveDependantsForCompiler solverData
-    for_ (Array.fromFoldable sameCompilerAllDependants) \{ compiler: solvedCompiler, resolutions, name: solvedPackage, version: solvedVersion } -> do
-      Log.info $ Array.fold
-        [ "Enqueuing matrix job: compiler "
-        , Version.print solvedCompiler
-        , ", package "
-        , PackageName.print solvedPackage
-        , "@"
-        , Version.print solvedVersion
-        ]
-      Db.insertMatrixJob
-        { payload: resolutions
-        , compilerVersion: solvedCompiler
-        , packageName: solvedPackage
-        , packageVersion: solvedVersion
-        }
+    snapshot <- MatrixBuilder.readMatrixSnapshot
+    let solverData = { compiler: details.compilerVersion, name: packageName, version: packageVersion, dependencies, snapshot }
+    void $ MatrixBuilder.solveDependantsForCompiler solverData enqueueMatrixJob
     pure Nothing
   PackageSetJob payload -> API.packageSetUpdate payload $> Nothing
+
+enqueueMatrixJob :: forall r. MatrixSolverResult -> Run (DB + LOG + r) Unit
+enqueueMatrixJob { compiler, resolutions, name, version } = do
+  Log.info $ "Enqueuing matrix job: compiler " <> Version.print compiler <> ", package " <> formatPackageVersion name version
+  void $ Db.insertMatrixJob
+    { payload: resolutions, compilerVersion: compiler, packageName: name, packageVersion: version }
 
 upgradeRegistryToNewCompiler :: forall r. Version -> Run (DB + LOG + EXCEPT String + REGISTRY_READ + r) Unit
 upgradeRegistryToNewCompiler newCompilerVersion = do
