@@ -336,44 +336,47 @@ spec = do
       -- is independent of the solver's propagation and backtracking algorithm.
       let
         names = map package [ "a", "b", "c" ]
+
         assignments = do
           a <- [ Nothing, Just (version 1), Just (version 2) ]
           b <- [ Nothing, Just (version 1), Just (version 2) ]
           c <- [ Nothing, Just (version 1), Just (version 2) ]
           pure $ Map.fromFoldable $ Array.catMaybes $ Array.zipWith (\p -> map (Tuple p)) names [ a, b, c ]
+
         goals = Map.singleton (package "a") (range 1 3)
+
         satisfies plan deps = all
           ( \(Tuple p bounds) -> case Map.lookup p plan of
               Nothing -> false
               Just v -> Range.includes bounds v
           )
           (Map.toUnfoldable deps :: Array (Tuple PackageName Range))
+
         valid index plan = satisfies plan goals && all
           ( \(Tuple p v) -> case Map.lookup p index >>= Map.lookup v of
               Nothing -> false
               Just deps -> satisfies plan deps
           )
           (Map.toUnfoldable plan :: Array (Tuple PackageName Version))
+
       for_ (Array.range 0 4095) \seed -> do
         let
-          index = Map.fromFoldable $ Array.mapWithIndex
-            ( \i p -> p /\ Map.fromFoldable
-                ( map
-                    ( \j -> do
-                        let
-                          digit = (seed / Int.pow 4 (i * 2 + j - 1)) `mod` 4
-                          next = package (if i == 0 then "b" else if i == 1 then "c" else "a")
-                          deps = case digit of
-                            0 -> Map.empty
-                            1 -> Map.singleton next (range 1 2)
-                            2 -> Map.singleton next (range 2 3)
-                            _ -> Map.singleton next (range 1 3)
-                        version j /\ deps
-                    )
-                    [ 1, 2 ]
-                )
-            )
-            names
+          versionEntry i j = do
+            let
+              digit = (seed / Int.pow 4 (i * 2 + j - 1)) `mod` 4
+              next = package (if i == 0 then "b" else if i == 1 then "c" else "a")
+              deps = case digit of
+                0 -> Map.empty
+                1 -> Map.singleton next (range 1 2)
+                2 -> Map.singleton next (range 2 3)
+                _ -> Map.singleton next (range 1 3)
+
+            version j /\ deps
+
+          versions i = Map.fromFoldable $ map (versionEntry i) [ 1, 2 ]
+
+          index = Map.fromFoldable $ Array.mapWithIndex (\i p -> p /\ versions i) names
+
         case solve index goals of
           Left _ -> when (Array.any (valid index) assignments) $ Assert.fail $ "False unsatisfiability for graph " <> show seed
           Right plan -> unless (valid index plan) $ Assert.fail $ "Invalid resolution for graph " <> show seed

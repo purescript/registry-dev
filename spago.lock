@@ -279,6 +279,7 @@
             "foldable-traversable",
             "formatters",
             "json",
+            "minibench",
             "node-fs",
             "node-path",
             "node-process",
@@ -287,6 +288,7 @@
             "registry-app",
             "registry-foreign",
             "registry-lib",
+            "registry-test-utils",
             "run",
             "strings"
           ]
@@ -2053,6 +2055,19 @@
       "dependencies": [
         "newtype",
         "prelude"
+      ]
+    },
+    "minibench": {
+      "type": "registry",
+      "version": "4.0.1",
+      "integrity": "sha256-zd/YnOqnzz/ers1umv5rgJOyPntF2zFpcLVbPWQIbYU=",
+      "dependencies": [
+        "console",
+        "effect",
+        "integers",
+        "numbers",
+        "prelude",
+        "refs"
       ]
     },
     "mmorph": {
