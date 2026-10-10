@@ -354,12 +354,6 @@ type PublishResult =
   , matrix :: Maybe PublishedPackage
   }
 
-toPublishResult :: Maybe PublishedPackage -> PublishResult
-toPublishResult matrix =
-  { disposition: if isJust matrix then Published else AlreadyPublished
-  , matrix
-  }
-
 -- | Resolve both compiler and resolutions for a publish operation.
 -- | Will come up with some sort of plan if not provided with a compiler and/or resolutions.
 resolveCompilerAndDeps
@@ -747,7 +741,7 @@ publish payload = do
       }
     _, _ -> do
       Log.info "Verifying the package build plan..."
-      compilerIndex <- MatrixBuilder.readCompilerIndex
+      { compilerIndex } <- MatrixBuilder.readMatrixSnapshot
       resolveCompilerAndDeps compilerIndex (Manifest receivedManifest) payload.compiler payload.resolutions
   Log.info $ "Using compiler " <> Version.print compiler
 
@@ -787,11 +781,8 @@ publish payload = do
       Registry.writeManifest (Manifest receivedManifest)
       Log.notice "Verified the existing package tarball and reconciled its registry metadata and manifest."
 
-    reconciledResult =
-      if isNothing existingManifest then
-        Just { compiler, dependencies: receivedManifest.dependencies, version: receivedManifest.version }
-      else
-        Nothing
+    matrix = { compiler, dependencies: receivedManifest.dependencies, version: receivedManifest.version }
+    reconciledDisposition = if isNothing existingManifest then Published else AlreadyPublished
 
   case existingPublishedVersion of
     Just _ | Just url <- existingPursuitUrl -> do
@@ -800,7 +791,9 @@ publish payload = do
         , url
         ]
       FS.Extra.remove tmp
-      pure $ toPublishResult Nothing
+      -- Scheduling can have been interrupted after publication. An idempotent
+      -- retry must still return follow-up work without claiming a new publication.
+      pure { disposition: AlreadyPublished, matrix: Just matrix }
 
     -- If metadata already contains this version, first reconcile storage and
     -- both Git repositories, then retry any missing Pursuit documentation.
@@ -813,7 +806,7 @@ publish payload = do
         , ". Please try with a later compiler."
         ]
       FS.Extra.remove tmp
-      pure $ toPublishResult reconciledResult
+      pure { disposition: reconciledDisposition, matrix: Just matrix }
 
     Just info -> do
       reconcileExistingPublication info
@@ -849,7 +842,7 @@ publish payload = do
             Right _ -> do
               FS.Extra.remove tmp
               Log.notice "Successfully uploaded package docs to Pursuit! 🎉 🚀"
-          pure $ toPublishResult reconciledResult
+          pure { disposition: reconciledDisposition, matrix: Just matrix }
 
     -- In this case the package version has not been published, so we proceed
     -- with ordinary publishing.
@@ -1056,7 +1049,7 @@ publish payload = do
           ]
 
       FS.Extra.remove tmp
-      pure $ toPublishResult $ Just { compiler, dependencies: receivedManifest.dependencies, version: receivedManifest.version }
+      pure { disposition: Published, matrix: Just matrix }
 
 validateResolutions :: forall r. Manifest -> Map PackageName Version -> Run (EXCEPT String + r) Unit
 validateResolutions manifest resolutions = do
@@ -1115,7 +1108,7 @@ findAllCompilers
    . { source :: FilePath, manifest :: Manifest, compilers :: NonEmptyArray Version }
   -> Run (REGISTRY_READ + STORAGE + COMPILER_CACHE + LOG + AFF + EFFECT + EXCEPT String + r) FindAllCompilersResult
 findAllCompilers { source, manifest, compilers } = do
-  compilerIndex <- MatrixBuilder.readCompilerIndex
+  { compilerIndex } <- MatrixBuilder.readMatrixSnapshot
   checkedCompilers <- for compilers \target -> do
     Log.debug $ "Trying compiler " <> Version.print target
     case Solver.solveWithCompiler (Range.exact target) compilerIndex (un Manifest manifest).dependencies of

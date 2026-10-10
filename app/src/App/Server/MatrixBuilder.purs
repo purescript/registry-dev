@@ -1,9 +1,11 @@
 module Registry.App.Server.MatrixBuilder
   ( BuildPlanEntry
+  , MatrixSnapshot
+  , MatrixSolverResult
   , checkIfNewCompiler
   , installBuildPlan
   , printCompilerFailure
-  , readCompilerIndex
+  , readMatrixSnapshot
   , resolutionsToBuildPlan
   , runMatrixJob
   , solveForAllCompilers
@@ -36,6 +38,7 @@ import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Tmp as Tmp
+import Registry.ManifestIndex (ManifestIndex)
 import Registry.ManifestIndex as ManifestIndex
 import Registry.Metadata as Metadata
 import Registry.PackageName as PackageName
@@ -100,14 +103,21 @@ runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan 
               Log.error $ "No existing metadata for " <> PackageName.print packageName <> "@" <> Version.print packageVersion
               Except.throw $ "No manifest found for " <> PackageName.print packageName <> "@" <> Version.print packageVersion
 
--- TODO feels like we should be doing this at startup and use the cache instead
--- of reading files all over again
-readCompilerIndex :: forall r. Run (REGISTRY_READ + AFF + EXCEPT String + r) Solver.CompilerIndex
-readCompilerIndex = do
+-- | A pass-local snapshot, captured after publication or compatibility writes.
+-- | The executor is serial; queued jobs cannot change it during scheduling.
+type MatrixSnapshot =
+  { compilerIndex :: Solver.CompilerIndex
+  , manifestIndex :: ManifestIndex
+  , metadata :: Map PackageName Metadata
+  , compilers :: NonEmptyArray Version
+  }
+
+readMatrixSnapshot :: forall r. Run (REGISTRY_READ + AFF + EXCEPT String + r) MatrixSnapshot
+readMatrixSnapshot = do
   metadata <- Registry.readAllMetadata
-  manifests <- Registry.readAllManifests
-  allCompilers <- PursVersions.pursVersions
-  pure $ Solver.buildCompilerIndex allCompilers manifests metadata
+  manifestIndex <- Registry.readAllManifests
+  compilers <- PursVersions.pursVersions
+  pure { compilerIndex: Solver.buildCompilerIndex compilers manifestIndex metadata, manifestIndex, metadata, compilers }
 
 -- | A build plan entry with integrity information for verification.
 type BuildPlanEntry = { version :: Version, hash :: Sha256, bytes :: Number }
@@ -168,7 +178,7 @@ printCompilerFailure compiler = case _ of
     ]
 
 type MatrixSolverData =
-  { compilerIndex :: Solver.CompilerIndex
+  { snapshot :: MatrixSnapshot
   , compiler :: Version
   , name :: PackageName
   , version :: Version
@@ -182,19 +192,24 @@ type MatrixSolverResult =
   , resolutions :: Map PackageName Version
   }
 
-solveForAllCompilers :: forall r. MatrixSolverData -> Run (AFF + EXCEPT String + LOG + r) (Set MatrixSolverResult)
-solveForAllCompilers solverData@{ compiler } = do
+-- | Emit each solved plan before continuing, so cancellation does not discard
+-- | all progress. Callers can persist plans using the existing matrix queue.
+solveForAllCompilers :: forall r. MatrixSolverData -> (MatrixSolverResult -> Run (LOG + r) Unit) -> Run (LOG + r) (Set MatrixSolverResult)
+solveForAllCompilers solverData@{ compiler, snapshot } emit = do
   -- remove the compiler we tested with from the set of all of them
-  compilers <- (Array.filter (_ /= compiler) <<< NonEmptyArray.toArray) <$> PursVersions.pursVersions
-  newJobs <- for compilers \target ->
-    trySolveForCompiler (solverData { compiler = target })
+  let compilers = Array.filter (_ /= compiler) $ NonEmptyArray.toArray snapshot.compilers
+  newJobs <- for compilers \target -> do
+    result <- trySolveForCompiler (solverData { compiler = target })
+    for_ result emit
+    pure result
   pure $ Set.fromFoldable $ Array.catMaybes newJobs
 
-solveDependantsForCompiler :: forall r. MatrixSolverData -> Run (EXCEPT String + LOG + REGISTRY_READ + r) (Set MatrixSolverResult)
-solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
-  manifestIndex <- Registry.readAllManifests
+solveDependantsForCompiler :: forall r. MatrixSolverData -> (MatrixSolverResult -> Run (LOG + r) Unit) -> Run (LOG + r) (Set MatrixSolverResult)
+solveDependantsForCompiler { snapshot, name, version, compiler } emit = do
   let seed = Tuple name version
-  { results, visited } <- go manifestIndex (Set.singleton seed) name version
+  -- Sort this fixed index once, not once per already-compatible dependant.
+  let manifests = ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges snapshot.manifestIndex
+  { results, visited } <- go manifests (Set.singleton seed) name version
   Log.info $ Array.fold
     [ "Cascade from "
     , PackageName.print name
@@ -202,7 +217,7 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
     , Version.print version
     , ": "
     , show (Set.size results)
-    , " enqueued out of "
+    , " solved out of "
     , show (Set.size visited - 1)
     , " dependants visited"
     ]
@@ -219,17 +234,20 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
   -- never be retriggered.
   -- With this recursive propagation, when C@new completes we cascade through
   -- B (already compiled) and reach A, allowing for a plan to resolve.
-  go manifestIndex visited pkgName pkgVersion = do
-    let dependentManifests = ManifestIndex.dependants manifestIndex pkgName pkgVersion
-    foldM (processManifest manifestIndex) { visited, results: Set.empty } dependentManifests
+  go manifests visited pkgName pkgVersion = do
+    let
+      dependentManifests = Array.filter
+        (\(Manifest manifest) -> maybe false (flip Range.includes pkgVersion) $ Map.lookup pkgName manifest.dependencies)
+        manifests
+    foldM (processManifest manifests) { visited, results: Set.empty } dependentManifests
 
-  processManifest manifestIndex acc (Manifest manifest) = do
+  processManifest manifests acc (Manifest manifest) = do
     let pv = Tuple manifest.name manifest.version
     if Set.member pv acc.visited then
       pure acc
     else do
       let newVisited = Set.insert pv acc.visited
-      Registry.readMetadata manifest.name >>= case _ of
+      case Map.lookup manifest.name snapshot.metadata of
         Nothing -> do
           Log.warn $ "No metadata for dependant " <> PackageName.print manifest.name <> ", skipping"
           pure { visited: newVisited, results: acc.results }
@@ -241,21 +259,23 @@ solveDependantsForCompiler { compilerIndex, name, version, compiler } = do
             Just { compilers }
               | elem compiler compilers -> do
                   -- Already has compiler: propagate through to find stranded packages
-                  sub <- go manifestIndex newVisited manifest.name manifest.version
+                  sub <- go manifests newVisited manifest.name manifest.version
                   pure { visited: sub.visited, results: acc.results <> sub.results }
               | otherwise -> do
-                  result <- trySolveForCompiler { compilerIndex, compiler, name: manifest.name, version: manifest.version, dependencies: manifest.dependencies }
-                  pure case result of
-                    Nothing -> { visited: newVisited, results: acc.results }
-                    Just entry -> { visited: newVisited, results: Set.insert entry acc.results }
+                  result <- trySolveForCompiler { snapshot, compiler, name: manifest.name, version: manifest.version, dependencies: manifest.dependencies }
+                  case result of
+                    Nothing -> pure { visited: newVisited, results: acc.results }
+                    Just entry -> do
+                      emit entry
+                      pure { visited: newVisited, results: Set.insert entry acc.results }
 
 -- | Try to solve a package's dependencies for a specific compiler. Returns
 -- | the solver result if the produced build plan targets the expected compiler,
 -- | Nothing otherwise (solver failure or compiler mismatch).
 trySolveForCompiler :: forall r. MatrixSolverData -> Run (LOG + r) (Maybe MatrixSolverResult)
-trySolveForCompiler { compilerIndex, compiler, name, version, dependencies } = do
+trySolveForCompiler { snapshot, compiler, name, version, dependencies } = do
   Log.debug $ "Trying compiler " <> Version.print compiler <> " for package " <> PackageName.print name
-  case Solver.solveWithCompiler (Range.exact compiler) compilerIndex dependencies of
+  case Solver.solveWithCompiler (Range.exact compiler) snapshot.compilerIndex dependencies of
     Left solverErrors -> do
       Log.info $ "Failed to solve with compiler " <> Version.print compiler <> ": " <> PackageName.print name <> "@" <> Version.print version
       Log.debug $ "Solver errors:\n" <> foldMapWithIndex
