@@ -4,6 +4,10 @@ on:
   push:
     branches: [master]
 
+concurrency:
+  group: registry-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     # Deploys should only occur from the master branch
@@ -29,8 +33,33 @@ jobs:
         with:
           use-flakehub: false
 
+      - name: Select safe activation for the D-Bus transition
+        id: activation
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          set -euo pipefail
+          dbus=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@registry.purescript.org \
+            'set -eu; pid=$(systemctl show --value --property=MainPID dbus.service); test "$pid" -gt 0; readlink -f "/proc/$pid/exe"')
+          case "$dbus" in
+            */dbus-daemon) goal=boot ;;
+            */dbus-broker-launch|*/dbus-broker) goal=switch ;;
+            *)
+              echo "::error::Unknown running D-Bus implementation; refusing deployment."
+              exit 1
+              ;;
+          esac
+          echo "goal=$goal" >> "$GITHUB_OUTPUT"
+
       - name: Deploy with Colmena
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         run: |
-          nix develop --command colmena apply
+          nix develop --command colmena apply "${{ steps.activation.outputs.goal }}" --on registry
+
+      - name: Report staged transition
+        if: steps.activation.outputs.goal == 'boot'
+        run: |
+          echo "::notice::Configuration staged for next boot, not live-activated. An operator-approved reboot is required to switch to dbus-broker."
+          echo "### Awaiting approved reboot" >> "$GITHUB_STEP_SUMMARY"
+          echo "The new configuration is staged for the next boot. Production still runs the previous generation. After an approved reboot, verify the running generation, D-Bus, and registry API; subsequent deployments will use normal live activation." >> "$GITHUB_STEP_SUMMARY"

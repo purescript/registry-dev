@@ -293,13 +293,17 @@ The dashboard is deployed automatically by the `.github/workflows/dashboard.yml`
 
 ## Deployment
 
-The registry is continuously deployed. The [deploy.yml](./.github/workflows/deploy.yml) file defines a GitHub Actions workflow to auto-deploy the server when a new commit is pushed to `master` and test workflows have passed.
+The registry is continuously deployed. The [deploy.yml](./.github/workflows/deploy.yml) file defines a GitHub Actions workflow to deploy the server when a new commit is pushed to `master`.
 
-However, you can manually deploy a new version of the registry server in one step:
+The NixOS 26.05 upgrade changes D-Bus from `dbus-daemon` to `dbus-broker`. Restarting D-Bus in a running system is unsafe, so this transition requires a reboot. While production still runs `dbus-daemon`, the workflow uses `colmena apply boot --on registry`: it installs the new generation for the next boot without live activation or rebooting, and reports that the transition is staged. Further deployments also stage until an operator performs an approved reboot. Staging changes the next-boot configuration; any subsequent reboot will activate it.
+
+Before that reboot, confirm backup coverage and retain the previous generation for rollback. After the reboot, verify `/run/current-system`, `systemctl is-active dbus.service server.service nginx.service`, and `https://registry.purescript.org/api/v1/jobs`. Once production runs `dbus-broker`, the workflow returns to normal live activation. Unknown D-Bus implementations or failed SSH inspection stop deployment rather than attempting a switch. Do not bypass the NixOS switch checks: older generations may lack the inhibitor metadata needed to reject this transition.
+
+For routine updates after the transition, you can manually deploy a new version of the registry server in one step:
 
 ```sh
 # Will deploy the server to registry.purescript.org
 colmena apply
 ```
 
-If the deployment fails it will automatically be rolled back. If you have provisioned a new machine or need to update a secret, then you will first need to copy a valid `.env` file to `/var/lib/registry-server/.env` before the server will run. You can test that the server has come up appropriately by SSHing into the server and running `journalctl -u server.service`.
+A failed Colmena deployment is not automatically rolled back. In particular, activation checks can fail after the persistent system profile has changed but before live activation or bootloader installation. Inspect the running generation and persistent profile before choosing recovery or rollback. If you have provisioned a new machine or need to update a secret, then you will first need to copy a valid `.env` file to `/var/lib/registry-server/.env` before the server will run. You can test that the server has come up appropriately by SSHing into the server and running `journalctl -u server.service`.
