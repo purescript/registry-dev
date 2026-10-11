@@ -28,6 +28,17 @@ spec = do
         Left err -> Assert.fail $ path <> " failed: " <> err
         Right _ -> pure unit
 
+  Spec.it "Returns a parse error when YAML aliases exceed the expansion limit" do
+    let
+      input =
+        """
+        a: &a [1]
+        b: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a, *a, *a]
+        c: [*b, *b, *b, *b, *b, *b, *b, *b, *b, *b, *b]
+        """
+
+    parseYaml SpagoYaml.spagoYamlCodec input `Assert.shouldSatisfy` isLeft
+
   Spec.it "Rejects deprecated SPDX identifiers in publish config" do
     let
       input =

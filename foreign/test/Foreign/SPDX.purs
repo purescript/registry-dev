@@ -44,5 +44,6 @@ fixable =
 
 unfixable :: Array String
 unfixable =
-  [ "MIT AND BSD-3"
+  [ ""
+  , "MIT AND BSD-3"
   ]
