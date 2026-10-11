@@ -158,29 +158,13 @@ in
     installPhase = "mkdir $out; cp -r * $out";
   };
 
-  # NPM lock: JavaScript dependencies (esbuild, node-gyp, etc.)
+  # NPM lock: JavaScript dependencies
   registry-package-lock = prev.buildNpmPackage {
     pname = "purescript-registry";
     version = "0.0.1";
     src = npmSrc;
     dontNpmBuild = true;
     npmFlags = [ "--omit=optional" ];
-
-    # Build better-sqlite3 with the Nix toolchain. Its loader prefers bundled
-    # binaries, so remove those before explicitly building from source.
-    postConfigure = ''
-      rm -rf node_modules/better-sqlite3/prebuilds
-      npm run build-release --prefix node_modules/better-sqlite3
-    '';
-
-    nativeBuildInputs =
-      with prev;
-      [
-        # needed for better-sqlite
-        python3
-        node-gyp
-      ]
-      ++ prev.lib.optionals prev.stdenv.isDarwin [ prev.darwin.cctools ];
 
     # To update: run `nix build .#server` and copy the hash from the error
     npmDepsHash = "sha256-uj1LQ+Q9Zz8zguehJp9tQrEAMLoUm7BZEraCGQVGByQ=";
