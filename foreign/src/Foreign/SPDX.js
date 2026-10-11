@@ -11,4 +11,4 @@ const allIdentifiers = identifiers.concat(deprecatedIdentifiers);
 const fuse = new Fuse(allIdentifiers);
 
 export const matchLicenseImpl = (identifier) =>
-  fuse.search(identifier).map(({ item }) => item);
+  identifier === "" ? [] : fuse.search(identifier).map(({ item }) => item);
