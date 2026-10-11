@@ -207,8 +207,8 @@ spec = do
 
         -- Finally, publishing the same package again is an idempotent success.
         Except.runExcept (API.publish publishArgs) >>= case _ of
-          Right { disposition: V1.AlreadyPublished } -> pure unit
-          Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to report an already-published disposition."
+          Right { disposition: V1.AlreadyPublished, matrix: Nothing } -> pure unit
+          Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to report an already-published disposition without matrix follow-up."
           Left err -> Except.throw $ "Expected an idempotent publish but got error: " <> err
 
       case result of
