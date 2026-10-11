@@ -166,17 +166,25 @@ in
     dontNpmBuild = true;
     npmFlags = [ "--omit=optional" ];
 
+    # better-sqlite3 v13 ships prebuilds and prefers them over a local build.
+    # Remove them and explicitly build against the Nix toolchain; gypfile = false
+    # prevents npm rebuild from doing this automatically.
+    postConfigure = ''
+      rm -rf node_modules/better-sqlite3/prebuilds
+      npm run build-release --prefix node_modules/better-sqlite3
+    '';
+
     nativeBuildInputs =
       with prev;
       [
         # needed for better-sqlite
         python3
-        nodePackages.node-gyp
+        node-gyp
       ]
       ++ prev.lib.optionals prev.stdenv.isDarwin [ prev.darwin.cctools ];
 
     # To update: run `nix build .#server` and copy the hash from the error
-    npmDepsHash = "sha256-qlHO3I/kb5/PDQA2aoVbSpvSnjS0CcJoEdGuCkAd+hA=";
+    npmDepsHash = "sha256-uj1LQ+Q9Zz8zguehJp9tQrEAMLoUm7BZEraCGQVGByQ=";
 
     installPhase = ''
       mkdir -p $out

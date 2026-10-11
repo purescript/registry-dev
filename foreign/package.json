@@ -8,7 +8,7 @@
     "@octokit/plugin-retry": "^8.1.0",
     "@octokit/plugin-throttling": "^11.0.3",
     "@octokit/rest": "^22.0.1",
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "^13.0.3",
     "fast-glob": "^3.3.3",
     "fs-extra": "^11.3.4",
     "fuse.js": "^7.1.0",
