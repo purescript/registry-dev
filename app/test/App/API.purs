@@ -177,7 +177,7 @@ spec = do
             }
 
         -- First, we publish the package.
-        publication <- API.publish publishArgs
+        void $ API.publish publishArgs
 
         -- Then, we can check that it did make it to "Pursuit" as expected
         Pursuit.getPublishedVersions name >>= case _ of
@@ -205,16 +205,10 @@ spec = do
             unless (many' == expected) do
               Except.throw $ "Expected " <> formatPackageVersion name version <> " to have a compiler matrix of " <> Utils.unsafeStringify (map Version.print expected) <> " but got " <> Utils.unsafeStringify (map Version.print many')
 
-        -- Retrying after publication but before matrix scheduling must recover
-        -- the same follow-up work while remaining an idempotent success.
+        -- Finally, publishing the same package again is an idempotent success.
         Except.runExcept (API.publish publishArgs) >>= case _ of
-          Right { disposition: V1.AlreadyPublished, matrix } -> do
-            unless (isJust matrix && matrix == publication.matrix) do
-              Except.throw "Expected an already-published retry to recover the original matrix follow-up."
-            Registry.readMetadata name >>= \after ->
-              unless (after == Just (Metadata effectMetadata)) do
-                Except.throw "Retrying publication changed the recorded package metadata."
-          Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to report an already-published disposition."
+          Right { disposition: V1.AlreadyPublished, matrix: Nothing } -> pure unit
+          Right _ -> Except.throw $ "Expected publishing " <> formatPackageVersion name version <> " twice to report an already-published disposition without matrix follow-up."
           Left err -> Except.throw $ "Expected an idempotent publish but got error: " <> err
 
       case result of

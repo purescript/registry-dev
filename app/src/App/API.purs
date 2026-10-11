@@ -782,7 +782,11 @@ publish payload = do
       Log.notice "Verified the existing package tarball and reconciled its registry metadata and manifest."
 
     matrix = { compiler, dependencies: receivedManifest.dependencies, version: receivedManifest.version }
-    reconciledDisposition = if isNothing existingManifest then Published else AlreadyPublished
+    reconciledResult =
+      if isNothing existingManifest then
+        { disposition: Published, matrix: Just matrix }
+      else
+        { disposition: AlreadyPublished, matrix: Nothing }
 
   case existingPublishedVersion of
     Just _ | Just url <- existingPursuitUrl -> do
@@ -791,9 +795,7 @@ publish payload = do
         , url
         ]
       FS.Extra.remove tmp
-      -- Scheduling can have been interrupted after publication. An idempotent
-      -- retry must still return follow-up work without claiming a new publication.
-      pure { disposition: AlreadyPublished, matrix: Just matrix }
+      pure { disposition: AlreadyPublished, matrix: Nothing }
 
     -- If metadata already contains this version, first reconcile storage and
     -- both Git repositories, then retry any missing Pursuit documentation.
@@ -806,7 +808,7 @@ publish payload = do
         , ". Please try with a later compiler."
         ]
       FS.Extra.remove tmp
-      pure { disposition: reconciledDisposition, matrix: Just matrix }
+      pure reconciledResult
 
     Just info -> do
       reconcileExistingPublication info
@@ -842,7 +844,7 @@ publish payload = do
             Right _ -> do
               FS.Extra.remove tmp
               Log.notice "Successfully uploaded package docs to Pursuit! 🎉 🚀"
-          pure { disposition: reconciledDisposition, matrix: Just matrix }
+          pure reconciledResult
 
     -- In this case the package version has not been published, so we proceed
     -- with ordinary publishing.
