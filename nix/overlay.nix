@@ -137,30 +137,6 @@ let
     };
 in
 {
-  # Node.js 24.21.0 can abort when better-sqlite3 statements are garbage-collected.
-  # Their destructors remove Node cleanup hooks without a current JS environment,
-  # triggering Node's assertion that the environment is non-null. Patch Node rather
-  # than changing better-sqlite3; remove these backports once Node includes both fixes.
-  nodejs-slim_24 = prev.nodejs-slim_24.overrideAttrs (old: {
-    patches = prev.lib.unique (
-      old.patches
-      ++ [
-        # Allow cleanup-hook removal without a current JS environment:
-        # https://github.com/nodejs/node/commit/abe1b673e9b12588abcb6d74b0facedf6a3136dd
-        (prev.fetchurl {
-          url = "https://github.com/nodejs/node/commit/abe1b673e9b12588abcb6d74b0facedf6a3136dd.patch";
-          hash = "sha256-LQHgWopP3P3JW8iX9tkvsHV1OH4WY7I5lbevnVjsqOk=";
-        })
-        # Fix a use-after-free during environment teardown introduced by that fix:
-        # https://github.com/nodejs/node/commit/03e2b9bc42ae9c7ed4fbab5509d70fa934863c44
-        (prev.fetchurl {
-          url = "https://github.com/nodejs/node/commit/03e2b9bc42ae9c7ed4fbab5509d70fa934863c44.patch";
-          hash = "sha256-dA5jols9WyGJKlL4XMoII9TClpkat7h79wlYlRgGSYM=";
-        })
-      ]
-    );
-  });
-
   # Spago lock: compiled PureScript dependencies for the entire workspace
   registry-spago-lock = prev.mkSpagoDerivation {
     name = "registry";
@@ -190,6 +166,14 @@ in
     dontNpmBuild = true;
     npmFlags = [ "--omit=optional" ];
 
+    # better-sqlite3 v13 ships prebuilds and prefers them over a local build.
+    # Remove them and explicitly build against the Nix toolchain; gypfile = false
+    # prevents npm rebuild from doing this automatically.
+    postConfigure = ''
+      rm -rf node_modules/better-sqlite3/prebuilds
+      npm run build-release --prefix node_modules/better-sqlite3
+    '';
+
     nativeBuildInputs =
       with prev;
       [
@@ -200,7 +184,7 @@ in
       ++ prev.lib.optionals prev.stdenv.isDarwin [ prev.darwin.cctools ];
 
     # To update: run `nix build .#server` and copy the hash from the error
-    npmDepsHash = "sha256-qlHO3I/kb5/PDQA2aoVbSpvSnjS0CcJoEdGuCkAd+hA=";
+    npmDepsHash = "sha256-uj1LQ+Q9Zz8zguehJp9tQrEAMLoUm7BZEraCGQVGByQ=";
 
     installPhase = ''
       mkdir -p $out
