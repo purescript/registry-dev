@@ -28,16 +28,21 @@ spec = do
         Left err -> Assert.fail $ path <> " failed: " <> err
         Right _ -> pure unit
 
-  Spec.it "Returns a parse error when YAML aliases exceed the expansion limit" do
+  Spec.it "Rejects YAML aliases but accepts literal asterisks" do
     let
       input =
         """
-        a: &a [1]
-        b: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a, *a, *a]
-        c: [*b, *b, *b, *b, *b, *b, *b, *b, *b, *b, *b]
+        package:
+          name: &name example
+          description: *name
+          dependencies: []
         """
+      literalInput = String.replace (String.Pattern "*name") (String.Replacement "'*name'") input
 
-    parseYaml SpagoYaml.spagoYamlCodec input `Assert.shouldSatisfy` isLeft
+    parseYaml SpagoYaml.spagoYamlCodec input `Assert.shouldEqual` Left "YAML: YAML aliases are not supported"
+    case parseYaml SpagoYaml.spagoYamlCodec literalInput of
+      Left err -> Assert.fail err
+      Right config -> (config.package >>= _.description) `Assert.shouldEqual` Just "*name"
 
   Spec.it "Rejects deprecated SPDX identifiers in publish config" do
     let

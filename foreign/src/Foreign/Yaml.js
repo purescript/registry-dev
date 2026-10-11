@@ -8,6 +8,11 @@ export function yamlDocParserImpl(fail, succ, s) {
       // TODO: eh, we should return properly structured errors here
       return fail(JSON.stringify(doc.errors));
     }
+    Yaml.visit(doc, {
+      Alias() {
+        throw new Error('YAML aliases are not supported');
+      }
+    });
     value = doc.toJSON();
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
