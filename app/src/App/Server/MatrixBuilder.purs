@@ -192,8 +192,7 @@ type MatrixSolverResult =
   , resolutions :: Map PackageName Version
   }
 
--- | Emit each solved plan before continuing, so cancellation does not discard
--- | all progress. Callers can persist plans using the existing matrix queue.
+-- | Takes a callback to persist each plan as it's solved
 solveForAllCompilers :: forall r. MatrixSolverData -> (MatrixSolverResult -> Run (LOG + r) Unit) -> Run (LOG + r) (Set MatrixSolverResult)
 solveForAllCompilers solverData@{ compiler, snapshot } emit = do
   -- remove the compiler we tested with from the set of all of them
