@@ -181,6 +181,14 @@ There are also a number of checks run by the Nix flake for non-PureScript code, 
 nix flake check -L
 ```
 
+### Solver Benchmarks
+
+Run the local Minibench workloads with `spago run -p registry-scripts -m Registry.Scripts.BenchSolver -- --samples 40 > before.json`.
+Use `--baseline before.json` to check identical resolutions and diagnostics, and `--case NAME` to filter workloads.
+Optional `--snapshot PATH` adds registry cases; its JSON contains `manifests` (manifest array), `metadata` (package-name map), and `compilers` (nonempty version array).
+Reports contain mean, standard deviation, minimum, and maximum in nanoseconds; input preparation and validation are untimed.
+Compare repeated before/after runs on the same machine and snapshot, without concurrent builds; these measure dependency solving, not compilation or scheduling.
+
 ### Testing Guidelines
 
 The PureScript code in the registry is well-tested, ranging from tests for individual functions to full end-to-end tests for the registry server running in a NixOS machine configured the same way as the deployed machine. The smaller and more pure the test, the easier it is to write and maintain; most code is tested via unit tests written with `spec`, and only the core pipelines are run in the integration test.
