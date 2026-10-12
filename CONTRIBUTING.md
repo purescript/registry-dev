@@ -64,21 +64,7 @@ The server will load environment variables from the `.env` file in the project r
 
 ### Healthchecks Reporting
 
-Set `HEALTHCHECKS_URL` to a Healthchecks success ping URL to enable operational
-reports. After a one-minute startup allowance, the server sends a POST every
-five minutes, including a short diagnostic body. Configure the check with a
-five-minute period and ten minutes of grace.
-
-A successful database query and an operational job executor produce a success
-ping. An initializing, restarting, or livelock-paused executor, or a failed
-database query, produces a `/fail` ping. Idle and busy executors are both healthy;
-an individual failed package job does not mark the service unhealthy. Reports
-time out after ten seconds and retry on the next scheduled report indefinitely.
-
-This is an internal operational check, not a probe of public DNS, TLS, or nginx,
-and does not detect every possible stalled job or external dependency failure.
-`/api/v1/status` remains a simple HTTP liveness check. Ping URLs are secrets: do
-not commit them or expose them in logs.
+Set `HEALTHCHECKS_URL` to a Healthchecks success ping URL to enable operational reports. After a one-minute startup allowance, the server sends a POST every five minutes, including a short diagnostic body. This expects a simple schedule with five-minute internals and ten minutes of grace.
 
 ## Quick Start: Running Integration Tests
 
