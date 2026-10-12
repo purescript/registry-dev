@@ -2,7 +2,7 @@
   description = "The PureScript Registry";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/release-25.11";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
 
     purescript-overlay.url = "github:thomashoneyman/purescript-overlay";

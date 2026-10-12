@@ -158,7 +158,7 @@ in
     installPhase = "mkdir $out; cp -r * $out";
   };
 
-  # NPM lock: JavaScript dependencies (esbuild, node-gyp, etc.)
+  # NPM lock: JavaScript dependencies
   registry-package-lock = prev.buildNpmPackage {
     pname = "purescript-registry";
     version = "0.0.1";
@@ -166,17 +166,8 @@ in
     dontNpmBuild = true;
     npmFlags = [ "--omit=optional" ];
 
-    nativeBuildInputs =
-      with prev;
-      [
-        # needed for better-sqlite
-        python3
-        nodePackages.node-gyp
-      ]
-      ++ prev.lib.optionals prev.stdenv.isDarwin [ prev.darwin.cctools ];
-
     # To update: run `nix build .#server` and copy the hash from the error
-    npmDepsHash = "sha256-qlHO3I/kb5/PDQA2aoVbSpvSnjS0CcJoEdGuCkAd+hA=";
+    npmDepsHash = "sha256-7AFgk11qIzTqgn2jtXBw340ZFcGqJMtjeZ+Xvr0vqNc=";
 
     installPhase = ''
       mkdir -p $out
