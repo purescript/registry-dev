@@ -153,8 +153,8 @@ solve :: DependencyIndex -> Map PackageName Range -> Either SolverErrors (Map Pa
 solve index required = do
   let
     initializedRequired = initializeRequired required
-    -- Attach diagnostic provenance only to reachable versions, not the entire
-    -- registry. Reachability depends on raw ranges, not on that provenance.
+    -- Record where the dependency requirements come from for every package
+    -- version reachable in this solve, for use in error reporting.
     registry = initializeRegistry (gatherReachable index required)
   solveFull
     { registry: map (addFrom initializedRequired) <$> registry
@@ -652,8 +652,6 @@ dependencyOf roots = coerce \(Sourced v (Pos local global)) ->
 asDependencyOf :: Intersection -> Intersection -> Intersection
 asDependencyOf (Intersection i1) (Intersection i2) = do
   let
-    -- Only roots propagate from the parent. Combining its local provenance
-    -- would merge potentially large sets just to discard them immediately.
     Pos _ lowerRoots = getPos i1.lower
     Pos _ upperRoots = getPos i1.upper
     roots = lowerRoots <> upperRoots

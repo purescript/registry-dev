@@ -10,21 +10,20 @@ import Data.Int as Int
 import Data.List.NonEmpty as NonEmptyList
 import Data.Map (Map, SemigroupMap(..))
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe')
+import Data.Maybe (Maybe(..))
 import Data.Newtype (un, wrap)
 import Data.Semigroup.Foldable (intercalateMap)
 import Data.Set as Set
 import Data.Set.NonEmpty as NES
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
-import Partial.Unsafe (unsafeCrashWith)
 import Registry.Manifest (Manifest(..))
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Range as Range
 import Registry.Solver (Intersection(..), LocalSolverPosition(..), SolverError(..), SolverPosition(..), Sourced(..), buildCompilerIndex, initializeRegistry, initializeRequired, lowerBound, printSolverError, solve, solveSeed, solveSteps, solveWithCompiler, updateCompilerIndex, upperBound)
 import Registry.Test.Assert as Assert
-import Registry.Test.Utils (fromRight, unsafeManifest, unsafeMetadata, unsafeNonEmptyArray, unsafeVersion)
+import Registry.Test.Utils (fromJust, fromRight, unsafeManifest, unsafeMetadata, unsafeNonEmptyArray, unsafePackageName, unsafeRange, unsafeVersion)
 import Registry.Types (PackageName, Range, Version)
 import Registry.Version as Version
 import Test.Spec as Spec
@@ -37,7 +36,7 @@ spec = do
 
     shouldSucceedSteps goals result = pure unit >>= \_ -> do
       let solved = solveSteps (solveSeed { registry: initializeRegistry solverIndex, required: initializeRequired (Map.fromFoldable goals) })
-      let toRange intersect = fromMaybe' (\_ -> unsafeCrashWith "Bad intersection") (Range.mk (lowerBound intersect) (upperBound intersect))
+      let toRange intersect = fromJust "Bad intersection" (Range.mk (lowerBound intersect) (upperBound intersect))
       map toRange (un SemigroupMap solved.required) `Assert.shouldEqual` Map.fromFoldable result
 
     shouldFail goals errors = pure unit >>= \_ -> case solve solverIndex (Map.fromFoldable goals) of
@@ -301,7 +300,7 @@ spec = do
       solve index (Map.singleton (package "a") (range 1 3))
         `Assert.shouldContain` Map.singleton (package "a") (version 2)
 
-    Spec.it "Preserves both bound roots and the child's local source in downstream errors" do
+    Spec.it "Reports both originally requested packages and the package version directly requiring the missing dependency" do
       let
         index = Map.fromFoldable
           [ package "a" /\ Map.singleton (version 1) (Map.singleton (package "middle") (range 2 5))
@@ -441,7 +440,7 @@ spec = do
           Map.lookup (package "prelude") resolutions `Assert.shouldEqual` Just (unsafeVersion "6.0.1")
           Map.lookup (package "effect") resolutions `Assert.shouldEqual` Just (unsafeVersion "4.0.0")
 
-    Spec.it "Backtracks package versions for an exact compiler without changing flexible selection" do
+    Spec.it "Prefers the newer package version unless the compiler requirement forces an older one" do
       let
         metadata = Map.fromFoldable
           [ unsafeMetadata "prelude" [ Tuple "6.0.1" [ "0.15.15", "0.15.16" ] ]
@@ -452,14 +451,14 @@ spec = do
           , unsafeMetadata "my-pkg" [ Tuple "1.0.0" [ "0.15.15" ] ]
           ]
         index = buildCompilerIndex compilers manifestIndex metadata
-        goals = Map.singleton (package "effect") (fromRight "bad range" (Range.parse ">=4.0.0 <6.0.0"))
+        goals = Map.singleton (package "effect") (unsafeRange ">=4.0.0 <6.0.0")
         expected compiler effect = Tuple (unsafeVersion compiler) $ Map.fromFoldable
           [ package "effect" /\ unsafeVersion effect
           , package "prelude" /\ unsafeVersion "6.0.1"
           ]
       solveWithCompiler (Range.exact (unsafeVersion "0.15.16")) index goals
         `Assert.shouldContain` expected "0.15.16" "4.0.0"
-      solveWithCompiler (fromRight "bad compiler range" (Range.parse ">=0.15.15 <0.15.17")) index goals
+      solveWithCompiler (unsafeRange ">=0.15.15 <0.15.17") index goals
         `Assert.shouldContain` expected "0.15.15" "5.0.0"
 
     Spec.it "updateCompilerIndex produces same result as full rebuild" do
@@ -606,16 +605,16 @@ qaotic =
   }
 
 package :: String -> PackageName
-package = fromRight "bad package name" <<< PackageName.parse
+package = unsafePackageName
 
 version :: Int -> Version
-version = fromRight "bad version" <<< Version.parse <<< (_ <> ".0.0") <<< show
+version = unsafeVersion <<< (_ <> ".0.0") <<< show
 
 -- For all these tests, we work with major versions only because we do not
 -- need to exercise the intricacies of the range relations, just the solver,
 -- which does not care about what versions are, just how they relate
 range :: Int -> Int -> Range
-range lower upper = fromRight "bad range" $ Range.parse $ Array.fold
+range lower upper = unsafeRange $ Array.fold
   [ ">="
   , show lower
   , ".0.0 <"
