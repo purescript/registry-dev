@@ -61,110 +61,110 @@ spec = do
   Spec.describe "Valid dependency ranges" do
     Spec.it "Solves simple range" do
       shouldSucceed
-        [ simple.package /\ range 0 1 ]
-        [ simple.package /\ version 0, prelude.package /\ version 0 ]
+        [ simple.package /\ unsafeRange ">=0.0.0 <1.0.0" ]
+        [ simple.package /\ unsafeVersion "0.0.0", prelude.package /\ unsafeVersion "0.0.0" ]
 
     Spec.it "Chooses range with highest SemVer versions from several solution" do
       shouldSucceed
-        [ simple.package /\ range 0 2 ]
-        [ simple.package /\ version 1, prelude.package /\ version 1 ]
+        [ simple.package /\ unsafeRange ">=0.0.0 <2.0.0" ]
+        [ simple.package /\ unsafeVersion "1.0.0", prelude.package /\ unsafeVersion "1.0.0" ]
 
     Spec.it "Solves for multiple packages" do
       shouldSucceed
-        [ prelude.package /\ range 0 2, simple.package /\ range 0 2 ]
-        [ simple.package /\ version 1, prelude.package /\ version 1 ]
+        [ prelude.package /\ unsafeRange ">=0.0.0 <2.0.0", simple.package /\ unsafeRange ">=0.0.0 <2.0.0" ]
+        [ simple.package /\ unsafeVersion "1.0.0", prelude.package /\ unsafeVersion "1.0.0" ]
 
   Spec.describe "Valid ranges with small intersection" do
     Spec.it "Tight bound on 'prelude@0'" do
       shouldSucceed
-        [ simple.package /\ range 0 2 -- loose
-        , prelude.package /\ range 0 1 -- tight
+        [ simple.package /\ unsafeRange ">=0.0.0 <2.0.0" -- loose
+        , prelude.package /\ unsafeRange ">=0.0.0 <1.0.0" -- tight
         ]
-        [ simple.package /\ version 0
-        , prelude.package /\ version 0
+        [ simple.package /\ unsafeVersion "0.0.0"
+        , prelude.package /\ unsafeVersion "0.0.0"
         ]
 
     Spec.it "Tight bound on 'prelude@1'" do
       shouldSucceed
-        [ simple.package /\ range 0 2 -- loose
-        , prelude.package /\ range 1 2 -- tight
+        [ simple.package /\ unsafeRange ">=0.0.0 <2.0.0" -- loose
+        , prelude.package /\ unsafeRange ">=1.0.0 <2.0.0" -- tight
         ]
-        [ simple.package /\ version 1
-        , prelude.package /\ version 1
+        [ simple.package /\ unsafeVersion "1.0.0"
+        , prelude.package /\ unsafeVersion "1.0.0"
         ]
 
     Spec.it "Tight bound on 'simple@0'" do
       shouldSucceed
-        [ prelude.package /\ range 0 2 -- loose
-        , simple.package /\ range 0 1 -- tight
+        [ prelude.package /\ unsafeRange ">=0.0.0 <2.0.0" -- loose
+        , simple.package /\ unsafeRange ">=0.0.0 <1.0.0" -- tight
         ]
-        [ simple.package /\ version 0
-        , prelude.package /\ version 0
+        [ simple.package /\ unsafeVersion "0.0.0"
+        , prelude.package /\ unsafeVersion "0.0.0"
         ]
 
     Spec.it "Tight bound on 'simple@1'" do
       shouldSucceed
-        [ prelude.package /\ range 0 2 -- loose
-        , simple.package /\ range 1 2 -- tight
+        [ prelude.package /\ unsafeRange ">=0.0.0 <2.0.0" -- loose
+        , simple.package /\ unsafeRange ">=1.0.0 <2.0.0" -- tight
         ]
-        [ simple.package /\ version 1
-        , prelude.package /\ version 1
+        [ simple.package /\ unsafeVersion "1.0.0"
+        , prelude.package /\ unsafeVersion "1.0.0"
         ]
 
   Spec.describe "Single-step expands bounds" do
     Spec.it "Simple range" do
       shouldSucceedSteps
-        [ simple.package /\ range 0 1 ]
-        [ simple.package /\ range 0 1, prelude.package /\ range 0 1 ]
+        [ simple.package /\ unsafeRange ">=0.0.0 <1.0.0" ]
+        [ simple.package /\ unsafeRange ">=0.0.0 <1.0.0", prelude.package /\ unsafeRange ">=0.0.0 <1.0.0" ]
 
     Spec.it "Multi-version range" do
       shouldSucceedSteps
-        [ simple.package /\ range 0 2 ]
-        [ simple.package /\ range 0 2, prelude.package /\ range 0 2 ]
+        [ simple.package /\ unsafeRange ">=0.0.0 <2.0.0" ]
+        [ simple.package /\ unsafeRange ">=0.0.0 <2.0.0", prelude.package /\ unsafeRange ">=0.0.0 <2.0.0" ]
 
     Spec.it "Transitive" do
       shouldSucceedSteps
-        [ onlySimple.package /\ range 0 1 ]
-        [ onlySimple.package /\ range 0 1, simple.package /\ range 0 1, prelude.package /\ range 0 1 ]
+        [ onlySimple.package /\ unsafeRange ">=0.0.0 <1.0.0" ]
+        [ onlySimple.package /\ unsafeRange ">=0.0.0 <1.0.0", simple.package /\ unsafeRange ">=0.0.0 <1.0.0", prelude.package /\ unsafeRange ">=0.0.0 <1.0.0" ]
 
   Spec.describe "Valid dependency ranges containing some invalid versions solve" do
     Spec.it "Proceeds past broken ranges to find a later valid range" do
       -- 'broken-fixed' cannot be solved at the broken version 0, but it can be
       -- solved at the fixed version 1.
       shouldSucceed
-        [ brokenFixed.package /\ range 0 2 ]
-        [ brokenFixed.package /\ version 1, prelude.package /\ version 0 ]
+        [ brokenFixed.package /\ unsafeRange ">=0.0.0 <2.0.0" ]
+        [ brokenFixed.package /\ unsafeVersion "1.0.0", prelude.package /\ unsafeVersion "0.0.0" ]
 
     Spec.it "Backtracks from broken ranges to find the highest valid range." do
       -- 'fixed-broken' works at version 0 and 1, but is broken at version 2.
       shouldSucceed
-        [ fixedBroken.package /\ range 0 3 ]
-        [ fixedBroken.package /\ version 1, prelude.package /\ version 1 ]
+        [ fixedBroken.package /\ unsafeRange ">=0.0.0 <3.0.0" ]
+        [ fixedBroken.package /\ unsafeVersion "1.0.0", prelude.package /\ unsafeVersion "1.0.0" ]
 
   Spec.describe "Does not solve when no versions exist for the specified range" do
     Spec.it "No versions available for target package" do
       shouldFail
-        [ package "does-not-exist" /\ range 0 4 ]
+        [ unsafePackageName "does-not-exist" /\ unsafeRange ">=0.0.0 <4.0.0" ]
         [ { error: Conflicts $ Map.fromFoldable
-              [ package "does-not-exist" `Tuple` intersection 0 (solveRoot "does-not-exist") 4 (solveRoot "does-not-exist") ]
+              [ unsafePackageName "does-not-exist" `Tuple` intersection 0 (solveRoot "does-not-exist") 4 (solveRoot "does-not-exist") ]
           , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 (declared dependency)\n  <4.0.0 (declared dependency)"
           }
         ]
 
     Spec.it "Target package has versions, but none in range" do
       shouldFail
-        [ prelude.package /\ range 20 50 ]
+        [ prelude.package /\ unsafeRange ">=20.0.0 <50.0.0" ]
         [ { error: Conflicts $ Map.fromFoldable
-              [ package "prelude" `Tuple` intersection 20 (solveRoot "prelude") 50 (solveRoot "prelude") ]
+              [ unsafePackageName "prelude" `Tuple` intersection 20 (solveRoot "prelude") 50 (solveRoot "prelude") ]
           , message: "No versions found in the registry for prelude in range\n  >=20.0.0 (declared dependency)\n  <50.0.0 (declared dependency)"
           }
         ]
 
     Spec.it "Direct dependency of target package has no versions in range." do
       shouldFail
-        [ brokenFixed.package /\ range 0 1 ]
+        [ brokenFixed.package /\ unsafeRange ">=0.0.0 <1.0.0" ]
         [ { error: Conflicts $ Map.fromFoldable
-              [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-fixed" 0) 4 (via' "broken-fixed" 0)
+              [ unsafePackageName "does-not-exist" `Tuple` intersection 0 (via' "broken-fixed" 0) 4 (via' "broken-fixed" 0)
               ]
           , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in broken-fixed@0.0.0\n  <4.0.0 seen in broken-fixed@0.0.0"
           }
@@ -172,9 +172,9 @@ spec = do
 
     Spec.it "Nested dependency of target package has no versions in range." do
       shouldFail
-        [ transitiveBroken.package /\ range 0 1 ]
+        [ transitiveBroken.package /\ unsafeRange ">=0.0.0 <1.0.0" ]
         [ { error: Conflicts $ Map.fromFoldable
-              [ package "does-not-exist" `Tuple` intersection 0 (via "fixed-broken" 2 [ "transitive-broken" ]) 5 (via "fixed-broken" 2 [ "transitive-broken" ])
+              [ unsafePackageName "does-not-exist" `Tuple` intersection 0 (via "fixed-broken" 2 [ "transitive-broken" ]) 5 (via "fixed-broken" 2 [ "transitive-broken" ])
               ]
           , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in fixed-broken@2.0.0 from declared dependencies transitive-broken\n  <5.0.0 seen in fixed-broken@2.0.0 from declared dependencies transitive-broken"
           }
@@ -182,9 +182,9 @@ spec = do
 
     Spec.it "Fails when target package cannot be satisfied" do
       shouldFail
-        [ brokenBroken.package /\ range 0 2 ]
+        [ brokenBroken.package /\ unsafeRange ">=0.0.0 <2.0.0" ]
         [ { error: Conflicts $ Map.fromFoldable
-              [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-broken" 0 <> via' "broken-broken" 1) 5 (via' "broken-broken" 0 <> via' "broken-broken" 1)
+              [ unsafePackageName "does-not-exist" `Tuple` intersection 0 (via' "broken-broken" 0 <> via' "broken-broken" 1) 5 (via' "broken-broken" 0 <> via' "broken-broken" 1)
               ]
           , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in broken-broken@0.0.0, broken-broken@1.0.0\n  <5.0.0 seen in broken-broken@0.0.0, broken-broken@1.0.0"
           }
@@ -193,9 +193,9 @@ spec = do
   Spec.describe "Does not solve when ranges do not intersect" do
     Spec.it "Simple disjoint ranges" do
       shouldFail
-        [ simple.package /\ range 0 1, prelude.package /\ range 1 2 ]
-        [ { error: WhileSolving (package "simple") $ Map.singleton (version 0) $ Conflicts $ Map.fromFoldable
-              [ package "prelude" `Tuple` intersection 1 (solveRoot "prelude") 1 (via "simple" 0 [])
+        [ simple.package /\ unsafeRange ">=0.0.0 <1.0.0", prelude.package /\ unsafeRange ">=1.0.0 <2.0.0" ]
+        [ { error: WhileSolving (unsafePackageName "simple") $ Map.singleton (unsafeVersion "0.0.0") $ Conflicts $ Map.fromFoldable
+              [ unsafePackageName "prelude" `Tuple` intersection 1 (solveRoot "prelude") 1 (via "simple" 0 [])
               ]
           , message: "While solving simple each version could not be solved:\n- 0.0.0: \n  Conflict in version ranges for prelude:\n    >=1.0.0 (declared dependency)\n    <1.0.0 seen in simple@0.0.0"
           }
@@ -205,11 +205,11 @@ spec = do
     -- range provided
     Spec.it "Transitive disjoint ranges" do
       shouldFail
-        [ onlySimple.package /\ range 0 4
-        , prelude.package /\ range 1 2
+        [ onlySimple.package /\ unsafeRange ">=0.0.0 <4.0.0"
+        , prelude.package /\ unsafeRange ">=1.0.0 <2.0.0"
         ]
-        [ { error: WhileSolving (package "simple") $ Map.singleton (version 0) $ Conflicts $ Map.fromFoldable
-              [ package "prelude" `Tuple` intersection 1 (solveRoot "prelude") 1 (via "simple" 0 [])
+        [ { error: WhileSolving (unsafePackageName "simple") $ Map.singleton (unsafeVersion "0.0.0") $ Conflicts $ Map.fromFoldable
+              [ unsafePackageName "prelude" `Tuple` intersection 1 (solveRoot "prelude") 1 (via "simple" 0 [])
               ]
           , message: "While solving simple each version could not be solved:\n- 0.0.0: \n  Conflict in version ranges for prelude:\n    >=1.0.0 (declared dependency)\n    <1.0.0 seen in simple@0.0.0"
           }
@@ -217,11 +217,11 @@ spec = do
 
     Spec.it "Fails on disjoint ranges" do
       shouldFail
-        [ brokenFixed.package /\ range 0 1
-        , fixedBroken.package /\ range 2 3
+        [ brokenFixed.package /\ unsafeRange ">=0.0.0 <1.0.0"
+        , fixedBroken.package /\ unsafeRange ">=2.0.0 <3.0.0"
         ]
         [ { error: Conflicts $ Map.fromFoldable
-              [ package "does-not-exist" `Tuple` intersection 0 (via' "broken-fixed" 0 <> via' "fixed-broken" 2) 4 (via' "broken-fixed" 0)
+              [ unsafePackageName "does-not-exist" `Tuple` intersection 0 (via' "broken-fixed" 0 <> via' "fixed-broken" 2) 4 (via' "broken-fixed" 0)
               ]
           , message: "No versions found in the registry for does-not-exist in range\n  >=0.0.0 seen in broken-fixed@0.0.0, fixed-broken@2.0.0\n  <4.0.0 seen in broken-fixed@0.0.0"
           }
@@ -230,16 +230,16 @@ spec = do
   Spec.describe "Reports multiple errors" do
     Spec.it "Reports different errors for different versions" do
       shouldFail
-        [ chaotic.package /\ range 1 3
-        , prelude.package /\ range 2 4
+        [ chaotic.package /\ unsafeRange ">=1.0.0 <3.0.0"
+        , prelude.package /\ unsafeRange ">=2.0.0 <4.0.0"
         ]
-        [ { error: WhileSolving (package "chaotic") $ Map.fromFoldable
-              [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
-                  [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "chaotic" 1 [])
+        [ { error: WhileSolving (unsafePackageName "chaotic") $ Map.fromFoldable
+              [ Tuple (unsafeVersion "1.0.0") $ Conflicts $ Map.fromFoldable
+                  [ unsafePackageName "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "chaotic" 1 [])
                   ]
-              , Tuple (version 2) $ Conflicts $ Map.fromFoldable
+              , Tuple (unsafeVersion "2.0.0") $ Conflicts $ Map.fromFoldable
                   -- TODO: why no global "chaotic" here?
-                  [ package "prelude" `Tuple` intersection 5 (via "chaotic" 2 []) 4 (solveRoot "prelude")
+                  [ unsafePackageName "prelude" `Tuple` intersection 5 (via "chaotic" 2 []) 4 (solveRoot "prelude")
                   ]
               ]
           , message: "While solving chaotic each version could not be solved:\n- 1.0.0: \n  Conflict in version ranges for prelude:\n    >=2.0.0 (declared dependency)\n    <1.0.0 seen in chaotic@1.0.0\n- 2.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in chaotic@2.0.0\n    <4.0.0 (declared dependency)"
@@ -248,20 +248,20 @@ spec = do
 
     Spec.it "Groups same errors" do
       shouldFail
-        [ chaotic.package /\ range 1 4
-        , prelude.package /\ range 2 4
+        [ chaotic.package /\ unsafeRange ">=1.0.0 <4.0.0"
+        , prelude.package /\ unsafeRange ">=2.0.0 <4.0.0"
         ]
-        [ { error: WhileSolving (package "chaotic") $ Map.fromFoldable
-              [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
-                  [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "chaotic" 1 [])
+        [ { error: WhileSolving (unsafePackageName "chaotic") $ Map.fromFoldable
+              [ Tuple (unsafeVersion "1.0.0") $ Conflicts $ Map.fromFoldable
+                  [ unsafePackageName "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "chaotic" 1 [])
                   ]
-              , Tuple (version 2) $ Conflicts $ Map.fromFoldable
+              , Tuple (unsafeVersion "2.0.0") $ Conflicts $ Map.fromFoldable
                   -- TODO: why no global "chaotic" here?
-                  [ package "prelude" `Tuple` intersection 5 (via "chaotic" 2 []) 4 (solveRoot "prelude")
+                  [ unsafePackageName "prelude" `Tuple` intersection 5 (via "chaotic" 2 []) 4 (solveRoot "prelude")
                   ]
-              , Tuple (version 3) $ Conflicts $ Map.fromFoldable
+              , Tuple (unsafeVersion "3.0.0") $ Conflicts $ Map.fromFoldable
                   -- TODO: why no global "chaotic" here?
-                  [ package "prelude" `Tuple` intersection 5 (via "chaotic" 3 []) 4 (solveRoot "prelude")
+                  [ unsafePackageName "prelude" `Tuple` intersection 5 (via "chaotic" 3 []) 4 (solveRoot "prelude")
                   ]
               ]
           , message: "While solving chaotic each version could not be solved:\n- 1.0.0: \n  Conflict in version ranges for prelude:\n    >=2.0.0 (declared dependency)\n    <1.0.0 seen in chaotic@1.0.0\n- 2.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in chaotic@2.0.0\n    <4.0.0 (declared dependency)\n- 3.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in chaotic@3.0.0\n    <4.0.0 (declared dependency)"
@@ -271,16 +271,16 @@ spec = do
     -- since we try packages in alphabetical order
     Spec.it "Reports different errors for different versions (converse)" do
       shouldFail
-        [ qaotic.package /\ range 1 3
-        , prelude.package /\ range 2 4
+        [ qaotic.package /\ unsafeRange ">=1.0.0 <3.0.0"
+        , prelude.package /\ unsafeRange ">=2.0.0 <4.0.0"
         ]
-        [ { error: WhileSolving (package "qaotic") $ Map.fromFoldable
-              [ Tuple (version 1) $ Conflicts $ Map.fromFoldable
-                  [ package "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "qaotic" 1 [])
+        [ { error: WhileSolving (unsafePackageName "qaotic") $ Map.fromFoldable
+              [ Tuple (unsafeVersion "1.0.0") $ Conflicts $ Map.fromFoldable
+                  [ unsafePackageName "prelude" `Tuple` intersection 2 (solveRoot "prelude") 1 (via "qaotic" 1 [])
                   ]
-              , Tuple (version 2) $ Conflicts $ Map.fromFoldable
+              , Tuple (unsafeVersion "2.0.0") $ Conflicts $ Map.fromFoldable
                   -- TODO: why no global "prelude" here?
-                  [ package "prelude" `Tuple` intersection 5 (via "qaotic" 2 []) 4 (solveRoot "prelude")
+                  [ unsafePackageName "prelude" `Tuple` intersection 5 (via "qaotic" 2 []) 4 (solveRoot "prelude")
                   ]
               ]
           , message: "While solving qaotic each version could not be solved:\n- 1.0.0: \n  Conflict in version ranges for prelude:\n    >=2.0.0 (declared dependency)\n    <1.0.0 seen in qaotic@1.0.0\n- 2.0.0: \n  Conflict in version ranges for prelude:\n    >=5.0.0 seen in qaotic@2.0.0\n    <4.0.0 (declared dependency)"
@@ -291,42 +291,42 @@ spec = do
     Spec.it "Excludes broken dependencies belonging only to rejected versions" do
       let
         index = Map.fromFoldable
-          [ package "a" /\ Map.fromFoldable
-              [ version 1 /\ Map.singleton (package "orphan") (range 1 2)
-              , version 2 /\ Map.empty
+          [ unsafePackageName "a" /\ Map.fromFoldable
+              [ unsafeVersion "1.0.0" /\ Map.singleton (unsafePackageName "orphan") (unsafeRange ">=1.0.0 <2.0.0")
+              , unsafeVersion "2.0.0" /\ Map.empty
               ]
-          , package "orphan" /\ Map.singleton (version 1) (Map.singleton (package "missing") (range 1 2))
+          , unsafePackageName "orphan" /\ Map.singleton (unsafeVersion "1.0.0") (Map.singleton (unsafePackageName "missing") (unsafeRange ">=1.0.0 <2.0.0"))
           ]
-      solve index (Map.singleton (package "a") (range 1 3))
-        `Assert.shouldContain` Map.singleton (package "a") (version 2)
+      solve index (Map.singleton (unsafePackageName "a") (unsafeRange ">=1.0.0 <3.0.0"))
+        `Assert.shouldContain` Map.singleton (unsafePackageName "a") (unsafeVersion "2.0.0")
 
     Spec.it "Reports both originally requested packages and the package version directly requiring the missing dependency" do
       let
         index = Map.fromFoldable
-          [ package "a" /\ Map.singleton (version 1) (Map.singleton (package "middle") (range 2 5))
-          , package "b" /\ Map.singleton (version 1) (Map.singleton (package "middle") (range 1 4))
-          , package "middle" /\ Map.singleton (version 2) (Map.singleton (package "missing") (range 1 2))
+          [ unsafePackageName "a" /\ Map.singleton (unsafeVersion "1.0.0") (Map.singleton (unsafePackageName "middle") (unsafeRange ">=2.0.0 <5.0.0"))
+          , unsafePackageName "b" /\ Map.singleton (unsafeVersion "1.0.0") (Map.singleton (unsafePackageName "middle") (unsafeRange ">=1.0.0 <4.0.0"))
+          , unsafePackageName "middle" /\ Map.singleton (unsafeVersion "2.0.0") (Map.singleton (unsafePackageName "missing") (unsafeRange ">=1.0.0 <2.0.0"))
           ]
-        goals = Map.fromFoldable [ package "a" /\ range 1 2, package "b" /\ range 1 2 ]
+        goals = Map.fromFoldable [ unsafePackageName "a" /\ unsafeRange ">=1.0.0 <2.0.0", unsafePackageName "b" /\ unsafeRange ">=1.0.0 <2.0.0" ]
         source = via "middle" 2 [ "a", "b" ]
       solve index goals `Assert.shouldEqual`
-        Left (pure (Conflicts (Map.singleton (package "missing") (intersection 1 source 2 source))))
+        Left (pure (Conflicts (Map.singleton (unsafePackageName "missing") (intersection 1 source 2 source))))
 
     Spec.it "Prefers the alphabetically first package, not the largest total versions" do
       let
         index = Map.fromFoldable
-          [ package "a" /\ Map.fromFoldable
-              [ version 1 /\ Map.singleton (package "z") (range 1 2)
-              , version 2 /\ Map.singleton (package "z") (range 2 3)
+          [ unsafePackageName "a" /\ Map.fromFoldable
+              [ unsafeVersion "1.0.0" /\ Map.singleton (unsafePackageName "z") (unsafeRange ">=1.0.0 <2.0.0")
+              , unsafeVersion "2.0.0" /\ Map.singleton (unsafePackageName "z") (unsafeRange ">=2.0.0 <3.0.0")
               ]
-          , package "b" /\ Map.fromFoldable
-              [ version 1 /\ Map.singleton (package "z") (range 2 3)
-              , version 9 /\ Map.singleton (package "z") (range 1 2)
+          , unsafePackageName "b" /\ Map.fromFoldable
+              [ unsafeVersion "1.0.0" /\ Map.singleton (unsafePackageName "z") (unsafeRange ">=2.0.0 <3.0.0")
+              , unsafeVersion "9.0.0" /\ Map.singleton (unsafePackageName "z") (unsafeRange ">=1.0.0 <2.0.0")
               ]
-          , package "z" /\ Map.fromFoldable [ version 1 /\ Map.empty, version 2 /\ Map.empty ]
+          , unsafePackageName "z" /\ Map.fromFoldable [ unsafeVersion "1.0.0" /\ Map.empty, unsafeVersion "2.0.0" /\ Map.empty ]
           ]
-      solve index (Map.fromFoldable [ package "a" /\ range 1 3, package "b" /\ range 1 10 ])
-        `Assert.shouldContain` Map.fromFoldable [ package "a" /\ version 2, package "b" /\ version 1, package "z" /\ version 2 ]
+      solve index (Map.fromFoldable [ unsafePackageName "a" /\ unsafeRange ">=1.0.0 <3.0.0", unsafePackageName "b" /\ unsafeRange ">=1.0.0 <10.0.0" ])
+        `Assert.shouldContain` Map.fromFoldable [ unsafePackageName "a" /\ unsafeVersion "2.0.0", unsafePackageName "b" /\ unsafeVersion "1.0.0", unsafePackageName "z" /\ unsafeVersion "2.0.0" ]
 
     Spec.it "Matches exhaustive assignments on 4096 small cyclic version graphs" do
       -- Each of six package versions independently has no dependency, an exact
@@ -334,15 +334,15 @@ spec = do
       -- three-package ring. Enumerating assignments (including absent packages)
       -- is independent of the solver's propagation and backtracking algorithm.
       let
-        names = map package [ "a", "b", "c" ]
+        names = map unsafePackageName [ "a", "b", "c" ]
 
         assignments = do
-          a <- [ Nothing, Just (version 1), Just (version 2) ]
-          b <- [ Nothing, Just (version 1), Just (version 2) ]
-          c <- [ Nothing, Just (version 1), Just (version 2) ]
+          a <- [ Nothing, Just (unsafeVersion "1.0.0"), Just (unsafeVersion "2.0.0") ]
+          b <- [ Nothing, Just (unsafeVersion "1.0.0"), Just (unsafeVersion "2.0.0") ]
+          c <- [ Nothing, Just (unsafeVersion "1.0.0"), Just (unsafeVersion "2.0.0") ]
           pure $ Map.fromFoldable $ Array.catMaybes $ Array.zipWith (\p -> map (Tuple p)) names [ a, b, c ]
 
-        goals = Map.singleton (package "a") (range 1 3)
+        goals = Map.singleton (unsafePackageName "a") (unsafeRange ">=1.0.0 <3.0.0")
 
         satisfies plan deps = all
           ( \(Tuple p bounds) -> case Map.lookup p plan of
@@ -363,14 +363,14 @@ spec = do
           versionEntry i j = do
             let
               digit = (seed / Int.pow 4 (i * 2 + j - 1)) `mod` 4
-              next = package (if i == 0 then "b" else if i == 1 then "c" else "a")
+              next = unsafePackageName (if i == 0 then "b" else if i == 1 then "c" else "a")
               deps = case digit of
                 0 -> Map.empty
-                1 -> Map.singleton next (range 1 2)
-                2 -> Map.singleton next (range 2 3)
-                _ -> Map.singleton next (range 1 3)
+                1 -> Map.singleton next (unsafeRange ">=1.0.0 <2.0.0")
+                2 -> Map.singleton next (unsafeRange ">=2.0.0 <3.0.0")
+                _ -> Map.singleton next (unsafeRange ">=1.0.0 <3.0.0")
 
-            version j /\ deps
+            majorVersion j /\ deps
 
           versions i = Map.fromFoldable $ map (versionEntry i) [ 1, 2 ]
 
@@ -437,8 +437,8 @@ spec = do
             (\i error -> "[Error " <> show (i + 1) <> "] " <> printSolverError error <> "\n")
             errs
         Right (Tuple _solvedCompiler resolutions) -> do
-          Map.lookup (package "prelude") resolutions `Assert.shouldEqual` Just (unsafeVersion "6.0.1")
-          Map.lookup (package "effect") resolutions `Assert.shouldEqual` Just (unsafeVersion "4.0.0")
+          Map.lookup (unsafePackageName "prelude") resolutions `Assert.shouldEqual` Just (unsafeVersion "6.0.1")
+          Map.lookup (unsafePackageName "effect") resolutions `Assert.shouldEqual` Just (unsafeVersion "4.0.0")
 
     Spec.it "Prefers the newer package version unless the compiler requirement forces an older one" do
       let
@@ -451,10 +451,10 @@ spec = do
           , unsafeMetadata "my-pkg" [ Tuple "1.0.0" [ "0.15.15" ] ]
           ]
         index = buildCompilerIndex compilers manifestIndex metadata
-        goals = Map.singleton (package "effect") (unsafeRange ">=4.0.0 <6.0.0")
+        goals = Map.singleton (unsafePackageName "effect") (unsafeRange ">=4.0.0 <6.0.0")
         expected compiler effect = Tuple (unsafeVersion compiler) $ Map.fromFoldable
-          [ package "effect" /\ unsafeVersion effect
-          , package "prelude" /\ unsafeVersion "6.0.1"
+          [ unsafePackageName "effect" /\ unsafeVersion effect
+          , unsafePackageName "prelude" /\ unsafeVersion "6.0.1"
           ]
       solveWithCompiler (Range.exact (unsafeVersion "0.15.16")) index goals
         `Assert.shouldContain` expected "0.15.16" "4.0.0"
@@ -479,7 +479,7 @@ spec = do
 
         updatedMetadata = Map.fromFoldable
           [ unsafeMetadata "prelude" [ Tuple "6.0.1" [ "0.15.15" ] ]
-          , Tuple (package "effect") updatedEffectMeta
+          , Tuple (unsafePackageName "effect") updatedEffectMeta
           , unsafeMetadata "my-pkg" [ Tuple "1.0.0" [ "0.15.15" ] ]
           ]
         fullNew = buildCompilerIndex compilers manifestIndex updatedMetadata
@@ -519,120 +519,105 @@ type TestPackage =
 -- | Transitively depends on a broken range
 transitiveBroken :: TestPackage
 transitiveBroken =
-  { package: package "transitive-broken"
+  { package: unsafePackageName "transitive-broken"
   , versions: Map.fromFoldable
-      [ version 0 /\ Just (fixedBroken.package /\ range 2 3)
-      , version 1 /\ Just (brokenFixed.package /\ range 0 1)
+      [ unsafeVersion "0.0.0" /\ Just (fixedBroken.package /\ unsafeRange ">=2.0.0 <3.0.0")
+      , unsafeVersion "1.0.0" /\ Just (brokenFixed.package /\ unsafeRange ">=0.0.0 <1.0.0")
       ]
   }
 
 -- | Broken at v1 and v2
 brokenBroken :: TestPackage
 brokenBroken =
-  { package: package "broken-broken"
+  { package: unsafePackageName "broken-broken"
   , versions: Map.fromFoldable
-      [ version 0 /\ Just (package "does-not-exist" /\ range 0 5)
-      , version 1 /\ Just (package "does-not-exist" /\ range 0 5)
+      [ unsafeVersion "0.0.0" /\ Just (unsafePackageName "does-not-exist" /\ unsafeRange ">=0.0.0 <5.0.0")
+      , unsafeVersion "1.0.0" /\ Just (unsafePackageName "does-not-exist" /\ unsafeRange ">=0.0.0 <5.0.0")
       ]
   }
 
 -- | Fixed at v0, v1, broken at v2
 fixedBroken :: TestPackage
 fixedBroken =
-  { package: package "fixed-broken"
+  { package: unsafePackageName "fixed-broken"
   , versions: Map.fromFoldable
-      [ version 0 /\ Just (prelude.package /\ range 0 1)
-      , version 1 /\ Just (prelude.package /\ range 1 2)
-      , version 2 /\ Just (package "does-not-exist" /\ range 0 5)
+      [ unsafeVersion "0.0.0" /\ Just (prelude.package /\ unsafeRange ">=0.0.0 <1.0.0")
+      , unsafeVersion "1.0.0" /\ Just (prelude.package /\ unsafeRange ">=1.0.0 <2.0.0")
+      , unsafeVersion "2.0.0" /\ Just (unsafePackageName "does-not-exist" /\ unsafeRange ">=0.0.0 <5.0.0")
       ]
   }
 
 -- | Broken at v0, fixed at v1
 brokenFixed :: TestPackage
 brokenFixed =
-  { package: package "broken-fixed"
+  { package: unsafePackageName "broken-fixed"
   , versions: Map.fromFoldable
-      [ version 0 /\ Just (package "does-not-exist" /\ range 0 4)
-      , version 1 /\ Just (prelude.package /\ range 0 1)
+      [ unsafeVersion "0.0.0" /\ Just (unsafePackageName "does-not-exist" /\ unsafeRange ">=0.0.0 <4.0.0")
+      , unsafeVersion "1.0.0" /\ Just (prelude.package /\ unsafeRange ">=0.0.0 <1.0.0")
       ]
   }
 
 onlySimple :: TestPackage
 onlySimple =
-  { package: package "only-simple"
-  , versions: Map.singleton (version 0) (Just (simple.package /\ range 0 1))
+  { package: unsafePackageName "only-simple"
+  , versions: Map.singleton (unsafeVersion "0.0.0") (Just (simple.package /\ unsafeRange ">=0.0.0 <1.0.0"))
   }
 
 simple :: TestPackage
 simple =
-  { package: package "simple"
+  { package: unsafePackageName "simple"
   , versions: Map.fromFoldable
-      [ version 0 /\ Just (prelude.package /\ range 0 1)
-      , version 1 /\ Just (prelude.package /\ range 1 2)
+      [ unsafeVersion "0.0.0" /\ Just (prelude.package /\ unsafeRange ">=0.0.0 <1.0.0")
+      , unsafeVersion "1.0.0" /\ Just (prelude.package /\ unsafeRange ">=1.0.0 <2.0.0")
       ]
   }
 
 prelude :: TestPackage
 prelude =
-  { package: package "prelude"
+  { package: unsafePackageName "prelude"
   , versions: Map.fromFoldable
-      [ version 0 /\ Nothing
-      , version 1 /\ Nothing
-      , version 2 /\ Nothing
-      , version 3 /\ Nothing
-      , version 4 /\ Nothing
-      , version 5 /\ Nothing
+      [ unsafeVersion "0.0.0" /\ Nothing
+      , unsafeVersion "1.0.0" /\ Nothing
+      , unsafeVersion "2.0.0" /\ Nothing
+      , unsafeVersion "3.0.0" /\ Nothing
+      , unsafeVersion "4.0.0" /\ Nothing
+      , unsafeVersion "5.0.0" /\ Nothing
       ]
   }
 
 chaotic :: TestPackage
 chaotic =
-  { package: package "chaotic"
+  { package: unsafePackageName "chaotic"
   , versions: Map.fromFoldable
-      [ version 1 /\ Just (prelude.package /\ range 0 1)
-      , version 2 /\ Just (prelude.package /\ range 5 6)
-      , version 3 /\ Just (prelude.package /\ range 5 6)
+      [ unsafeVersion "1.0.0" /\ Just (prelude.package /\ unsafeRange ">=0.0.0 <1.0.0")
+      , unsafeVersion "2.0.0" /\ Just (prelude.package /\ unsafeRange ">=5.0.0 <6.0.0")
+      , unsafeVersion "3.0.0" /\ Just (prelude.package /\ unsafeRange ">=5.0.0 <6.0.0")
       ]
   }
 
 qaotic :: TestPackage
 qaotic =
-  { package: package "qaotic"
+  { package: unsafePackageName "qaotic"
   , versions: Map.fromFoldable
-      [ version 1 /\ Just (prelude.package /\ range 0 1)
-      , version 2 /\ Just (prelude.package /\ range 5 6)
+      [ unsafeVersion "1.0.0" /\ Just (prelude.package /\ unsafeRange ">=0.0.0 <1.0.0")
+      , unsafeVersion "2.0.0" /\ Just (prelude.package /\ unsafeRange ">=5.0.0 <6.0.0")
       ]
   }
 
-package :: String -> PackageName
-package = unsafePackageName
-
-version :: Int -> Version
-version = unsafeVersion <<< (_ <> ".0.0") <<< show
-
--- For all these tests, we work with major versions only because we do not
--- need to exercise the intricacies of the range relations, just the solver,
--- which does not care about what versions are, just how they relate
-range :: Int -> Int -> Range
-range lower upper = unsafeRange $ Array.fold
-  [ ">="
-  , show lower
-  , ".0.0 <"
-  , show upper
-  , ".0.0"
-  ]
+majorVersion :: Int -> Version
+majorVersion = unsafeVersion <<< (_ <> ".0.0") <<< show
 
 intersection :: Int -> SolverPosition -> Int -> SolverPosition -> Intersection
 intersection lower lowerPos upper upperPos = Intersection
-  { lower: wrap $ Sourced (version lower) lowerPos
-  , upper: wrap $ Sourced (version upper) upperPos
+  { lower: wrap $ Sourced (majorVersion lower) lowerPos
+  , upper: wrap $ Sourced (majorVersion upper) upperPos
   }
 
 solveRoot :: String -> SolverPosition
-solveRoot = Pos Root <<< Set.singleton <<< package
+solveRoot = Pos Root <<< Set.singleton <<< unsafePackageName
 
 via :: String -> Int -> Array String -> SolverPosition
-via p v = Pos (Solving (NES.singleton { package: package p, version: version v })) <<< Set.fromFoldable <<< map package
+via p v = Pos (Solving (NES.singleton { package: unsafePackageName p, version: majorVersion v })) <<< Set.fromFoldable <<< map unsafePackageName
 
 via' :: String -> Int -> SolverPosition
-via' p v = Pos (Solving (NES.singleton { package: package p, version: version v })) (Set.singleton (package p))
+via' p v = Pos (Solving (NES.singleton { package: unsafePackageName p, version: majorVersion v })) (Set.singleton (unsafePackageName p))
