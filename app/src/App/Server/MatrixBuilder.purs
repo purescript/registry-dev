@@ -207,7 +207,6 @@ solveForAllCompilers solverData@{ compiler, snapshot } emit = do
 solveDependantsForCompiler :: forall r. MatrixSolverData -> (MatrixSolverResult -> Run (LOG + r) Unit) -> Run (LOG + r) (Set MatrixSolverResult)
 solveDependantsForCompiler { snapshot, name, version, compiler } emit = do
   let seed = Tuple name version
-  -- Sort this fixed index once, not once per already-compatible dependant.
   let manifests = ManifestIndex.toSortedArray ManifestIndex.ConsiderRanges snapshot.manifestIndex
   { results, visited } <- go manifests (Set.singleton seed) name version
   Log.info $ Array.fold
