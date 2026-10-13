@@ -143,7 +143,7 @@ jobCreatedResponseCodec = CJ.named "JobCreatedResponse" $ CJ.Record.object { job
 
 -- | The outcome of submitting a publish request. The field is optional in the
 -- | response codec so clients remain able to decode responses from older
--- | registry servers, but current servers always provide it.
+-- | registry servers. Cached submissions also omit it; poll the job for its outcome.
 data PublishSubmissionDisposition
   = Created
   | DuplicateActive

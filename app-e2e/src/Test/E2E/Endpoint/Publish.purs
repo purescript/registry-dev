@@ -112,14 +112,14 @@ spec = do
           unless (Array.all (_.jobId >>> (_ == head.jobId)) tail) do
             Assert.fail "Expected concurrent publish requests to return one job ID."
           let created = Array.filter (_.disposition >>> (_ == Just V1.Created)) responses
-          let duplicateActive = Array.filter (_.disposition >>> (_ == Just V1.DuplicateActive)) responses
+          let cached = Array.filter (_.disposition >>> isNothing) responses
           Assert.shouldEqual (Array.length created) 1
-          Assert.shouldEqual (Array.length duplicateActive) 4
+          Assert.shouldEqual (Array.length cached) 4
 
           _ <- Env.pollJobOrFail head.jobId
           completedDuplicate <- Client.publish Fixtures.effectPublishData
           Assert.shouldEqual completedDuplicate.jobId head.jobId
-          Assert.shouldEqual completedDuplicate.disposition (Just V1.AlreadyPublishedSubmission)
+          Assert.shouldEqual completedDuplicate.disposition Nothing
 
     Spec.it "reports an already-published package as idempotent success" do
       created <- Client.publish Fixtures.effectAlreadyPublishedData
@@ -133,4 +133,4 @@ spec = do
 
       duplicate <- Client.publish Fixtures.effectAlreadyPublishedData
       Assert.shouldEqual duplicate.jobId created.jobId
-      Assert.shouldEqual duplicate.disposition (Just V1.AlreadyPublishedSubmission)
+      Assert.shouldEqual duplicate.disposition Nothing
