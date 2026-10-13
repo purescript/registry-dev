@@ -103,8 +103,8 @@ runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan 
               Log.error $ "No existing metadata for " <> PackageName.print packageName <> "@" <> Version.print packageVersion
               Except.throw $ "No manifest found for " <> PackageName.print packageName <> "@" <> Version.print packageVersion
 
--- | A pass-local snapshot, captured after publication or compatibility writes.
--- | The executor is serial; queued jobs cannot change it during scheduling.
+-- | Package and compiler data used to decide which compilation jobs to queue.
+-- | Read once per scheduling pass, after the package metadata has been updated.
 type MatrixSnapshot =
   { compilerIndex :: Solver.CompilerIndex
   , manifestIndex :: ManifestIndex
@@ -112,11 +112,14 @@ type MatrixSnapshot =
   , compilers :: NonEmptyArray Version
   }
 
+-- TODO feels like we should be doing this at startup and use the cache instead
+-- of reading files all over again
 readMatrixSnapshot :: forall r. Run (REGISTRY_READ + AFF + EXCEPT String + r) MatrixSnapshot
 readMatrixSnapshot = do
   metadata <- Registry.readAllMetadata
   manifestIndex <- Registry.readAllManifests
   compilers <- PursVersions.pursVersions
+  -- TODO here we are building the compiler index, but we should really cache it
   pure { compilerIndex: Solver.buildCompilerIndex compilers manifestIndex metadata, manifestIndex, metadata, compilers }
 
 -- | A build plan entry with integrity information for verification.
