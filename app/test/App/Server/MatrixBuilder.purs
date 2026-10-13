@@ -2,16 +2,24 @@ module Test.Registry.App.Server.MatrixBuilder (spec) where
 
 import Registry.App.Prelude
 
+import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Map as Map
 import Data.Set as Set
+import Effect.Aff as Aff
 import Effect.Ref as Ref
+import Registry.API.V1 (Job(..), SortOrder(..))
+import Registry.API.V1 as V1
+import Registry.App.SQLite as SQLite
 import Registry.App.Server.MatrixBuilder as MatrixBuilder
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Solver as Solver
-import Registry.Test.Assert.Run (runRegistryMock)
+import Registry.Test.Assert.Run (runBaseEffects, runRegistryMock)
 import Registry.Test.Utils as Utils
+import Run as Run
+import Run.Except as Except
+import Test.Registry.App.SQLite (withDatabaseAff)
 import Test.Spec as Spec
 import Test.Spec.Assertions as Assert
 
@@ -77,9 +85,10 @@ spec = do
           -- Rebuild CompilerIndex from current metadata (as JobExecutor does)
           currentMetadata <- liftEffect $ Ref.read metadataRef
           let compilerIndex = Solver.buildCompilerIndex allCompilers cascadeIndex currentMetadata
-          let solverData = { compilerIndex, compiler: compiler_0_15_11, name, version, dependencies }
+          let snapshot = { compilerIndex, manifestIndex: cascadeIndex, metadata: currentMetadata, compilers: allCompilers }
+          let solverData = { snapshot, compiler: compiler_0_15_11, name, version, dependencies }
           runRegistryMock metadataRef indexRef
-            $ MatrixBuilder.solveDependantsForCompiler solverData
+            $ MatrixBuilder.solveDependantsForCompiler solverData (const $ pure unit)
 
       -- Wave 0: leaves complete
       -- prelude@5.0.0 -> should find leaf-dep@4.0.0 (prelude >=4.0.0 <6.0.0 includes 5.0.0)
@@ -114,6 +123,60 @@ spec = do
       unless (Set.member topPkgName r5Names) do
         Assert.fail $ "Step 5: Expected top-pkg via propagation through mid-pkg, got: "
           <> show (Set.map PackageName.print r5Names)
+
+    Spec.it "preserves queued plans on interruption and resumes without duplicates" do
+      let
+        initial = setup [ "0.15.10" ]
+        index = Utils.fromRight "Invalid test index" $ ManifestIndex.insert ManifestIndex.ConsiderRanges leafDep6Manifest initial.index
+        metadata = Map.union initial.metadata $ Map.fromFoldable
+          [ Utils.unsafeMetadata "leaf-dep" [ Tuple "6.0.0" [ "0.15.10" ] ] ]
+        compiler12 = Utils.unsafeVersion "0.15.12"
+        compilers = Utils.unsafeNonEmptyArray [ compiler_0_15_10, compiler_0_15_11, compiler12 ]
+        snapshot = { compilerIndex: Solver.buildCompilerIndex compilers index metadata, manifestIndex: index, metadata, compilers }
+        solverData = initial.solverData { snapshot = snapshot }
+        expected name version compiler resolutions = { name, version, compiler, resolutions }
+        cases =
+          [ { solve: MatrixBuilder.solveForAllCompilers
+            , plans:
+                [ expected preludeName preludeVersion compiler_0_15_10 Map.empty
+                , expected preludeName preludeVersion compiler12 Map.empty
+                ]
+            }
+          , { solve: MatrixBuilder.solveDependantsForCompiler
+            , plans:
+                [ expected effectName (Utils.unsafeVersion "4.0.0") compiler_0_15_11 (Map.singleton preludeName preludeVersion)
+                , expected leafDepName leafDep6Version compiler_0_15_11 (Map.singleton preludeName preludeVersion)
+                ]
+            }
+          ]
+      for_ cases \{ solve, plans } -> liftAff $ withDatabaseAff \db -> do
+        let
+          enqueue { name, version, compiler, resolutions } = Run.liftEffect $ void $ SQLite.insertMatrixJob db
+            { packageName: name, packageVersion: version, compilerVersion: compiler, payload: resolutions }
+          queued = liftEffect $ SQLite.selectJobs db { since: bottom, until: top, order: ASC, includeCompleted: false }
+        interrupted <- Aff.attempt $ runBaseEffects $ solve solverData \plan -> do
+          enqueue plan
+          Except.throw "interrupted"
+        case interrupted of
+          Left error | Aff.message error == "interrupted" -> pure unit
+          _ -> Assert.fail "Expected scheduling to be interrupted after its first enqueue."
+        partial <- queued
+        Assert.shouldEqual (Array.length partial.jobs) 1
+        -- A retry must retain the original job, enqueue the remaining plan,
+        -- and preserve the compiler and complete dependency resolutions.
+        void $ runBaseEffects $ solve solverData enqueue
+        complete <- queued
+        let
+          actual = Array.mapMaybe
+            ( case _ of
+                MatrixJob j -> Just $ expected j.packageName j.packageVersion j.compilerVersion j.payload
+                _ -> Nothing
+            )
+            complete.jobs
+        unless (Array.null complete.failed && Array.length actual == 2 && Set.fromFoldable actual == Set.fromFoldable plans) do
+          Assert.fail "Expected exactly the two solved build plans, without duplicates or altered resolutions."
+        unless (all (\old -> Array.any (\new -> (V1.jobInfo new).jobId == (V1.jobInfo old).jobId) complete.jobs) partial.jobs) do
+          Assert.fail "Retry replaced a previously queued job."
 
   where
   preludeName = Utils.unsafePackageName "prelude"
@@ -152,9 +215,10 @@ spec = do
         ]
 
       compilerIndex = Solver.buildCompilerIndex allCompilers index metadata
+      snapshot = { compilerIndex, manifestIndex: index, metadata, compilers: allCompilers }
 
       solverData =
-        { compilerIndex
+        { snapshot
         , compiler: compiler_0_15_11
         , name: preludeName
         , version: preludeVersion
@@ -207,4 +271,4 @@ spec = do
     indexRef <- liftEffect $ Ref.new index
     metadataRef <- liftEffect $ Ref.new metadata
     runRegistryMock metadataRef indexRef
-      $ MatrixBuilder.solveDependantsForCompiler solverData
+      $ MatrixBuilder.solveDependantsForCompiler solverData (const $ pure unit)
