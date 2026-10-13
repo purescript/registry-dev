@@ -12,7 +12,6 @@ import HTTPurple as HTTPurple
 import HTTPurple.Status as Status
 import Node.Path as Path
 import Registry.API.V1 (JobId, Route)
-import Registry.API.V1 as V1
 import Registry.App.API (COMPILER_CACHE, PURS_GRAPH_CACHE, _compilerCache, _pursGraphCache)
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (CacheRef)
@@ -178,13 +177,7 @@ runEffects env operation = Aff.attempt do
             finishedAt <- nowUTC
             case env.jobId of
               -- Important to make sure that we mark the job as completed
-              Just jobId -> Db.finishJob
-                { jobId
-                , finishedAt
-                , success: false
-                , disposition: Nothing
-                , error: Just { code: V1.JobFailed, message: msg }
-                }
+              Just jobId -> Db.finishJob { jobId, finishedAt, success: false }
               Nothing -> pure unit
             Log.error msg *> Run.liftAff (Aff.throwError (Aff.error msg))
         )

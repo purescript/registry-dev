@@ -37,7 +37,6 @@
           ./app
           ./app-e2e
           ./dashboard
-          ./db/schema.sql
           ./foreign
           ./lib
           ./scripts

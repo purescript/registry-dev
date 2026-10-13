@@ -7,10 +7,7 @@ CREATE TABLE job_info (
   success INTEGER NOT NULL DEFAULT 0,
   -- Tracks how many times this job has been reset (started but not finished
   -- when the server restarted). Used for livelock detection.
-  resetCount INTEGER NOT NULL DEFAULT 0,
-  disposition TEXT,
-  errorCode TEXT,
-  errorMessage TEXT
+  resetCount INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE publish_jobs (
   jobId TEXT PRIMARY KEY NOT NULL,
@@ -72,5 +69,4 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('20230711143803'),
   ('20240914170550'),
   ('20240914171030'),
-  ('20260721231201'),
-  ('20260722000000');
+  ('20260721231201');

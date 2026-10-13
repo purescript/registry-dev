@@ -7,7 +7,6 @@ module Test.E2E.Support.Fixtures
   , prelude
   , slug
   , unsafeCoerce
-  , effectAlreadyPublishedData
   , effectPublishData
   , effectPublishDataDifferentLocation
   , consolePublishData
@@ -74,14 +73,6 @@ effectPublishData =
   , compiler: Just $ Utils.unsafeVersion "0.15.10"
   , resolutions: Nothing
   , version: effect.version
-  }
-
--- | Publish data for effect@4.0.0, which is already present in the registry,
--- | manifest index, storage, and Pursuit fixtures.
-effectAlreadyPublishedData :: Operation.PublishData
-effectAlreadyPublishedData = effectPublishData
-  { ref = "v4.0.0"
-  , version = Utils.unsafeVersion "4.0.0"
   }
 
 -- | Publish data for effect@99.0.0 with a DIFFERENT location.
