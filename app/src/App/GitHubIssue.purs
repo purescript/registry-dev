@@ -176,20 +176,13 @@ pollAndReport
   -> URL
   -> V1.JobId
   -> Run (LOG + EXCEPT String + AFF + r) Boolean
-pollAndReport octokit issue pollConfig registryApiUrl jobId = go Nothing 0 0
+pollAndReport octokit issue pollConfig registryApiUrl jobId = go Nothing 0
   where
   maxConsecutiveErrors :: Int
   maxConsecutiveErrors = 5
 
-  go :: Maybe DateTime -> Int -> Int -> Run (LOG + EXCEPT String + AFF + r) Boolean
-  go lastTimestamp attempt consecutiveErrors
-    | attempt >= pollConfig.maxAttempts = do
-        Run.liftAff $ void $ Octokit.request octokit $ Octokit.createCommentRequest
-          { address: Constants.registry
-          , issue
-          , body: "⏱️ Job timed out"
-          }
-        pure false
+  go :: Maybe DateTime -> Int -> Run (LOG + EXCEPT String + AFF + r) Boolean
+  go lastTimestamp consecutiveErrors
     | consecutiveErrors >= maxConsecutiveErrors = do
         Run.liftAff $ void $ Octokit.request octokit $ Octokit.createCommentRequest
           { address: Constants.registry
@@ -203,7 +196,7 @@ pollAndReport octokit issue pollConfig registryApiUrl jobId = go Nothing 0 0
         case result of
           Left err -> do
             Log.error $ "Error polling job: " <> err
-            go lastTimestamp (attempt + 1) (consecutiveErrors + 1)
+            go lastTimestamp (consecutiveErrors + 1)
           Right job -> do
             let info = V1.jobInfo job
 
@@ -242,7 +235,7 @@ pollAndReport octokit issue pollConfig registryApiUrl jobId = go Nothing 0 0
               Nothing -> do
                 -- Continue polling with updated timestamp, reset consecutive errors on success
                 let newTimestamp = Array.last newLogs <#> _.timestamp
-                go (newTimestamp <|> lastTimestamp) (attempt + 1) 0
+                go (newTimestamp <|> lastTimestamp) 0
 
 -- | Fetch job status from the API
 fetchJob :: String -> V1.JobId -> Maybe DateTime -> Aff (Either String V1.Job)
@@ -266,15 +259,13 @@ fetchJob registryApiUrl (V1.JobId jobId) since = do
 
 -- | Configuration for polling job status
 type PollConfig =
-  { maxAttempts :: Int
-  , interval :: Aff.Milliseconds
+  { interval :: Aff.Milliseconds
   }
 
--- | Default poll config: 30 minutes at 5 second intervals
+-- | Poll every five seconds until the server reports job completion.
 defaultPollConfig :: PollConfig
 defaultPollConfig =
-  { maxAttempts: 360
-  , interval: Aff.Milliseconds 5000.0
+  { interval: Aff.Milliseconds 5000.0
   }
 
 type GitHubEventEnv =

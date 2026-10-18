@@ -64,6 +64,7 @@ runMatrixJob { compilerVersion, packageName, packageVersion, payload: buildPlan 
   installBuildPlan buildPlanWithIntegrity installed
   result <- Purs.compile
     { globs: [ Path.concat [ installed, "*/src/**/*.purs" ] ]
+    , profile: Purs.PackageBuild
     , version: Just compilerVersion
     , cwd: Just workdir
     }
