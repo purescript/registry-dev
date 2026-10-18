@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Keep timings in setup.log without tracing commands or environment secrets.
+TIMEFORMAT='Step finished in %3R seconds'
+trap 'status=$?; echo "Orb setup exited with status $status after ${SECONDS}s"' EXIT
+
 echo "Installing orb prerequisites..."
 if ! command -v direnv >/dev/null 2>&1; then
-  sudo apt-get update
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y direnv
+  time sudo apt-get update
+  time sudo DEBIAN_FRONTEND=noninteractive apt-get install -y direnv
 fi
 
 # Make the repository's existing .envrc activate in interactive orb terminals.
@@ -15,7 +19,7 @@ fi
 
 if ! command -v nix >/dev/null 2>&1 \
   && [ ! -x /nix/var/nix/profiles/default/bin/nix ]; then
-  curl --proto '=https' --tlsv1.2 -fsSL https://install.determinate.systems/nix \
+  time curl --proto '=https' --tlsv1.2 -fsSL https://install.determinate.systems/nix \
     | sh -s -- install --no-confirm
 fi
 
@@ -26,13 +30,25 @@ if [ -f /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
 fi
 
 # Amp commands use non-login shells, so expose Nix on their existing PATH too.
+# Preserve the active installation, including single-user Nix installations.
+nix_bin="$(command -v nix)"
+nix_bin="$(readlink -f "$nix_bin")"
 mkdir -p "$HOME/.local/bin"
-ln -sfn /nix/var/nix/profiles/default/bin/nix "$HOME/.local/bin/nix"
+ln -sfn "$nix_bin" "$HOME/.local/bin/nix"
 
 echo "Preparing the pinned Nix development environment..."
 direnv allow .
-eval "$(direnv export bash)"
-npm ci
-spago build
+# Load the same flake as .envrc directly: direnv's use_flake can hide Nix
+# failures behind eval and continue with tools from outside the dev shell.
+# Reuse direnv's profile so interactive terminals retain the same store roots.
+mkdir -p .direnv
+time nix_env="$(nix print-dev-env --profile .direnv/flake-profile)"
+eval "$nix_env"
+
+echo "Installing locked npm dependencies..."
+time npm ci --no-audit --no-fund
+
+echo "Building the PureScript workspace..."
+time spago build
 
 echo "Orb setup complete."
