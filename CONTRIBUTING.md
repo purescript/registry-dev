@@ -10,15 +10,22 @@ You can get all the tools you need to work on this repository via Nix by enterin
 nix develop
 ```
 
-Then, you can treat this repository as an ordinary PureScript project:
+If you have direnv with nix-direnv configured for your shell, run `direnv allow` to activate the environment automatically when entering this repository.
+
+Install the locked JavaScript dependencies inside the Nix shell, then build and test:
 
 ```sh
+# Install JavaScript dependencies
+npm ci --omit=optional --no-audit --no-fund
+
 # Build the source
 spago build
 
 # Run the tests
 spago test
 ```
+
+Repeat the npm install step when the dependencies or Node version change.
 
 > NOTE: You don't strictly need Nix to work on the registry; if you are contributing PureScript changes only then you can get away with just `purs` and `spago`, but be aware that some tests will fail on your machine, you may see database errors, and you will not be able to run integration tests.
 
@@ -275,13 +282,13 @@ The `dashboard/` directory contains a Halogen (PureScript) application for monit
 
 ### Building
 
-To produce a browser JS bundle:
+To build the dashboard for deployment:
 
 ```sh
-npm run dashboard:build
+nix build .#dashboard
 ```
 
-This outputs `dashboard/app.js`, which `dashboard/index.html` loads via `<script src="./app.js">`.
+The `result/` directory contains `index.html`, `app.js`, and `static/`. To produce only the JS bundle in your checkout, run `npm run dashboard:build`.
 
 ### Local Development
 

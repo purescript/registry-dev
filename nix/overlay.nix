@@ -166,7 +166,7 @@ in
     dontNpmBuild = true;
     npmFlags = [ "--omit=optional" ];
 
-    # To update: run `nix build .#server` and copy the hash from the error
+    # To update: run `prefetch-npm-deps package-lock.json` in the dev shell.
     npmDepsHash = "sha256-1PENsd/EzRYVZ6RxTssbSzPu7SVVGlWnP7Zjt6im5GI=";
 
     installPhase = ''
@@ -175,6 +175,20 @@ in
       mv node_modules $out/
     '';
   };
+
+  registry-dashboard =
+    prev.runCommand "registry-dashboard" { nativeBuildInputs = [ prev.esbuild ]; }
+      ''
+        ln -s ${final.registry-spago-lock}/output .
+        ln -s ${final.registry-package-lock}/node_modules .
+        mkdir -p $out
+        esbuild --bundle --platform=browser --outfile=$out/app.js <<'EOF'
+        import { main } from "./output/Dashboard.Main/index.js";
+        main();
+        EOF
+        cp ${../dashboard/index.html} $out/index.html
+        cp -r ${../dashboard/static} $out/static
+      '';
 
   # Compiler infrastructure
 

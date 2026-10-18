@@ -3,10 +3,10 @@ name: Deploy Dashboard
 on:
   push:
     branches: [master]
-    paths: ['dashboard/**']
+    paths: ['dashboard/**', '.github/workflows/dashboard.yml']
   pull_request:
     types: [opened, reopened, synchronize, closed]
-    paths: ['dashboard/**']
+    paths: ['dashboard/**', '.github/workflows/dashboard.yml']
 
 permissions:
   contents: write
@@ -20,31 +20,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
+      - uses: DeterminateSystems/determinate-nix-action@v3
         if: github.event.action != 'closed'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
 
-      - name: Install tools
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
         if: github.event.action != 'closed'
-        run: npm install --no-save purescript@0.15.16 spago@1.0.4 esbuild
+        with:
+          use-flakehub: false
 
       - name: Build dashboard
         if: github.event.action != 'closed'
-        run: npm run dashboard:build
-
-      - name: Verify bundle
-        if: github.event.action != 'closed'
-        run: test -f dashboard/app.js
-
-      - name: Prepare deploy directory
-        if: github.event.action != 'closed'
-        run: |
-          mkdir -p _site
-          cp dashboard/index.html _site/
-          cp dashboard/app.js _site/
-          cp -r dashboard/static _site/
+        run: nix build .#dashboard --out-link _site
 
       - name: Deploy to Pages
         if: github.ref == 'refs/heads/master'

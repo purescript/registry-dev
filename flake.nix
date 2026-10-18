@@ -110,6 +110,7 @@
           pkgs.registry.apps
           // pkgs.registry.scripts
           // {
+            dashboard = pkgs.registry-dashboard;
             test-env = testEnv.testEnvScript;
           };
 
@@ -131,6 +132,8 @@
           };
 
         checks = {
+          dashboard = pkgs.registry-dashboard;
+
           spago-test =
             pkgs.runCommand "spago-test"
               {
@@ -240,6 +243,8 @@
               nixfmt-rfc-style
               bash
               nodejs
+              prefetch-npm-deps
+              esbuild
               jq
               dbmate
               sqlite
