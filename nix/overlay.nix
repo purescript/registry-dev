@@ -202,9 +202,9 @@ in
 
   # Runtime dependencies needed by all registry executables
   # Used in: buildRegistryPackage, spago-test check, and devShell
-  registry-runtime-deps = with prev; [
-    final.registry-compilers
-    final.registry-purs-versions
+  registry-runtime-deps = with final; [
+    registry-compilers
+    registry-purs-versions
 
     dhall
     dhall-json
