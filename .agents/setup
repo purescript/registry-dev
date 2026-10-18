@@ -46,7 +46,7 @@ time nix_env="$(nix print-dev-env --profile .direnv/flake-profile)"
 eval "$nix_env"
 
 echo "Installing locked npm dependencies..."
-time npm ci --no-audit --no-fund
+time npm ci --omit=optional --no-audit --no-fund
 
 echo "Building the PureScript workspace..."
 time spago build
