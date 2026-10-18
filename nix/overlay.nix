@@ -167,7 +167,7 @@ in
     npmFlags = [ "--omit=optional" ];
 
     # To update: run `nix build .#server` and copy the hash from the error
-    npmDepsHash = "sha256-7AFgk11qIzTqgn2jtXBw340ZFcGqJMtjeZ+Xvr0vqNc=";
+    npmDepsHash = "sha256-1PENsd/EzRYVZ6RxTssbSzPu7SVVGlWnP7Zjt6im5GI=";
 
     installPhase = ''
       mkdir -p $out
