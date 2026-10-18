@@ -111,7 +111,7 @@ runWorkflow eventJson = do
 
   envResult <- liftAff GitHubIssue.initializeGitHub
   for_ envResult \env -> do
-    let testEnv = env { pollConfig = { maxAttempts: 60, interval: Milliseconds 500.0 }, logVerbosity = Quiet }
+    let testEnv = env { pollConfig = { interval: Milliseconds 500.0 }, logVerbosity = Quiet }
     liftAff $ void $ GitHubIssue.runGitHubIssue testEnv
 
   liftEffect $ Process.chdir originalCwd

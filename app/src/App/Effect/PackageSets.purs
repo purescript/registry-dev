@@ -265,6 +265,7 @@ handle env = case _ of
     Log.debug "Compiling installed packages..."
     Purs.compile
       { globs: [ Path.concat [ Path.basename packagesWorkDir, "**/*.purs" ] ]
+      , profile: Purs.PackageSetBuild
       , version: Just compiler
       , cwd: Just env.workdir
       }

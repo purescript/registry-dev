@@ -32,10 +32,12 @@ spec = do
     filterMaybeVersions = map (map Utils.unsafeVersion) >>> case _ of
       vs | Utils.isAarch64Darwin -> Array.filter (maybe true (\v -> v >= Utils.minAarch64DarwinCompiler)) vs
       vs -> vs
+    compilationVersions = filterMaybeVersions [ Just "0.13.0", Just "0.13.8", Just "0.14.0", Just "0.15.0", Nothing ]
 
   traverse_ testVersion (filterVersions [ "0.13.0", "0.14.0", "0.14.7", "0.15.4" ])
   traverse_ (testMissingVersion <<< Utils.unsafeVersion) [ "0.13.1", "0.13.7", "0.15.1", "0.12.0", "0.14.12345" ]
-  traverse_ testCompilationError (filterMaybeVersions [ Just "0.13.0", Just "0.13.8", Just "0.14.0", Just "0.15.0", Nothing ])
+  Spec.describe "Package builds" $ traverse_ (testCompilationError Purs.PackageBuild) compilationVersions
+  Spec.describe "Package set builds" $ traverse_ (testCompilationError Purs.PackageSetBuild) compilationVersions
   traverse_ testGraph (filterMaybeVersions [ Just "0.14.0", Just "0.15.0", Nothing ])
 
   Spec.describe "Compiler Race Condition Detection" do
@@ -93,12 +95,12 @@ spec = do
         Left MissingCompiler -> pure unit
         _ -> Assert.fail "Should have failed with MissingCompiler"
 
-  testCompilationError version =
+  testCompilationError profile version =
     Spec.it ("Handles compilation error for bad input file for version " <> maybe "latest" Version.print version) do
       tmp <- Tmp.mkTmpDir
       let file = Path.concat [ tmp, "ShouldFailToCompile.purs" ]
       FS.Aff.writeTextFile UTF8 file "<contents>"
-      result <- Purs.callCompiler { command: Purs.Compile { globs: [ file ] }, cwd: Nothing, version }
+      result <- Purs.callCompiler { command: Purs.Compile { globs: [ file ], profile }, cwd: Nothing, version }
       case result of
         Left (CompilationError [ { position: { startLine: 1, startColumn: 1 } } ]) ->
           pure unit

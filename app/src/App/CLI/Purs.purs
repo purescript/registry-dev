@@ -125,9 +125,11 @@ type CompilerArgs =
   , command :: PursCommand
   }
 
+data CompileProfile = PackageBuild | PackageSetBuild
+
 data PursCommand
   = Version
-  | Compile { globs :: Array FilePath }
+  | Compile { globs :: Array FilePath, profile :: CompileProfile }
   | Publish { resolutions :: FilePath }
   | Graph { globs :: Array FilePath }
 
@@ -156,7 +158,16 @@ callCompiler compilerArgs = do
       { errors: CJ.array compilerErrorCodec
       }
 
-  result <- _.getResult =<< Execa.execa purs (printCommand compilerArgs.command) (_ { cwd = compilerArgs.cwd })
+    -- Keep normal parallel compilation for individual packages. Whole package
+    -- sets need serial compilation and compacting GC to fit the server.
+    profileArgs = case compilerArgs.command of
+      Compile { profile: PackageSetBuild } -> [ "-N1", "-c" ]
+      _ -> []
+
+    -- Bound the compiler heap, not the registry process, with room for swap.
+    args = printCommand compilerArgs.command <> [ "+RTS", "-M3G" ] <> profileArgs <> [ "-RTS" ]
+
+  result <- _.getResult =<< Execa.execa purs args (_ { cwd = compilerArgs.cwd })
   pure case result.exit of
     Normally 0 ->
       Right result.stdout
@@ -190,15 +201,15 @@ isCompilerRaceCondition = case _ of
 -- | Retries up to 3 times when the "Unexpected end of JSON input" race condition occurs.
 compile
   :: forall r
-   . { globs :: Array FilePath, version :: Maybe Version, cwd :: Maybe FilePath }
+   . { globs :: Array FilePath, profile :: CompileProfile, version :: Maybe Version, cwd :: Maybe FilePath }
   -> Run (LOG + AFF + r) (Either CompilerFailure String)
-compile { globs, version, cwd } = go 1
+compile { globs, profile, version, cwd } = go 1
   where
   maxRetries = 3
 
   go :: Int -> Run (LOG + AFF + r) (Either CompilerFailure String)
   go attempt = do
-    result <- Run.liftAff $ callCompiler { command: Compile { globs }, version, cwd }
+    result <- Run.liftAff $ callCompiler { command: Compile { globs, profile }, version, cwd }
     case result of
       Left err | isCompilerRaceCondition err && attempt < maxRetries -> do
         Log.warn $ "Compiler race condition detected (attempt " <> show attempt <> "/" <> show maxRetries <> "), retrying..."
