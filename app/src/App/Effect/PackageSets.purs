@@ -92,10 +92,13 @@ handle env = case _ of
     Log.info $ "Performing atomic upgrade of package set " <> Version.print (un PackageSet oldSet).version
 
     -- Always clean up the backup directory, which is transient and may be
-    -- left over from a previous crashed job.
+    -- left over from a previous crashed job. Clear the output first, since it
+    -- may contain results from the interrupted build.
     do
       exists <- Run.liftEffect $ FS.Sync.exists backupWorkDir
       when exists do
+        Log.info "Interrupted package set upgrade, wiping output directory"
+        FS.Extra.remove outputWorkDir
         Log.debug $ "Removing leftover backup directory " <> backupWorkDir
         FS.Extra.remove backupWorkDir
 
@@ -287,6 +290,7 @@ handle env = case _ of
         FS.Extra.copy { from: backupWorkDir, to: outputWorkDir, preserveTimestamps: true }
         removePackages additions
         installPackages oldVersions
+        FS.Extra.remove backupWorkDir
         pure $ Left err
       Right _ -> do
         FS.Extra.remove backupWorkDir
@@ -320,6 +324,7 @@ handle env = case _ of
           Remove -> pure unit
           Update version -> removePackage package version
         for_ maybeOldVersion (installPackage package)
+        FS.Extra.remove backupWorkDir
         pure $ Left err
       Right _ -> do
         FS.Extra.remove backupWorkDir

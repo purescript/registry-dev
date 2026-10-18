@@ -4,17 +4,55 @@ import Registry.App.Prelude
 
 import Data.Map as Map
 import Data.Set as Set
+import Effect.Aff as Aff
+import Node.FS.Sync as FS.Sync
+import Node.Path as Path
+import Registry.App.Effect.Log (Log(..))
+import Registry.App.Effect.Log as Log
 import Registry.App.Effect.PackageSets (Change(..))
 import Registry.App.Effect.PackageSets as PackageSets
+import Registry.App.Effect.Registry (RegistryRead(..))
+import Registry.App.Effect.Registry as Registry
+import Registry.App.Effect.Storage as Storage
+import Registry.Foreign.FSExtra as FS.Extra
+import Registry.Foreign.Tmp as Tmp
 import Registry.ManifestIndex as ManifestIndex
 import Registry.PackageName as PackageName
 import Registry.Test.Assert as Assert
 import Registry.Test.Utils as Utils
 import Registry.Version as Version
+import Run as Run
+import Run.Except as Except
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit
 spec = do
+  Spec.describe "package set recovery" do
+    for_ [ true, false ] \hasBackup ->
+      Spec.it (if hasBackup then "Discards output after an interrupted upgrade" else "Retains output when no backup remains") do
+        Aff.bracket Tmp.mkTmpDir FS.Extra.remove \tmp -> do
+          let
+            output = Path.concat [ tmp, "output" ]
+            backup = Path.concat [ tmp, "output-backup" ]
+            oldSet = (un PackageSet packageSet) { packages = Map.singleton (Utils.unsafePackageName "missing") (Utils.unsafeVersion "1.0.0") }
+          FS.Extra.ensureDirectory output
+          when hasBackup $ FS.Extra.ensureDirectory backup
+          -- Stop at installation, after recovery but before invoking a compiler.
+          result <- PackageSets.upgradeAtomic (PackageSet oldSet) oldSet.compiler Map.empty
+            # PackageSets.interpret (PackageSets.handle { workdir: tmp })
+            # Registry.interpretRead
+                ( case _ of
+                    ReadMetadata _ reply -> pure $ reply $ Right Nothing
+                    _ -> Except.throw "Unexpected registry operation"
+                )
+            # Storage.interpret (\_ -> Except.throw "Unexpected storage operation")
+            # Log.interpret (\(Log _ _ next) -> pure next)
+            # Except.runExcept
+            # Run.runBaseAff'
+          result `Assert.shouldEqual` Left "No metadata found for missing@1.0.0"
+          liftEffect (FS.Sync.exists output) >>= (_ `Assert.shouldEqual` not hasBackup)
+          liftEffect (FS.Sync.exists backup) >>= (_ `Assert.shouldEqual` false)
+
   Spec.it "Reports package set changelog correctly" do
     let
       operations = Map.fromFoldable
