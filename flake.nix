@@ -214,6 +214,13 @@
         devShells.default = pkgs.mkShell {
           name = "registry-dev";
 
+          shellHook = pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
+            if [[ $- == *i* ]]; then
+              export SHELL="${pkgs.zsh}/bin/zsh"
+              exec "$SHELL"
+            fi
+          '';
+
           SERVER_PORT = envDefaults.SERVER_PORT;
           DATABASE_URL = envDefaults.DATABASE_URL;
 
