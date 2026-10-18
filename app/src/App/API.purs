@@ -821,6 +821,7 @@ publish payload = do
       MatrixBuilder.installBuildPlan buildPlan installedResolutions
       compilationResult <- Purs.compile
         { globs: [ "src/**/*.purs", Path.concat [ installedResolutions, "*/src/**/*.purs" ] ]
+        , profile: Purs.PackageBuild
         , version: Just compiler
         , cwd: Just downloadedPackage
         }
@@ -969,6 +970,7 @@ publish payload = do
         _ -> do
           compilationResult <- Purs.compile
             { globs: [ Path.concat [ packageSource, "src/**/*.purs" ], Path.concat [ installedResolutions, "*/src/**/*.purs" ] ]
+            , profile: Purs.PackageBuild
             , version: Just compiler
             , cwd: Just tmp
             }
@@ -1137,6 +1139,7 @@ findAllCompilers { source, manifest, compilers } = do
             MatrixBuilder.installBuildPlan buildPlanForCompiler installed
             result <- Purs.compile
               { globs: [ Path.concat [ source, "src/**/*.purs" ], Path.concat [ installed, "*/src/**/*.purs" ] ]
+              , profile: Purs.PackageBuild
               , version: Just target
               , cwd: Just workdir
               }
