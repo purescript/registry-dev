@@ -33,7 +33,7 @@ jobs:
         run: nix build .#dashboard --out-link _site
 
       - name: Deploy to Pages
-        if: github.ref == 'refs/heads/master'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: _site
