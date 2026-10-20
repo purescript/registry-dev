@@ -274,7 +274,8 @@ handle env = case _ of
     case result of
       Left err | Purs.isCompilerHeapExhaustion err -> do
         Log.warn "Compiler heap exhausted; clearing package-set output and retrying once."
-        -- Keep the backup intact so a failed retry can still roll back.
+        -- Clear the output directory to avoid an incremental build, but leave
+        -- output-backup alone so it remains available for rollback.
         FS.Extra.remove outputWorkDir
         compile
       _ -> pure result

@@ -191,7 +191,8 @@ callCompiler compilerArgs = do
 compilerRaceConditionError :: String
 compilerRaceConditionError = "Unexpected end of JSON input"
 
--- | Heap exhaustion can leave stdout empty, so JSON decoding also reports EOF.
+-- | We keep heap exhaustion classified as an unknown error rather than expanding
+-- | CompilerFailure because only niche recovery paths need to distinguish it.
 isCompilerHeapExhaustion :: CompilerFailure -> Boolean
 isCompilerHeapExhaustion = case _ of
   UnknownError err -> String.contains (String.Pattern "purs: Heap exhausted") err
