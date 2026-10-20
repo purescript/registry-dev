@@ -321,8 +321,9 @@ readManifestIndexEntry packageName = do
   { stateDir } <- ask
   let indexPath = Path.concat [ stateDir, "scratch", "registry-index" ]
   liftAff $ ManifestIndex.readEntryFile indexPath packageName >>= case _ of
-    Left err -> Aff.throwError $ Aff.error $ "Failed to read manifest index for " <> PackageName.print packageName <> ": " <> err
-    Right manifests -> pure $ Array.fromFoldable manifests
+    ManifestIndex.EntryFileError err -> Aff.throwError $ Aff.error $ "Failed to read manifest index for " <> PackageName.print packageName <> ": " <> err
+    ManifestIndex.EntryFileMissing -> Aff.throwError $ Aff.error $ "No manifest index entry for " <> PackageName.print packageName
+    ManifestIndex.EntryFileValid manifests -> pure $ Array.fromFoldable manifests
 
 -- | Check if a specific package version exists in the manifest index.
 manifestIndexEntryExists :: PackageFixture -> E2E Boolean
@@ -330,8 +331,9 @@ manifestIndexEntryExists pkg = do
   { stateDir } <- ask
   let indexPath = Path.concat [ stateDir, "scratch", "registry-index" ]
   liftAff $ ManifestIndex.readEntryFile indexPath pkg.name >>= case _ of
-    Left _ -> pure false
-    Right manifests -> pure $ Array.any (\(Manifest m) -> m.version == pkg.version) $ Array.fromFoldable manifests
+    ManifestIndex.EntryFileError err -> Aff.throwError $ Aff.error $ "Failed to read manifest index for " <> PackageName.print pkg.name <> ": " <> err
+    ManifestIndex.EntryFileMissing -> pure false
+    ManifestIndex.EntryFileValid manifests -> pure $ Array.any (\(Manifest m) -> m.version == pkg.version) $ Array.fromFoldable manifests
 
 -- | Assert that both git repos (registry and registry-index) have no uncommitted changes.
 assertReposClean :: E2E Unit
