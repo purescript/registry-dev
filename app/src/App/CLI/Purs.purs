@@ -191,10 +191,17 @@ callCompiler compilerArgs = do
 compilerRaceConditionError :: String
 compilerRaceConditionError = "Unexpected end of JSON input"
 
+-- | We keep heap exhaustion classified as an unknown error rather than expanding
+-- | CompilerFailure because only niche recovery paths need to distinguish it.
+isCompilerHeapExhaustion :: CompilerFailure -> Boolean
+isCompilerHeapExhaustion = case _ of
+  UnknownError err -> String.contains (String.Pattern "purs: Heap exhausted") err
+  _ -> false
+
 -- | Check if a compiler failure is due to the known race condition bug.
 isCompilerRaceCondition :: CompilerFailure -> Boolean
-isCompilerRaceCondition = case _ of
-  UnknownError err -> String.contains (String.Pattern compilerRaceConditionError) err
+isCompilerRaceCondition failure = case failure of
+  UnknownError err -> not (isCompilerHeapExhaustion failure) && String.contains (String.Pattern compilerRaceConditionError) err
   _ -> false
 
 -- | Compile PureScript source files with automatic retry for transient errors.

@@ -54,6 +54,15 @@ spec = do
       let err = UnknownError "Some prefix text\nJSON: Unexpected end of JSON input\nSome suffix"
       Purs.isCompilerRaceCondition err `Assertions.shouldEqual` true
 
+    Spec.it "Does not detect race condition for heap exhaustion with empty JSON output" do
+      let
+        err = UnknownError $ String.joinWith "\n"
+          [ "purs: Heap exhausted;"
+          , "purs: Current maximum heap size is 3221225472 bytes (3072 MB)."
+          , "JSON: Unexpected end of JSON input"
+          ]
+      Purs.isCompilerRaceCondition err `Assertions.shouldEqual` false
+
     Spec.it "Does not detect race condition for normal UnknownError" do
       let err = UnknownError "Some other compiler error message"
       Purs.isCompilerRaceCondition err `Assertions.shouldEqual` false

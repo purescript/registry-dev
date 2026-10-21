@@ -263,12 +263,22 @@ handle env = case _ of
   compileInstalledPackages :: Version -> Run _ (Either CompilerFailure String)
   compileInstalledPackages compiler = do
     Log.debug "Compiling installed packages..."
-    Purs.compile
-      { globs: [ Path.concat [ Path.basename packagesWorkDir, "**/*.purs" ] ]
-      , profile: Purs.PackageSetBuild
-      , version: Just compiler
-      , cwd: Just env.workdir
-      }
+    let
+      compile = Purs.compile
+        { globs: [ Path.concat [ Path.basename packagesWorkDir, "**/*.purs" ] ]
+        , profile: Purs.PackageSetBuild
+        , version: Just compiler
+        , cwd: Just env.workdir
+        }
+    result <- compile
+    case result of
+      Left err | Purs.isCompilerHeapExhaustion err -> do
+        Log.warn "Compiler heap exhausted; clearing package-set output and retrying once."
+        -- Clear the output directory to avoid an incremental build, but leave
+        -- output-backup alone so it remains available for rollback.
+        FS.Extra.remove outputWorkDir
+        compile
+      _ -> pure result
 
   attemptChanges :: Version -> PackageSet -> ChangeSet -> Run _ (Either CompilerFailure PackageSet)
   attemptChanges compiler (PackageSet set) changes = do
