@@ -9,7 +9,7 @@
 # - systemd services start and stay running
 # - The server responds to basic HTTP requests
 # - Database migrations run successfully
-# - The job executor starts without errors
+# - Startup matrix jobs complete successfully
 {
   pkgs,
   lib,
@@ -28,11 +28,13 @@ else
     stateDir = "/var/lib/registry-server";
     repoFixturesDir = "${stateDir}/repo-fixtures";
     dhallTypes = "${pkgs.registry-server}/bin/types";
+    mockUnits = lib.mapAttrsToList (name: _: "wiremock-${name}.service") testConfig.wiremockConfigs;
   in
   pkgs.testers.nixosTest {
     name = "registry-smoke";
 
     testScript = ''
+      import json
       import time
 
       # Start the registry VM
@@ -47,14 +49,27 @@ else
           timeout=30
       )
 
-      # Verify we get a valid JSON response (the jobs endpoint responds)
-      result = registry.succeed(
-          "curl -s http://localhost:${envVars.SERVER_PORT}/api/v1/jobs"
-      )
-
-      # The server may create matrix jobs on startup for new compilers, so we just verify
-      # the response is valid JSON (starts with '[')
-      assert result.strip().startswith("["), f"Expected JSON array, got: {result}"
+      # The fixture Prelude lacks the newest test compiler (0.15.11), so startup
+      # must enqueue both dependency-free packages and process their dependants.
+      # Include completed jobs: otherwise a failed job disappears from the list.
+      expected = {("prelude", "6.0.1", "0.15.11"), ("type-equality", "4.0.1", "0.15.11")}
+      deadline = time.monotonic() + 120
+      while True:
+          jobs = json.loads(registry.succeed(
+              "curl --fail --silent http://localhost:${envVars.SERVER_PORT}/api/v1/jobs?include_completed=true"
+          ))
+          assert isinstance(jobs, list), f"Expected jobs array, got: {jobs}"
+          failed = [job for job in jobs if job.get("finishedAt") and not job["success"]]
+          assert not failed, f"Startup jobs failed: {json.dumps(failed, indent=2)}"
+          matrix = {
+              (job["packageName"], job["packageVersion"], job["compilerVersion"])
+              for job in jobs if job["jobType"] == "matrix"
+          }
+          if expected <= matrix and all(job.get("finishedAt") and job["success"] for job in jobs):
+              break
+          assert time.monotonic() < deadline, f"Startup jobs did not complete: {json.dumps(jobs, indent=2)}"
+          time.sleep(1)
+      print(f"✓ All {len(jobs)} startup jobs succeeded: {json.dumps(jobs)}")
 
       # Verify the database was created and migrations ran
       registry.succeed("test -f ${stateDir}/db/registry.sqlite3")
@@ -69,9 +84,6 @@ else
       )
       registry.succeed("test -f ${dhallTypes}/v1/Manifest.dhall")
 
-      # Give the job executor a moment to start and potentially fail
-      time.sleep(2)
-
       # Check that the job executor started successfully and didn't fail
       logs = registry.succeed("journalctl -u server.service --no-pager")
       assert "Job executor failed:" not in logs, f"Job executor failed on startup. Logs:\n{logs}"
@@ -83,7 +95,27 @@ else
     nodes.registry = {
       imports = [
         (rootPath + "/nix/registry-server.nix")
+        {
+          systemd.services = lib.mapAttrs' (
+            name: cfg:
+            lib.nameValuePair "wiremock-${name}" {
+              serviceConfig.ExecStart = "${pkgs.wiremock}/bin/wiremock --port ${toString cfg.port} --root-dir ${cfg.rootDir} --disable-banner";
+              postStart = ''
+                until ${pkgs.curl}/bin/curl --fail --silent http://localhost:${toString cfg.port}/__admin > /dev/null; do
+                  sleep 0.5
+                done
+              '';
+            }
+          ) testConfig.wiremockConfigs;
+        }
       ];
+
+      # The S3 SDK uses virtual-hosted bucket URLs, as in the integration test.
+      networking.hosts."127.0.0.1" = [ "purescript-registry.localhost" ];
+      systemd.services.server = {
+        requires = mockUnits;
+        after = mockUnits;
+      };
 
       # Apply the git mock overlay on top of the standard overlays
       nixpkgs.overlays = overlays ++ [ testConfig.testOverlay ];
