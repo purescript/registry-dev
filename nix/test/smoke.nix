@@ -52,8 +52,7 @@ else
           "curl -s http://localhost:${envVars.SERVER_PORT}/api/v1/jobs"
       )
 
-      # The server may create matrix jobs on startup for new compilers, so we just verify
-      # the response is valid JSON (starts with '[')
+      # Verify the response is valid JSON (starts with '[').
       assert result.strip().startswith("["), f"Expected JSON array, got: {result}"
 
       # Verify the database was created and migrations ran
@@ -107,6 +106,17 @@ else
           mkdir -p ${stateDir}
           echo 'DHALL_TYPES=/defunct/types' > ${stateDir}/.env
           ${testConfig.setupGitFixtures}/bin/setup-git-fixtures ${repoFixturesDir}
+
+          # Smoke tests cover deployment, not compiler rollouts. Record the test
+          # compilers in this copy of Prelude without changing integration fixtures.
+          compilers=$(${(pkgs.extend testConfig.testOverlay).registry-purs-versions}/bin/purs-versions)
+          prelude=${repoFixturesDir}/purescript/registry/metadata/prelude.json
+          ${pkgs.jq}/bin/jq --arg compilers "$compilers" \
+            '.published[].compilers = ($compilers | split(" "))' "$prelude" > "$prelude.tmp"
+          mv "$prelude.tmp" "$prelude"
+          ${pkgs.git}/bin/git -C ${repoFixturesDir}/purescript/registry \
+            -c user.name=pacchettibotti -c user.email=pacchettibotti@purescript.org \
+            commit -am "Record test compilers for smoke test"
         '';
       };
 
