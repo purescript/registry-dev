@@ -12,9 +12,7 @@ import Test.Registry.App.CLI.Tar as Test.CLI.Tar
 import Test.Registry.App.Effect.PackageSets as Test.Effect.PackageSets
 import Test.Registry.App.Effect.Registry as Test.Effect.Registry
 import Test.Registry.App.GitHubIssue as Test.GitHubIssue
-import Test.Registry.App.Legacy.LenientRange as Test.Legacy.LenientRange
 import Test.Registry.App.Legacy.LenientVersion as Test.Legacy.LenientVersion
-import Test.Registry.App.Legacy.Manifest as Test.Legacy.Manifest
 import Test.Registry.App.Legacy.PackageSet as Test.Legacy.PackageSet
 import Test.Registry.App.Manifest.SpagoYaml as Test.Manifest.SpagoYaml
 import Test.Registry.App.SQLite as Test.SQLite
@@ -47,8 +45,6 @@ main = runSpecAndExitProcess' config [ consoleReporter ] do
 
   Spec.describe "Registry.App.Legacy" do
     Spec.describe "Lenient Version" Test.Legacy.LenientVersion.spec
-    Spec.describe "Lenient Range" Test.Legacy.LenientRange.spec
-    Spec.describe "Legacy Manifest" Test.Legacy.Manifest.spec
     Spec.describe "Legacy PackageSet" Test.Legacy.PackageSet.spec
 
   Spec.describe "Registry.App.Manifest" do

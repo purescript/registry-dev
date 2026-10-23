@@ -71,13 +71,3 @@ rawVersionCodec = Profunctor.wrapIso RawVersion CJ.string
 
 rawVersionMapCodec :: forall a. CJ.Codec a -> CJ.Codec (Map RawVersion a)
 rawVersionMapCodec = Internal.Codec.strMap "RawVersionMap" (Right <<< RawVersion) (un RawVersion)
-
--- | An unprocessed version range
-newtype RawVersionRange = RawVersionRange String
-
-derive instance Newtype RawVersionRange _
-derive newtype instance Eq RawVersionRange
-derive newtype instance Ord RawVersionRange
-
-rawVersionRangeCodec :: CJ.Codec RawVersionRange
-rawVersionRangeCodec = Profunctor.wrapIso RawVersionRange CJ.string

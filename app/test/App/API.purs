@@ -31,6 +31,7 @@ import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
 import Registry.License as License
 import Registry.Location (Location(..))
+import Registry.Manifest as Manifest
 import Registry.Operation (PublishData)
 import Registry.PackageName as PackageName
 import Registry.Test.Assert as Assert
@@ -162,7 +163,7 @@ spec = do
 
       result <- Assert.Run.runTestEffects testEnv $ Except.runExcept do
         -- We'll publish effect@4.0.0 from the fixtures/github-packages
-        -- directory, which has a bower.json manifest.
+        -- directory, which has a purs.json manifest.
         let
           name = Utils.unsafePackageName "effect"
           version = Utils.unsafeVersion "4.0.0"
@@ -292,21 +293,17 @@ spec = do
           Run.liftAff $ FS.Aff.writeFile storedTarballPath storedTarball
 
           let sourceDir = Path.concat [ env.githubDir, "effect-4.0.0" ]
-          let bowerPath = Path.concat [ sourceDir, "bower.json" ]
-          let licensePath = Path.concat [ sourceDir, "LICENSE" ]
-          originalBower <- Run.liftAff $ FS.Aff.readTextFile UTF8 bowerPath
-          originalLicense <- Run.liftAff $ FS.Aff.readTextFile UTF8 licensePath
-          mitLicense <- Run.liftAff $ FS.Aff.readTextFile UTF8 (Path.concat [ env.githubDir, "slug-3.0.0", "LICENSE" ])
-          Run.liftAff $ FS.Aff.writeTextFile UTF8 bowerPath $ String.replace (Pattern "BSD-3-Clause") (Replacement "MIT") originalBower
-          Run.liftAff $ FS.Aff.writeTextFile UTF8 licensePath mitLicense
+          let manifestPath = Path.concat [ sourceDir, "purs.json" ]
+          originalManifest <- Run.liftAff $ FS.Aff.readTextFile UTF8 manifestPath
+          Run.liftAff $ FS.Aff.writeTextFile UTF8 manifestPath $
+            String.replace (Pattern "\"dependencies\"") (Replacement "\"description\": \"Changed source manifest\", \"dependencies\"") originalManifest
           Except.runExcept (API.publish effectPublishArgs) >>= case _ of
             Left error | String.contains (Pattern "source manifest differs from the manifest in the existing tarball") error -> pure unit
             Left error -> Except.throw $ "Expected a changed source manifest failure but got: " <> error
             Right _ -> Except.throw "Expected retrying from a changed source manifest to fail."
           assertPublicationState effectName effectVersion { storage: true, metadata: true, manifest: false }
 
-          Run.liftAff $ FS.Aff.writeTextFile UTF8 bowerPath originalBower
-          Run.liftAff $ FS.Aff.writeTextFile UTF8 licensePath originalLicense
+          Run.liftAff $ FS.Aff.writeTextFile UTF8 manifestPath originalManifest
           API.publish effectPublishArgs >>= case _ of
             { matrix: Just _ } -> pure unit
             _ -> Except.throw "Expected retrying the incomplete publication to report a newly completed publication."
@@ -415,35 +412,84 @@ checkBuildPlanToResolutions = do
 
 parseSourceManifestSpec :: Spec.Spec Unit
 parseSourceManifestSpec = do
-  Spec.it "Rejects deprecated SPDX identifiers in purs.json" do
+  for_
+    [ { label: "purs.json alone", files: [ Tuple "purs.json" pursJson ], origin: API.FromPursJson }
+    , { label: "spago.yaml alone", files: [ Tuple "spago.yaml" spagoYaml ], origin: API.FromSpagoYaml }
+    , { label: "purs.json before valid spago.yaml and legacy files", files: [ Tuple "purs.json" pursJson, Tuple "spago.yaml" spagoYaml ] <> legacyFiles, origin: API.FromPursJson }
+    , { label: "purs.json despite invalid spago.yaml and legacy files", files: [ Tuple "purs.json" pursJson, Tuple "spago.yaml" "[" ] <> legacyFiles, origin: API.FromPursJson }
+    , { label: "spago.yaml despite legacy files", files: [ Tuple "spago.yaml" spagoYaml ] <> legacyFiles, origin: API.FromSpagoYaml }
+    ]
+    \testCase ->
+      Spec.it ("Accepts " <> testCase.label) do
+        parse testCase.files >>= case _ of
+          Left err -> Assert.fail $ "Expected a modern manifest, but got: " <> err
+          Right { manifest, origin } -> do
+            Assert.shouldSatisfy origin (_ == testCase.origin)
+            let expected = if testCase.origin == API.FromPursJson then pursJson else String.replace (Pattern "registry-lib") (Replacement "yaml-package") pursJson
+            let expectedManifest = unsafeFromRight $ parseJson Manifest.codec expected
+            Assert.shouldEqual (stringifyJson Manifest.codec manifest) (stringifyJson Manifest.codec expectedManifest)
+
+  for_
+    [ { label: "no manifest", files: [] }
+    , { label: "bower.json only", files: [ Tuple "bower.json" bowerJson ] }
+    , { label: "spago.dhall without packages.dhall", files: [ Tuple "spago.dhall" spagoDhall ] }
+    , { label: "spago.dhall with packages.dhall", files: [ Tuple "spago.dhall" spagoDhall, Tuple "packages.dhall" "{}" ] }
+    , { label: "all legacy manifests without a modern manifest", files: legacyFiles }
+    ]
+    \testCase ->
+      Spec.it ("Rejects " <> testCase.label <> " with migration guidance") do
+        result <- parse testCase.files
+        expectError "migrate to purs.json or spago.yaml" result
+
+  for_
+    [ { label: "malformed purs.json before valid YAML and legacy files", files: [ Tuple "purs.json" "{", Tuple "spago.yaml" spagoYaml ] <> legacyFiles, error: "does not typecheck" }
+    , { label: "ill-typed purs.json before valid YAML and legacy files", files: [ Tuple "purs.json" "{}", Tuple "spago.yaml" spagoYaml ] <> legacyFiles, error: "does not typecheck" }
+    , { label: "deprecated SPDX identifiers in purs.json", files: [ Tuple "purs.json" (String.replace (Pattern "BSD-3-Clause") (Replacement "AGPL-3.0") pursJson), Tuple "spago.yaml" spagoYaml ] <> legacyFiles, error: "license field is not canonical" }
+    , { label: "malformed spago.yaml before legacy files", files: [ Tuple "spago.yaml" "[" ] <> legacyFiles, error: "not possible to read it" }
+    , { label: "incomplete spago.yaml before legacy files", files: [ Tuple "spago.yaml" "{}" ] <> legacyFiles, error: "No 'package' key" }
+    , { label: "deprecated SPDX identifiers in spago.yaml", files: [ Tuple "spago.yaml" (String.replace (Pattern "BSD-3-Clause") (Replacement "AGPL-3.0") spagoYaml) ] <> legacyFiles, error: "not possible to read it" }
+    ]
+    \testCase ->
+      Spec.it ("Rejects " <> testCase.label <> " without fallback") do
+        result <- parse testCase.files
+        expectError testCase.error result
+  where
+  pursJson = """{"name":"registry-lib","version":"0.0.1","license":"BSD-3-Clause","location":{"githubOwner":"purescript","githubRepo":"registry-dev"},"ref":"v0.0.1","dependencies":{"prelude":">=6.0.0 <7.0.0"}}"""
+
+  spagoYaml =
+    """
+package:
+  name: yaml-package
+  dependencies:
+    - prelude: ">=6.0.0 <7.0.0"
+  publish:
+    version: 0.0.1
+    license: BSD-3-Clause
+    location:
+      githubOwner: purescript
+      githubRepo: registry-dev
+"""
+
+  bowerJson = """{"license":"BSD-3-Clause","dependencies":{"purescript-prelude":"^6.0.0"}}"""
+  spagoDhall = """{ license = "BSD-3-Clause", dependencies = [] : List Text, packages = ./packages.dhall }"""
+  legacyFiles = [ Tuple "bower.json" bowerJson, Tuple "spago.dhall" spagoDhall, Tuple "packages.dhall" "{}" ]
+
+  parse :: Array (Tuple FilePath String) -> Aff (Either String API.ParsedManifest)
+  parse files = do
     resourceEnv <- liftEffect Env.lookupResourceEnv
     Aff.bracket Tmp.mkTmpDir FS.Extra.remove \packageDir -> do
-      let
-        manifestPath = Path.concat [ packageDir, "purs.json" ]
-        args =
-          { packageDir
-          , name: Utils.unsafePackageName "registry-lib"
-          , version: Utils.unsafeVersion "0.0.1"
-          , ref: "v0.0.1"
-          , location: GitHub { owner: "purescript", repo: "registry-dev", subdir: Nothing }
-          }
+      for_ files \(Tuple path contents) -> FS.Aff.writeTextFile UTF8 (Path.concat [ packageDir, path ]) contents
+      API.parseSourceManifest { packageDir, ref: "v0.0.1" }
+        # Env.runResourceEnv resourceEnv
+        # Log.interpret (\(Log.Log _ _ next) -> pure next)
+        # Except.runExcept
+        # Run.runBaseAff'
 
-      FS.Aff.writeTextFile UTF8 manifestPath
-        """{"name":"registry-lib","version":"0.0.1","license":"AGPL-3.0","location":{"githubOwner":"purescript","githubRepo":"registry-dev"},"ref":"v0.0.1","dependencies":{"prelude":">=6.0.0 <7.0.0"}}"""
-
-      result <-
-        API.parseSourceManifest args
-          # Env.runResourceEnv resourceEnv
-          # Log.interpret (\(Log.Log _ _ next) -> pure next)
-          # Except.runExcept
-          # Run.runBaseAff'
-
-      case result of
-        Left err ->
-          unless (String.contains (Pattern "license field is not canonical") err) do
-            Assert.fail $ "Expected a canonical license error, but got: " <> err
-        Right _ ->
-          Assert.fail "Expected parseSourceManifest to reject deprecated SPDX identifiers"
+  expectError :: String -> Either String API.ParsedManifest -> Aff Unit
+  expectError expected = case _ of
+    Left err -> unless (String.contains (Pattern expected) err) do
+      Assert.fail $ "Expected error containing '" <> expected <> "', but got: " <> err
+    Right _ -> Assert.fail $ "Expected parseSourceManifest to fail with: " <> expected
 
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do

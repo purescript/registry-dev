@@ -623,7 +623,11 @@ First, the registry uses the [`PackageName`](#packagename) listed in the JSON pa
 1. The package name is not registered (ie. no metadata exists) AND a location is provided in the payload. In this case, the registry will create new metadata to register this package at the given location. It is possible to register a package at the same location as one that already exists.
 2. The package name is registered (ie. metadata exists) AND either no location is provided in the payload OR the provided location matches the location recorded in the metadata. When no location is provided, the registry will use the location from the metadata.
 
-Next, the registry will use the provided [`Location`](#location) to fetch the package source at the provided `ref`. Packages must contain a `purs.json` manifest or `spago.yaml` manifest in the package root (in the presence of multiple manifest files, the `purs.json` file takes precedence and others are ignored). The registry will verify that the manifest matches with the JSON payload and metadata:
+Next, the registry will use the provided [`Location`](#location) to fetch the package source at the provided `ref`. Packages must contain a `purs.json` manifest or `spago.yaml` manifest in the package root (in the presence of multiple manifest files, the `purs.json` file takes precedence and others are ignored).
+
+Legacy `bower.json` and `spago.dhall` manifests are no longer accepted for publishing. Packages using these formats must migrate to `purs.json` or `spago.yaml`, including when retrying publication from an old source tag. Existing published archives remain available. Legacy files may still accompany a supported manifest and are subject to the normal packaging and license checks.
+
+The registry will verify that the manifest matches with the JSON payload and metadata:
 
 1. The manifest MUST be usable to produce a well-formed [`Manifest`](#33-manifest).
 2. The manifest package name and JSON payload package name MUST match.

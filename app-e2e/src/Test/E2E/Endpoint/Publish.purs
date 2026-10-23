@@ -26,7 +26,7 @@ import Test.Spec as Spec
 spec :: E2ESpec
 spec = do
   Spec.describe "Publish workflow" do
-    Spec.it "can publish effect@4.0.0 and verify all state changes" do
+    Spec.it "can publish effect@4.0.1 from purs.json and verify all state changes" do
       { jobId, disposition: submissionDisposition } <- Client.publish Fixtures.effectPublishData
       Assert.shouldEqual submissionDisposition (Just V1.Created)
       job <- Env.pollJobOrFail jobId
@@ -40,7 +40,7 @@ spec = do
       uploadOccurred <- Env.hasStorageUpload Fixtures.effect
       unless uploadOccurred do
         storageRequests <- WireMock.getStorageRequests
-        WireMock.failWithRequests "Expected S3 PUT for effect/4.0.0.tar.gz" storageRequests
+        WireMock.failWithRequests "Expected S3 PUT for effect/4.0.1.tar.gz" storageRequests
 
       Metadata metadata <- Env.readMetadata Fixtures.effect.name
       case Map.lookup Fixtures.effect.version metadata.published of
@@ -76,11 +76,16 @@ spec = do
           let actualCompilers = Set.fromFoldable $ NEA.toArray publishedMetaAfter.compilers
           Assert.shouldEqual actualCompilers expectedCompilers
 
-  Spec.describe "Publish with spago.dhall manifest" do
-    Spec.it "can publish slug@3.0.0 which uses spago.dhall format" do
+  Spec.describe "Publish with spago.yaml manifest" do
+    Spec.it "can publish slug@3.0.0 which uses spago.yaml format" do
       { jobId } <- Client.publish Fixtures.slugPublishData
       job <- Env.pollJobOrFail jobId
       Assert.shouldSatisfy (V1.jobInfo job).finishedAt isJust
+      case job of
+        PublishJob details -> do
+          Assert.shouldEqual details.disposition (Just V1.Published)
+          Assert.shouldEqual details.error Nothing
+        _ -> Assert.fail "Expected a publish job."
 
       uploadOccurred <- Env.hasStorageUpload Fixtures.slug
       unless uploadOccurred do

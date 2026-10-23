@@ -1,0 +1,13 @@
+package:
+  name: slug
+  dependencies:
+    - prelude: ">=6.0.1 <6.0.2"
+  publish:
+    version: 3.0.0
+    license: MIT
+    location:
+      githubOwner: purescript
+      githubRepo: purescript-slug
+
+# Keep this source fixture separate from the registry development workspace.
+workspace: {}
