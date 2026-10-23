@@ -278,10 +278,6 @@ handleRegistryWriteMock env = case _ of
   WritePackageSet _packageSet _message reply ->
     pure $ reply $ Right unit
 
-  -- FIXME: Actually mirror the package set
-  MirrorPackageSet _packageSet reply ->
-    pure $ reply $ Right unit
-
 handlePackageSetsMock :: forall r a. PackageSets a -> Run r a
 handlePackageSetsMock = case _ of
   -- FIXME: Actually reply with a package set with a pure upgrade

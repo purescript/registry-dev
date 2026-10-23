@@ -482,6 +482,8 @@ If there are no published or unpublished versions then these fields contain empt
 
 **[Source](./lib/src/Registry/PackageSet.purs)**
 
+The registry publishes JSON package sets only. It no longer mirrors sets to `purescript/package-sets`: no new `packages.dhall`, legacy `packages.json`, compatibility-map updates, or legacy release tags are produced. Previously published legacy sets and release assets are not modified by this retirement.
+
 Package sets are stored in the `registry` repository under the `package-sets` directory. For example, the first package set was published at https://github.com/purescript/registry/blob/main/package-sets/0.0.1.json. Each package set is stored as a JSON file with the following fields:
 
 1. `version`, which is a string containing the package set [`Version`](#version) for this set, which follows the version rules described in [Releasing the Package Set](#releasing-the-package-set).

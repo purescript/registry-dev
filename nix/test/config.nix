@@ -356,23 +356,6 @@ let
     (slug404Response "purs.json")
     (slug404Response "bower.json")
     (slug404Response "package.json")
-    {
-      request = {
-        method = "GET";
-        url = "/repos/purescript/package-sets/tags";
-      };
-      response = {
-        status = 200;
-        headers."Content-Type" = "application/json";
-        jsonBody = {
-          name = "psc-0.15.10-20230105";
-          commit = {
-            sha = "090897c992b2b310b1456506308db789672adac1";
-            url = "https://api.github.com/repos/purescript/package-sets/commits/090897c992b2b310b1456506308db789672adac1";
-          };
-        };
-      };
-    }
     # Tags for prelude package (only v6.0.1 which is already published)
     {
       request = {
@@ -1096,7 +1079,7 @@ let
       mkdir -p "$FIXTURES_DIR/purescript"
 
       # Copy fixtures and make writable (nix store files are read-only)
-      cp -r ${rootPath}/app/fixtures/{registry-index,registry,package-sets} "$FIXTURES_DIR/purescript/"
+      cp -r ${rootPath}/app/fixtures/{registry-index,registry} "$FIXTURES_DIR/purescript/"
       cp -r ${rootPath}/app/fixtures/github-packages/effect-4.0.0 "$FIXTURES_DIR/purescript/purescript-effect"
       cp -r ${rootPath}/app/fixtures/github-packages/console-6.1.0 "$FIXTURES_DIR/purescript/purescript-console"
       cp -r ${rootPath}/app/fixtures/github-packages/unsafe-coerce-6.0.0 "$FIXTURES_DIR/purescript/purescript-unsafe-coerce"
@@ -1122,7 +1105,6 @@ let
         gitbot tag -m "initial-fixture" initial-fixture
       done
 
-      gitbot -C "$FIXTURES_DIR/purescript/package-sets" tag -m "psc-0.15.9-20230105" psc-0.15.9-20230105
       gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" tag -m "v4.0.0" v4.0.0
       # Each source tag must carry a manifest with the matching version and ref.
       jq '.version = "4.0.1" | .ref = "v4.0.1"' \

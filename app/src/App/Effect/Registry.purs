@@ -26,17 +26,11 @@ import Registry.App.CLI.Git (GitResult)
 import Registry.App.CLI.Git as Git
 import Registry.App.Effect.Cache (class MemoryEncodable, Cache, CacheRef, MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.GitHub (GITHUB)
-import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Legacy.PackageSet (PscTag(..))
-import Registry.App.Legacy.PackageSet as Legacy.PackageSet
-import Registry.App.Legacy.Types (legacyPackageSetCodec)
 import Registry.Constants as Constants
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Octokit (Address)
-import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
 import Registry.Manifest as Manifest
 import Registry.ManifestIndex as ManifestIndex
@@ -83,7 +77,6 @@ data RegistryWrite a
   | DeleteManifest PackageName Version (Either String Unit -> a)
   | WriteMetadata PackageName Metadata (Either String Unit -> a)
   | WritePackageSet PackageSet String (Either String Unit -> a)
-  | MirrorPackageSet PackageSet (Either String Unit -> a)
 
 derive instance Functor RegistryWrite
 
@@ -144,10 +137,6 @@ writePackageSet set message = Except.rethrow =<< Run.lift _registryWrite (WriteP
 readAllPackageSets :: forall r. Run (REGISTRY_READ + EXCEPT String + r) (Map Version PackageSet)
 readAllPackageSets = Except.rethrow =<< Run.lift _registryRead (ReadAllPackageSets identity)
 
--- | Mirror a package set to the legacy package-sets repo
-mirrorPackageSet :: forall r. PackageSet -> Run (REGISTRY_WRITE + EXCEPT String + r) Unit
-mirrorPackageSet set = Except.rethrow =<< Run.lift _registryWrite (MirrorPackageSet set identity)
-
 interpretRead :: forall r a. (RegistryRead ~> Run r) -> Run (REGISTRY_READ + r) a -> Run r a
 interpretRead handler = Run.interpret (Run.on _registryRead handler Run.send)
 
@@ -158,7 +147,6 @@ interpretWrite handler = Run.interpret (Run.on _registryWrite handler Run.send)
 data RepoKey
   = RegistryRepo
   | ManifestIndexRepo
-  | LegacyPackageSetsRepo
 
 -- | A legend for values that can be committed. We know where each kind of value
 -- | ought to exist, so we can create a correct path for any given type ourselves.
@@ -168,7 +156,6 @@ data CommitKey
   | CommitManifestIndex
   | CommitMetadataIndex
   | CommitPackageSet Version
-  | CommitLegacyPackageSets (Array FilePath)
 
 -- | Get the pattern representing the paths that should be committed for each
 -- | commit key, relative to the root of the repository. Suitable to be passed
@@ -185,8 +172,6 @@ commitKeyToPaths = coerce <<< case _ of
     [ Constants.metadataDirectory <> Path.sep <> "*.json" ]
   CommitPackageSet version ->
     [ Path.concat [ Constants.packageSetsDirectory, Version.print version <> ".json" ] ]
-  CommitLegacyPackageSets paths ->
-    paths
 
 commitKeyToRepoKey :: CommitKey -> RepoKey
 commitKeyToRepoKey = case _ of
@@ -195,7 +180,6 @@ commitKeyToRepoKey = case _ of
   CommitManifestIndex -> ManifestIndexRepo
   CommitMetadataIndex -> RegistryRepo
   CommitPackageSet _ -> RegistryRepo
-  CommitLegacyPackageSets _ -> LegacyPackageSetsRepo
 
 data WriteMode = ReadOnly | CommitAs Git.Committer
 
@@ -219,7 +203,6 @@ newDebouncer = liftEffect $ Ref.new Map.empty
 type Repos =
   { registry :: Address
   , manifestIndex :: Address
-  , legacyPackageSets :: Address
   }
 
 -- | The default repos to use with the Registry effect handler
@@ -227,7 +210,6 @@ defaultRepos :: Repos
 defaultRepos =
   { registry: Constants.registry
   , manifestIndex: Constants.manifestIndex
-  , legacyPackageSets: Legacy.PackageSet.legacyPackageSetsRepo
   }
 
 -- | Get the upstream address associated with a repository key.
@@ -235,14 +217,12 @@ repoAddress :: RegistryEnv -> RepoKey -> Address
 repoAddress env = case _ of
   RegistryRepo -> env.repos.registry
   ManifestIndexRepo -> env.repos.manifestIndex
-  LegacyPackageSetsRepo -> env.repos.legacyPackageSets
 
 -- | Get the local path for the checkout associated with a repository key.
 repoPath :: RegistryEnv -> RepoKey -> FilePath
 repoPath env = case _ of
   RegistryRepo -> Path.concat [ env.workdir, "registry" ]
   ManifestIndexRepo -> Path.concat [ env.workdir, "registry-index" ]
-  LegacyPackageSetsRepo -> Path.concat [ env.workdir, "package-sets" ]
 
 -- | Get the repository at the given key, recording whether the pull or clone
 -- | had any effect (ie. if the repo was already up-to-date).
@@ -471,7 +451,7 @@ handleRead env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef
 -- | Writes can optionally commit and push to the upstream Git repository.
 -- |
 -- | This handler uses the same memory-only cache as the read handler.
-handleWrite :: forall r a. RegistryEnv -> RegistryWrite a -> Run (GITHUB + LOG + AFF + EFFECT + r) a
+handleWrite :: forall r a. RegistryEnv -> RegistryWrite a -> Run (LOG + AFF + EFFECT + r) a
 handleWrite env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRef) <<< case _ of
   WriteManifest manifest@(Manifest { name, version }) reply -> map (map reply) Except.runExcept do
     let formatted = formatPackageVersion name version
@@ -558,110 +538,6 @@ handleWrite env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRe
       Right Git.NoChange -> Log.info "Did not commit package set because it was unchanged."
       Right Git.Changed -> Log.info "Wrote and committed package set."
 
-  -- https://github.com/purescript/package-sets/blob/psc-0.15.4-20220829/release.sh
-  -- https://github.com/purescript/package-sets/blob/psc-0.15.4-20220829/update-latest-compatible-sets.sh
-  MirrorPackageSet set@(PackageSet { version }) reply -> map (map reply) Except.runExcept do
-    let name = Version.print version
-    Log.info $ "Mirroring legacy package set " <> name <> " to the legacy package sets repo"
-
-    manifests <- Except.rethrow =<< handleRead env (ReadAllManifests identity)
-
-    Log.debug $ "Converting package set..."
-    converted <- case Legacy.PackageSet.convertPackageSet manifests set of
-      Left error -> Except.throw $ "Failed to convert package set " <> name <> " to a legacy package set: " <> error
-      Right converted -> pure converted
-
-    let printedTag = Legacy.PackageSet.printPscTag converted.tag
-    let legacyRepo = repoAddress env LegacyPackageSetsRepo
-
-    packageSetsTags <- GitHub.listTags legacyRepo >>= case _ of
-      Left githubError ->
-        Except.throw $ Array.fold
-          [ "Could not mirror package set " <> name
-          , " because fetching tags from the legacy package-sets repo ("
-          , legacyRepo.owner <> "/" <> legacyRepo.repo
-          , ") failed: " <> Octokit.printGitHubError githubError
-          ]
-      Right tags -> pure $ Set.fromFoldable $ map _.name tags
-
-    when (Set.member printedTag packageSetsTags) do
-      Except.throw $ "Could not mirror package set " <> name <> " because the tag " <> printedTag <> " already exists."
-
-    -- We need to write three files to the package sets repository:
-    --
-    -- * latest-compatible-sets.json
-    --   stores a mapping of compiler versions to their highest compatible tag
-    --
-    -- * packages.json
-    --   stores the JSON representation of the latest package set
-    --
-    -- * src/packages.dhall
-    --   stores the Dhall representation of the latest package set
-    let latestSetsPath = "latest-compatible-sets.json"
-    let packagesJsonPath = "packages.json"
-    let dhallPath = Path.concat [ "src", "packages.dhall" ]
-    let files = [ latestSetsPath, packagesJsonPath, dhallPath ]
-    let compilerKey = (un PscTag converted.tag).compiler
-
-    commitFilesResult <- writeCommitPush (CommitLegacyPackageSets files) \legacyPath -> do
-      latestCompatibleSets <- do
-        latestSets <- Run.liftAff (readJsonFile Legacy.PackageSet.latestCompatibleSetsCodec (Path.concat [ legacyPath, latestSetsPath ])) >>= case _ of
-          Left err -> Except.throw $ "Could not mirror package set because reading the latest compatible sets file from " <> latestSetsPath <> " failed: " <> err
-          Right parsed -> pure parsed
-
-        case Map.lookup compilerKey latestSets of
-          Just existingTag | existingTag == converted.tag -> do
-            Log.warn $ "Not updating latest-compatible-sets.json because the tag " <> printedTag <> " already exists."
-            pure latestSets
-          Just existingTag | existingTag > converted.tag -> do
-            Log.warn $ Array.fold
-              [ "Not updating latest-compatible-sets.json because an existing tag ("
-              , Legacy.PackageSet.printPscTag existingTag
-              , ") is higher than the tag we are pushing ("
-              , Legacy.PackageSet.printPscTag converted.tag
-              , ")."
-              ]
-            pure latestSets
-          _ ->
-            pure $ Map.insert compilerKey converted.tag latestSets
-
-      -- Next we need to write the files that will be pushed to the package-sets repo
-      Log.debug $ "Writing " <> dhallPath
-      let fullDhallPath = Path.concat [ legacyPath, dhallPath ]
-      Run.liftAff $ FS.Aff.writeTextFile UTF8 fullDhallPath (Legacy.PackageSet.printDhall converted.packageSet <> "\n")
-
-      Log.debug $ "Writing " <> packagesJsonPath
-      let fullPackagesJsonPath = Path.concat [ legacyPath, packagesJsonPath ]
-      Run.liftAff $ writeJsonFile legacyPackageSetCodec fullPackagesJsonPath converted.packageSet
-
-      Log.debug $ "Writing " <> latestSetsPath
-      let fullLatestSetsPath = Path.concat [ legacyPath, latestSetsPath ]
-      Run.liftAff $ writeJsonFile Legacy.PackageSet.latestCompatibleSetsCodec fullLatestSetsPath latestCompatibleSets
-
-      pure $ Just $ "Update to the " <> name <> " package set."
-
-    case commitFilesResult of
-      Left error -> Except.throw $ "Failed to commit to legacy registry:" <> error
-      Right Git.NoChange -> Log.info "Did not commit legacy registry files because nothing has changed."
-      Right Git.Changed -> do
-        Log.info "Committed legacy registry files."
-        -- Now that we've written and pushed our commit, we also need to push some
-        -- tags to trigger the legacy package sets release workflow.
-        tagResult <- tagAndPush LegacyPackageSetsRepo do
-          -- We push the stable tag (ie. just a compiler version) if one does not yet
-          -- exist, and we always push the full tag.
-          let stable = Version.print compilerKey
-          Array.catMaybes
-            [ Just printedTag
-            , if Set.member stable packageSetsTags then Nothing else Just stable
-            ]
-        case tagResult of
-          Left error ->
-            Except.throw $ "Failed to push tags to legacy registry: " <> error
-          Right Git.NoChange ->
-            Log.warn $ "Tried to push tags to legacy registry, but there was no effect (they already existed)."
-          Right Git.Changed ->
-            Log.info "Pushed new tags to legacy registry."
   where
   -- | Write a file to the repository associated with the commit key, given a
   -- | callback that takes the file path of the repository on disk, writes the
@@ -679,16 +555,6 @@ handleWrite env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRe
           Just message -> commit commitKey message >>= case _ of
             Left error -> pure (Left error)
             Right _ -> push repoKey
-
-  -- | Tag the repository with the given tags and push the result upstream.
-  tagAndPush :: RepoKey -> Array String -> Run _ (Either String GitResult)
-  tagAndPush key refs = do
-    results <- traverse (tag key) refs
-    let partition = partitionEithers results
-    case Array.uncons partition.fail of
-      Nothing | Array.any (_ == Git.Changed) partition.success -> pushTags key
-      Nothing -> pure (Right Git.NoChange)
-      Just { head } -> pure (Left head)
 
   -- | Commit the file(s) indicated by the commit key with a commit message.
   commit :: CommitKey -> String -> Run _ (Either String GitResult)
@@ -718,51 +584,6 @@ handleWrite env = Cache.interpret _registryCache (Cache.handleMemory env.cacheRe
         pure $ Right Git.NoChange
       CommitAs committer -> do
         result <- Git.gitPush { address, committer } (repoPath env repoKey)
-        pure result
-
-  -- | Tag the repository at the given key at its current commit with the tag
-  tag :: RepoKey -> String -> Run _ (Either String GitResult)
-  tag repoKey ref = do
-    let address = repoAddress env repoKey
-    let formatted = address.owner <> "/" <> address.repo
-    case env.write of
-      ReadOnly -> do
-        Log.info $ "Skipping push to repo " <> formatted <> " because write mode is 'ReadOnly'."
-        pure $ Right Git.NoChange
-      CommitAs committer -> do
-        result <- Except.runExcept do
-          let cwd = repoPath env repoKey
-          existingTags <- Git.withGit cwd [ "tag", "--list" ] \error ->
-            "Failed to list tags in local checkout " <> cwd <> ": " <> error
-          if Array.elem ref $ String.split (String.Pattern "\n") existingTags then do
-            Log.warn $ "Tag " <> ref <> " already exists."
-            pure Git.NoChange
-          else do
-            _ <- Git.withGit cwd [ "config", "user.name", committer.name ] \error ->
-              "Failed to configure git user name as " <> committer.name <> " in " <> cwd <> ": " <> error
-            _ <- Git.withGit cwd [ "config", "user.email", "<" <> committer.email <> ">" ] \error ->
-              "Failed to configure git user email as " <> committer.email <> " in " <> cwd <> ": " <> error
-            _ <- Git.withGit cwd [ "tag", ref ] \error ->
-              "Failed to create new tag " <> ref <> " in local checkout " <> cwd <> ": " <> error
-            pure Git.Changed
-        pure result
-
-  -- | Push the repository tags at the given key to its upstream.
-  pushTags :: RepoKey -> Run _ (Either String GitResult)
-  pushTags repoKey = do
-    let address = repoAddress env repoKey
-    let formatted = address.owner <> "/" <> address.repo
-    case env.write of
-      ReadOnly -> do
-        Log.info $ "Skipping push to repo " <> formatted <> " because write mode is 'ReadOnly'."
-        pure $ Right Git.NoChange
-      CommitAs committer -> do
-        result <- Except.runExcept do
-          let cwd = repoPath env repoKey
-          let Git.AuthOrigin authOrigin = Git.mkAuthOrigin address committer
-          output <- Git.withGit cwd [ "push", "--tags", authOrigin ] \error ->
-            "Failed to push tags in local checkout " <> cwd <> ": " <> error
-          if String.contains (String.Pattern "Everything up-to-date") output then pure Git.NoChange else pure Git.Changed
         pure result
 
 appendJobIdToCommitMessage :: Maybe JobId -> String -> String

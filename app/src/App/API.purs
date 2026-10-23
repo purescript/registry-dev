@@ -237,9 +237,7 @@ packageSetUpdate details = do
         Log.warn $ "Some packages could not be added to the set:\n" <> formatFailed
       let commitMessage = PackageSets.commitMessage latestPackageSet succeeded (un PackageSet packageSet).version
       Registry.writePackageSet packageSet commitMessage
-      Log.notice "Built and released a new package set! Now mirroring to the package-sets repo..."
-      Registry.mirrorPackageSet packageSet
-      Log.notice "Mirrored a new legacy package set."
+      Log.notice "Built and released a new package set!"
 
 type AuthenticatedEffects r = (REGISTRY + STORAGE + GITHUB + PACCHETTIBOTTI_ENV + LOG + EXCEPT String + AFF + EFFECT + r)
 
