@@ -6,7 +6,6 @@
 -- | logging effect that those requests rely on.
 module Registry.Foreign.Octokit
   ( Address
-  , Base64Content(..)
   , GitHubAPIError
   , GitHubError(..)
   , GitHubRoute(..)
@@ -22,13 +21,8 @@ module Registry.Foreign.Octokit
   , atKey
   , closeIssueRequest
   , createCommentRequest
-  , decodeBase64Content
-  , getCommitDateRequest
-  , getContentRequest
-  , getRefCommitRequest
   , githubApiErrorCodec
   , githubErrorCodec
-  , isPermanentGitHubError
   , listCommitsSinceRequest
   , listTagsRequest
   , listTeamMembersRequest
@@ -45,7 +39,6 @@ module Registry.Foreign.Octokit
 import Prelude
 
 import Codec.JSON.DecodeError as CJ.DecodeError
-import Control.Monad.Except (except)
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Array as Array
@@ -67,7 +60,6 @@ import Data.Maybe as Maybe
 import Data.Newtype (class Newtype, unwrap)
 import Data.Profunctor as Profunctor
 import Data.String as String
-import Data.String.Base64 as Base64
 import Data.Tuple (Tuple(..))
 import Data.Variant as Variant
 import Effect.Aff as Aff
@@ -80,7 +72,6 @@ import JSON (JSON)
 import JSON as JSON
 import JSON.Object as JSON.Object
 import JSON.Path as JSON.Path
-import Node.Path (FilePath)
 import Registry.Internal.Codec as Internal.Codec
 import Type.Proxy (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
@@ -99,19 +90,6 @@ foreign import newOctokitImpl :: EffectFn2 GitHubToken String Octokit
 
 newOctokit :: forall m. MonadEffect m => GitHubToken -> String -> m Octokit
 newOctokit token baseUrl = liftEffect $ runEffectFn2 newOctokitImpl token baseUrl
-
--- | A newline-delimited base64-encoded file retrieved from the GitHub API
-newtype Base64Content = Base64Content String
-
-derive instance Newtype Base64Content _
-
-decodeBase64Content :: Base64Content -> Either String String
-decodeBase64Content (Base64Content string) =
-  -- Join base64 chunks before decoding to avoid splitting multi-byte UTF-8
-  -- sequences. GitHub's API returns base64 with embedded newlines.
-  case Base64.decode $ String.replaceAll (String.Pattern "\n") (String.Replacement "") string of
-    Left error -> Left $ Aff.message error
-    Right value -> Right value
 
 -- | The address of a GitHub repository as a owner/repo pair.
 type Address = { owner :: String, repo :: String }
@@ -172,69 +150,6 @@ listCommitsSinceRequest { address, since } =
   , paginate: true
   , codec: CJ.array $ CJ.named "CommitSha" $ CJ.Record.object { sha: CJ.string }
   }
-
--- | Fetch a specific file  from the provided repository at the given ref and
--- | filepath. Filepaths should lead to a single file from the root of the repo.
--- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/repos/getContent.md
-getContentRequest :: { address :: Address, ref :: String, path :: FilePath } -> Request Base64Content
-getContentRequest { address, ref, path } =
-  { route: GitHubRoute GET [ "repos", address.owner, address.repo, "contents", path ] (Map.singleton "ref" ref)
-  , headers: Object.empty
-  , args: noArgs
-  , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "Content" $ CJ.Record.object
-      { data: CJ.Record.object
-          { type: value "file"
-          , encoding: value "base64"
-          , content: CJ.string
-          }
-      }
-  }
-  where
-  value :: String -> CJ.Codec String
-  value expected = Codec.codec'
-    ( \json -> except $ CJ.decode CJ.string json >>= \decoded -> case decoded == expected of
-        true -> pure expected
-        false -> Left (CJ.DecodeError.basic $ "Unexpected JSON value (expecting '" <> expected <> "'): " <> JSON.print json)
-    )
-    (\_ -> CJ.encode CJ.string expected)
-
-  toJsonRep (Base64Content str) = { data: { type: "file", encoding: "base64", content: str } }
-  fromJsonRep { data: { content } } = Base64Content content
-
--- | Fetch the commit SHA for a given ref on a GitHub repository
--- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getRef.md
-getRefCommitRequest :: { address :: Address, ref :: String } -> Request String
-getRefCommitRequest { address, ref } =
-  { route: GitHubRoute GET [ "repos", address.owner, address.repo, "git", "ref", ref ] Map.empty
-  , headers: Object.empty
-  , args: noArgs
-  , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "Ref" $ CJ.Record.object { object: CJ.Record.object { sha: CJ.string } }
-  }
-  where
-  toJsonRep sha = { object: { sha } }
-  fromJsonRep = _.object.sha
-
--- | Fetch the date associated with a given commit, in the RFC3339String format.
--- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/git/getCommit.md
-getCommitDateRequest :: { address :: Address, commitSha :: String } -> Request DateTime
-getCommitDateRequest { address, commitSha } =
-  { route: GitHubRoute GET [ "repos", address.owner, address.repo, "git", "commits", commitSha ] Map.empty
-  , headers: Object.empty
-  , args: noArgs
-  , paginate: false
-  , codec: Profunctor.dimap toJsonRep fromJsonRep $ CJ.named "CommitData" $ CJ.Record.object
-      { data: CJ.named "Commit" $ CJ.Record.object
-          { committer: CJ.named "Commit.committer" $ CJ.Record.object
-              { date: Internal.Codec.iso8601DateTime
-              }
-          }
-      }
-  }
-  where
-  toJsonRep date = { data: { committer: { date } } }
-  fromJsonRep = _.data.committer.date
 
 -- | Create a comment on an issue. Requires authentication.
 -- | https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/v5.16.0/docs/issues/createComment.md
@@ -406,25 +321,6 @@ printGitHubError = case _ of
     [ "Decoding error: "
     , error
     ]
-
--- | Returns true if the error represents a permanent failure that is safe to
--- | cache across runs. Transient errors (rate limits, network issues, server
--- | errors) return false and should be retried.
--- |
--- | Permanent errors:
--- | - 404 Not Found: Resource doesn't exist at this ref/path
--- | - DecodeError: Content exists but is malformed (immutable at a given tag)
--- |
--- | Transient errors (should NOT be cached):
--- | - UnexpectedError: Network issues, DNS, TLS problems
--- | - 401/403: Auth or rate limit issues
--- | - 5xx: Server-side problems
--- | - Any other status codes
-isPermanentGitHubError :: GitHubError -> Boolean
-isPermanentGitHubError = case _ of
-  APIError { statusCode: 404 } -> true
-  DecodeError _ -> true
-  _ -> false
 
 atKey :: forall a. String -> CJ.Codec a -> JSON.JObject -> Either CJ.DecodeError a
 atKey key codec object =

@@ -115,243 +115,8 @@ let
     setupGitFixtures
   ];
 
-  # Helper to create GitHub contents API response, as it returns base64-encoded content
-  base64Response =
-    {
-      url,
-      fileName,
-      filePath,
-    }:
-    {
-      request = {
-        method = "GET";
-        inherit url;
-      };
-      response = {
-        status = 200;
-        headers."Content-Type" = "application/json";
-        jsonBody = {
-          type = "file";
-          encoding = "base64";
-          name = fileName;
-          path = fileName;
-          # Base64 encode the file content using Nix builtins
-          content = builtins.readFile (
-            pkgs.runCommand "base64-${fileName}" { } ''
-              base64 -w 0 ${filePath} > $out
-            ''
-          );
-        };
-      };
-    };
-
-  effectBase64Response =
-    fileName:
-    base64Response {
-      url = "/repos/purescript/purescript-effect/contents/${fileName}?ref=v4.0.0";
-      inherit fileName;
-      filePath = rootPath + "/app/fixtures/github-packages/effect-4.0.0/${fileName}";
-    };
-
-  # Helper to create a 404 response for files we expect not to exist
-  effect404Response = fileName: {
-    request = {
-      method = "GET";
-      url = "/repos/purescript/purescript-effect/contents/${fileName}?ref=v4.0.0";
-    };
-    response = {
-      status = 404;
-      headers."Content-Type" = "application/json";
-      jsonBody = {
-        message = "Not Found";
-        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
-      };
-    };
-  };
-
-  # effect@4.0.1 (same source as 4.0.0, used by publish E2E tests)
-  effectV401Base64Response =
-    fileName:
-    base64Response {
-      url = "/repos/purescript/purescript-effect/contents/${fileName}?ref=v4.0.1";
-      inherit fileName;
-      filePath = rootPath + "/app/fixtures/github-packages/effect-4.0.0/${fileName}";
-    };
-
-  effectV401404Response = fileName: {
-    request = {
-      method = "GET";
-      url = "/repos/purescript/purescript-effect/contents/${fileName}?ref=v4.0.1";
-    };
-    response = {
-      status = 404;
-      headers."Content-Type" = "application/json";
-      jsonBody = {
-        message = "Not Found";
-        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
-      };
-    };
-  };
-
-  # Console package helpers (console@6.1.0)
-  consoleBase64Response =
-    fileName:
-    base64Response {
-      url = "/repos/purescript/purescript-console/contents/${fileName}?ref=v6.1.0";
-      inherit fileName;
-      filePath = rootPath + "/app/fixtures/github-packages/console-6.1.0/${fileName}";
-    };
-
-  console404Response = fileName: {
-    request = {
-      method = "GET";
-      url = "/repos/purescript/purescript-console/contents/${fileName}?ref=v6.1.0";
-    };
-    response = {
-      status = 404;
-      headers."Content-Type" = "application/json";
-      jsonBody = {
-        message = "Not Found";
-        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
-      };
-    };
-  };
-
-  # Unsafe-coerce package helpers (unsafe-coerce@6.0.0)
-  unsafeCoerceBase64Response =
-    fileName:
-    base64Response {
-      url = "/repos/purescript/purescript-unsafe-coerce/contents/${fileName}?ref=v6.0.0";
-      inherit fileName;
-      filePath = rootPath + "/app/fixtures/github-packages/unsafe-coerce-6.0.0/${fileName}";
-    };
-
-  unsafeCoerce404Response = fileName: {
-    request = {
-      method = "GET";
-      url = "/repos/purescript/purescript-unsafe-coerce/contents/${fileName}?ref=v6.0.0";
-    };
-    response = {
-      status = 404;
-      headers."Content-Type" = "application/json";
-      jsonBody = {
-        message = "Not Found";
-        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
-      };
-    };
-  };
-
-  # Type-equality package helpers (type-equality@4.0.2)
-  # Note: Uses purescript owner (actual location) not old-owner (metadata location)
-  typeEqualityBase64Response =
-    fileName:
-    base64Response {
-      url = "/repos/purescript/purescript-type-equality/contents/${fileName}?ref=v4.0.2";
-      inherit fileName;
-      filePath = rootPath + "/app/fixtures/github-packages/type-equality-4.0.1/${fileName}";
-    };
-
-  typeEquality404Response = fileName: {
-    request = {
-      method = "GET";
-      url = "/repos/purescript/purescript-type-equality/contents/${fileName}?ref=v4.0.2";
-    };
-    response = {
-      status = 404;
-      headers."Content-Type" = "application/json";
-      jsonBody = {
-        message = "Not Found";
-        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
-      };
-    };
-  };
-
-  # Slug package helpers (slug@3.0.0) - uses spago.dhall manifest format
-  slugBase64Response =
-    fileName:
-    base64Response {
-      url = "/repos/purescript/purescript-slug/contents/${fileName}?ref=v3.0.0";
-      inherit fileName;
-      filePath = rootPath + "/app/fixtures/github-packages/slug-3.0.0/${fileName}";
-    };
-
-  slug404Response = fileName: {
-    request = {
-      method = "GET";
-      url = "/repos/purescript/purescript-slug/contents/${fileName}?ref=v3.0.0";
-    };
-    response = {
-      status = 404;
-      headers."Content-Type" = "application/json";
-      jsonBody = {
-        message = "Not Found";
-        documentation_url = "https://docs.github.com/rest/repos/contents#get-repository-content";
-      };
-    };
-  };
-
   # GitHub API wiremock mappings
   githubMappings = [
-    (effectBase64Response "bower.json")
-    (effectBase64Response "LICENSE")
-    # Expected 404s for manifest files that don't exist in the effect package
-    (effect404Response "spago.yaml")
-    (effect404Response "spago.dhall")
-    (effect404Response "purs.json")
-    (effect404Response "package.json")
-    # effect@4.0.1 (same source, different ref — used by publish E2E tests)
-    (effectV401Base64Response "bower.json")
-    (effectV401Base64Response "LICENSE")
-    (effectV401404Response "spago.yaml")
-    (effectV401404Response "spago.dhall")
-    (effectV401404Response "purs.json")
-    (effectV401404Response "package.json")
-    # Console package (console@6.1.0)
-    (consoleBase64Response "bower.json")
-    (consoleBase64Response "LICENSE")
-    (console404Response "spago.yaml")
-    (console404Response "spago.dhall")
-    (console404Response "purs.json")
-    (console404Response "package.json")
-    # Unsafe-coerce package (unsafe-coerce@6.0.0)
-    (unsafeCoerceBase64Response "bower.json")
-    (unsafeCoerce404Response "LICENSE")
-    (unsafeCoerce404Response "spago.yaml")
-    (unsafeCoerce404Response "spago.dhall")
-    (unsafeCoerce404Response "purs.json")
-    (unsafeCoerce404Response "package.json")
-    # Type-equality package (type-equality@4.0.2 for legacy imports test)
-    (typeEqualityBase64Response "bower.json")
-    (typeEqualityBase64Response "LICENSE")
-    (typeEquality404Response "spago.yaml")
-    (typeEquality404Response "spago.dhall")
-    (typeEquality404Response "purs.json")
-    (typeEquality404Response "package.json")
-    # Slug package (slug@3.0.0) - uses spago.dhall manifest format
-    (slugBase64Response "spago.dhall")
-    (slugBase64Response "packages.dhall")
-    (slugBase64Response "LICENSE")
-    (slug404Response "purs.json")
-    (slug404Response "spago.yaml")
-    (slug404Response "bower.json")
-    (slug404Response "package.json")
-    {
-      request = {
-        method = "GET";
-        url = "/repos/purescript/package-sets/tags";
-      };
-      response = {
-        status = 200;
-        headers."Content-Type" = "application/json";
-        jsonBody = {
-          name = "psc-0.15.10-20230105";
-          commit = {
-            sha = "090897c992b2b310b1456506308db789672adac1";
-            url = "https://api.github.com/repos/purescript/package-sets/commits/090897c992b2b310b1456506308db789672adac1";
-          };
-        };
-      };
-    }
     # Tags for prelude package (only v6.0.1 which is already published)
     {
       request = {
@@ -440,7 +205,7 @@ let
     }
     # Tags for type-equality package (used by two scheduler tests):
     # 1. Transfer detection: metadata says purescript, commit URLs point to new-owner
-    # 2. Legacy imports: v4.0.2 is a new version not yet published
+    # 2. Release discovery: v4.0.2 lets the importer find a release missing from metadata
     {
       request = {
         method = "GET";
@@ -462,7 +227,6 @@ let
             name = "v4.0.2";
             commit = {
               sha = "type-eq-sha-402";
-              # New version not yet published - scheduler detects for legacy import
               url = "https://api.github.com/repos/new-owner/purescript-type-equality/commits/type-eq-sha-402";
             };
           }
@@ -1075,7 +839,7 @@ let
       mkdir -p "$FIXTURES_DIR/purescript"
 
       # Copy fixtures and make writable (nix store files are read-only)
-      cp -r ${rootPath}/app/fixtures/{registry-index,registry,package-sets} "$FIXTURES_DIR/purescript/"
+      cp -r ${rootPath}/app/fixtures/{registry-index,registry} "$FIXTURES_DIR/purescript/"
       cp -r ${rootPath}/app/fixtures/github-packages/effect-4.0.0 "$FIXTURES_DIR/purescript/purescript-effect"
       cp -r ${rootPath}/app/fixtures/github-packages/console-6.1.0 "$FIXTURES_DIR/purescript/purescript-console"
       cp -r ${rootPath}/app/fixtures/github-packages/unsafe-coerce-6.0.0 "$FIXTURES_DIR/purescript/purescript-unsafe-coerce"
@@ -1101,17 +865,25 @@ let
         gitbot tag -m "initial-fixture" initial-fixture
       done
 
-      gitbot -C "$FIXTURES_DIR/purescript/package-sets" tag -m "psc-0.15.9-20230105" psc-0.15.9-20230105
       gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" tag -m "v4.0.0" v4.0.0
-      # Create a new commit for v4.0.1 so it's on a different commit than v4.0.0
-      gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" commit --allow-empty -m "v4.0.1 release"
+      # Update the manifest before tagging; publishing rejects a version or ref
+      # that doesn't match the request.
+      jq '.version = "4.0.1" | .ref = "v4.0.1"' \
+        "$FIXTURES_DIR/purescript/purescript-effect/purs.json" > temp.json
+      mv temp.json "$FIXTURES_DIR/purescript/purescript-effect/purs.json"
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" add purs.json
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" commit -m "v4.0.1 release"
       gitbot -C "$FIXTURES_DIR/purescript/purescript-effect" tag -m "v4.0.1" v4.0.1
       gitbot -C "$FIXTURES_DIR/purescript/purescript-console" tag -m "v6.1.0" v6.1.0
       gitbot -C "$FIXTURES_DIR/purescript/purescript-unsafe-coerce" tag -m "v6.0.0" v6.0.0
       gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.1" v4.0.1
       # Create a new commit for v4.0.2 so it's on a different commit than v4.0.1
       # (the registry rejects publishing when multiple version tags point to the same commit)
-      gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" commit --allow-empty -m "v4.0.2 release"
+      jq '.version = "4.0.2" | .ref = "v4.0.2"' \
+        "$FIXTURES_DIR/purescript/purescript-type-equality/purs.json" > temp.json
+      mv temp.json "$FIXTURES_DIR/purescript/purescript-type-equality/purs.json"
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" add purs.json
+      gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" commit -m "v4.0.2 release"
       gitbot -C "$FIXTURES_DIR/purescript/purescript-type-equality" tag -m "v4.0.2" v4.0.2
       gitbot -C "$FIXTURES_DIR/purescript/purescript-slug" tag -m "v3.0.0" v3.0.0
     '';

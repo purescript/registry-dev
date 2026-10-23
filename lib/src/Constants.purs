@@ -73,9 +73,6 @@ includedGlobs :: Array String
 includedGlobs =
   [ "src/"
   , "purs.json"
-  , "spago.dhall"
-  , "packages.dhall"
-  , "bower.json"
   , "package.json"
   , "spago.yaml"
   ]

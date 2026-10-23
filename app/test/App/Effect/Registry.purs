@@ -72,7 +72,6 @@ spec = do
           , repos:
               { registry: { owner: "test", repo: "test" }
               , manifestIndex: { owner: "test", repo: "test" }
-              , legacyPackageSets: { owner: "test", repo: "test" }
               }
           , workdir: tmp
           , pull: Git.ForceClean

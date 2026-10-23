@@ -12,13 +12,10 @@ import Test.Registry.App.CLI.Tar as Test.CLI.Tar
 import Test.Registry.App.Effect.PackageSets as Test.Effect.PackageSets
 import Test.Registry.App.Effect.Registry as Test.Effect.Registry
 import Test.Registry.App.GitHubIssue as Test.GitHubIssue
-import Test.Registry.App.Legacy.LenientRange as Test.Legacy.LenientRange
-import Test.Registry.App.Legacy.LenientVersion as Test.Legacy.LenientVersion
-import Test.Registry.App.Legacy.Manifest as Test.Legacy.Manifest
-import Test.Registry.App.Legacy.PackageSet as Test.Legacy.PackageSet
 import Test.Registry.App.Manifest.SpagoYaml as Test.Manifest.SpagoYaml
 import Test.Registry.App.SQLite as Test.SQLite
 import Test.Registry.App.Server.MatrixBuilder as Test.Server.MatrixBuilder
+import Test.Registry.App.Version as Test.Version
 import Test.Spec as Spec
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner.Node (runSpecAndExitProcess')
@@ -45,12 +42,6 @@ main = runSpecAndExitProcess' config [ consoleReporter ] do
   Spec.describe "Registry.App.GitHubIssue" do
     Test.GitHubIssue.spec
 
-  Spec.describe "Registry.App.Legacy" do
-    Spec.describe "Lenient Version" Test.Legacy.LenientVersion.spec
-    Spec.describe "Lenient Range" Test.Legacy.LenientRange.spec
-    Spec.describe "Legacy Manifest" Test.Legacy.Manifest.spec
-    Spec.describe "Legacy PackageSet" Test.Legacy.PackageSet.spec
-
   Spec.describe "Registry.App.Manifest" do
     Spec.describe "SpagoYaml" Test.Manifest.SpagoYaml.spec
 
@@ -58,6 +49,8 @@ main = runSpecAndExitProcess' config [ consoleReporter ] do
     Spec.describe "MatrixBuilder" Test.Server.MatrixBuilder.spec
 
   Spec.describe "Registry.App.SQLite" Test.SQLite.spec
+
+  Spec.describe "Registry.App.Version" Test.Version.spec
   where
   config =
     { defaultConfig: Cfg.defaultConfig { timeout = Just $ Milliseconds 300_000.0 }

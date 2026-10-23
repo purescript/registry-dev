@@ -278,10 +278,6 @@ handleRegistryWriteMock env = case _ of
   WritePackageSet _packageSet _message reply ->
     pure $ reply $ Right unit
 
-  -- FIXME: Actually mirror the package set
-  MirrorPackageSet _packageSet reply ->
-    pure $ reply $ Right unit
-
 handlePackageSetsMock :: forall r a. PackageSets a -> Run r a
 handlePackageSetsMock = case _ of
   -- FIXME: Actually reply with a package set with a pure upgrade
@@ -371,24 +367,17 @@ handleSourceMock env = case _ of
           Left _ -> pure $ reply $ Left $ InaccessibleRepo { owner, repo }
           Right _ -> do
             Run.liftAff $ FS.Extra.copy { from: localPath, to: destinationPath, preserveTimestamps: true }
-            case pursPublishMethod of
-              LegacyPursPublish -> do
-                -- When using the compiler and legacy 'purs publish' we have to be
-                -- in a clean git repository with the ref checked out.
-                Run.liftAff $ FS.Aff.rm' (Path.concat [ destinationPath, ".git" ]) { recursive: true, force: true, maxRetries: 10, retryDelay: 1000 }
-                Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ destinationPath, ".gitignore" ]) "output"
-                let exec args = void (Git.withGit destinationPath args identity)
-                exec [ "init" ]
-                exec [ "config", "user.name", "test-user" ]
-                exec [ "config", "user.email", "test-user@aol.com" ]
-                exec [ "config", "commit.gpgSign", "false" ]
-                exec [ "config", "tag.gpgSign", "false" ]
-                exec [ "add", "." ]
-                exec [ "commit", "-m", "Initial commit" ]
-                exec [ "tag", "-m", ref, ref ]
-
-              PursPublish ->
-                Except.throw "Tests are not set up for 'PursPublish' and must be fixed."
+            Run.liftAff $ FS.Aff.rm' (Path.concat [ destinationPath, ".git" ]) { recursive: true, force: true, maxRetries: 10, retryDelay: 1000 }
+            Run.liftAff $ FS.Aff.writeTextFile UTF8 (Path.concat [ destinationPath, ".gitignore" ]) "output"
+            let exec args = void (Git.withGit destinationPath args identity)
+            exec [ "init" ]
+            exec [ "config", "user.name", "test-user" ]
+            exec [ "config", "user.email", "test-user@aol.com" ]
+            exec [ "config", "commit.gpgSign", "false" ]
+            exec [ "config", "tag.gpgSign", "false" ]
+            exec [ "add", "." ]
+            exec [ "commit", "-m", "Initial commit" ]
+            exec [ "tag", "-m", ref, ref ]
 
             pure $ reply $ Right { path: destinationPath, published: now }
 
@@ -421,25 +410,3 @@ handleGitHubMock env = case _ of
   ListTeamMembers team reply -> pure $ reply $ case team of
     { org: "purescript", team: "packaging" } -> Right [ "pacchettibotti", "f-f", "thomashoneyman" ]
     _ -> Left $ APIError { statusCode: 404, message: "No fixture provided for team " <> team.org <> "/" <> team.team }
-
-  GetContent address ref path reply -> do
-    let
-      name = stripPureScriptPrefix address.repo
-      fixedRef = fromMaybe ref $ String.stripPrefix (String.Pattern "v") ref
-      localPath = Path.concat [ env.github, name <> "-" <> fixedRef, path ]
-
-    result <- Run.liftAff $ Aff.attempt (FS.Aff.readTextFile UTF8 localPath) >>= case _ of
-      Left _ -> pure $ Left $ APIError { statusCode: 404, message: "Not Found" }
-      Right contents -> pure $ Right contents
-
-    pure $ reply result
-
-  -- FIXME: Respond with an actual commit for specific input paths? This isn't
-  -- currently used in tests.
-  GetRefCommit _address _ref reply ->
-    pure $ reply $ Left $ UnexpectedError "Unimplemented"
-
-  -- FIXME: Respond with an actual datetime for specific inputs? This isn't
-  -- currently used in tests.
-  GetCommitDate _address _ref reply ->
-    pure $ reply $ Left $ UnexpectedError "Unimplemented"

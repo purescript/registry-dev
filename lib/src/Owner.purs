@@ -1,9 +1,6 @@
 -- | Implementation of the `Owner` data type from the registry spec. An Owner
 -- | identifies who can take authenticated operations for a given package.
 -- | https://github.com/purescript/registry-dev/blob/master/SPEC.md#owner
--- |
--- | There is also a Dhall spec for this data type:
--- | https://github.com/purescript/registry-dev/blob/master/specs/v1/Owner.dhall
 module Registry.Owner
   ( Owner(..)
   , codec

@@ -38,28 +38,16 @@ spec = do
     detected <- Licensee.detectFiles [ { name: "LICENSE", contents: files.license } ]
     Assert.shouldEqual (Right [ "MIT" ]) detected
 
-  Spec.it "Doesn't detect from Bower or Spago" do
-    files <- readFiles
-    detected <- Licensee.detectFiles
-      [ { name: "bower.json", contents: files.bowerJson }
-      , { name: "spago.dhall", contents: files.spagoDhall }
-      ]
-    Assert.shouldEqual (Right []) detected
-
 type ManifestFiles =
   { license :: String
   , packageJson :: String
-  , spagoDhall :: String
-  , bowerJson :: String
   }
 
 readFiles :: Aff ManifestFiles
 readFiles = do
   license <- readLicense
   packageJson <- readPackageJson
-  spagoDhall <- readSpagoDhall
-  bowerJson <- readBowerJson
-  pure { license, packageJson, spagoDhall, bowerJson }
+  pure { license, packageJson }
 
 fixtureFile :: FilePath -> FilePath
 fixtureFile file = Path.concat [ "app", "fixtures", "licenses", "halogen-hooks", file ]
@@ -69,9 +57,3 @@ readLicense = FS.Aff.readTextFile UTF8 $ fixtureFile "LICENSE"
 
 readPackageJson :: Aff String
 readPackageJson = FS.Aff.readTextFile UTF8 $ fixtureFile "package.json"
-
-readSpagoDhall :: Aff String
-readSpagoDhall = FS.Aff.readTextFile UTF8 $ fixtureFile "spago.dhall"
-
-readBowerJson :: Aff String
-readBowerJson = FS.Aff.readTextFile UTF8 $ fixtureFile "bower.json"

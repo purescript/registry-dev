@@ -1,8 +1,5 @@
 -- | Implementation of the `Location` data type from the registry spec.
 -- | https://github.com/purescript/registry-dev/blob/master/SPEC.md#location
--- |
--- | There is also a Dhall spec for this data type:
--- | https://github.com/purescript/registry-dev/blob/master/specs/v1/Location.dhall
 module Registry.Location
   ( GitData
   , GitHubData

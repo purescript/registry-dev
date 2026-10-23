@@ -266,9 +266,6 @@ alwaysIncludedFilesIfPresent :: Set FilePath
 alwaysIncludedFilesIfPresent = Set.fromFoldable
   [ "purs.json"
   , "spago.yaml"
-  , "spago.dhall"
-  , "packages.dhall"
-  , "bower.json"
   , "package.json"
   ]
 

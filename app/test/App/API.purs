@@ -24,13 +24,13 @@ import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Pursuit as Pursuit
 import Registry.App.Effect.Registry as Registry
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Legacy.Types (RawPackageName(..))
 import Registry.Constants as Constants
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.FastGlob as FastGlob
 import Registry.Foreign.Tmp as Tmp
 import Registry.License as License
 import Registry.Location (Location(..))
+import Registry.Manifest as Manifest
 import Registry.Operation (PublishData)
 import Registry.PackageName as PackageName
 import Registry.Test.Assert as Assert
@@ -161,8 +161,6 @@ spec = do
           }
 
       result <- Assert.Run.runTestEffects testEnv $ Except.runExcept do
-        -- We'll publish effect@4.0.0 from the fixtures/github-packages
-        -- directory, which has a bower.json manifest.
         let
           name = Utils.unsafePackageName "effect"
           version = Utils.unsafeVersion "4.0.0"
@@ -292,21 +290,17 @@ spec = do
           Run.liftAff $ FS.Aff.writeFile storedTarballPath storedTarball
 
           let sourceDir = Path.concat [ env.githubDir, "effect-4.0.0" ]
-          let bowerPath = Path.concat [ sourceDir, "bower.json" ]
-          let licensePath = Path.concat [ sourceDir, "LICENSE" ]
-          originalBower <- Run.liftAff $ FS.Aff.readTextFile UTF8 bowerPath
-          originalLicense <- Run.liftAff $ FS.Aff.readTextFile UTF8 licensePath
-          mitLicense <- Run.liftAff $ FS.Aff.readTextFile UTF8 (Path.concat [ env.githubDir, "slug-3.0.0", "LICENSE" ])
-          Run.liftAff $ FS.Aff.writeTextFile UTF8 bowerPath $ String.replace (Pattern "BSD-3-Clause") (Replacement "MIT") originalBower
-          Run.liftAff $ FS.Aff.writeTextFile UTF8 licensePath mitLicense
+          let manifestPath = Path.concat [ sourceDir, "purs.json" ]
+          originalManifest <- Run.liftAff $ FS.Aff.readTextFile UTF8 manifestPath
+          Run.liftAff $ FS.Aff.writeTextFile UTF8 manifestPath $
+            String.replace (Pattern "\"dependencies\"") (Replacement "\"description\": \"Changed source manifest\", \"dependencies\"") originalManifest
           Except.runExcept (API.publish effectPublishArgs) >>= case _ of
             Left error | String.contains (Pattern "source manifest differs from the manifest in the existing tarball") error -> pure unit
             Left error -> Except.throw $ "Expected a changed source manifest failure but got: " <> error
             Right _ -> Except.throw "Expected retrying from a changed source manifest to fail."
           assertPublicationState effectName effectVersion { storage: true, metadata: true, manifest: false }
 
-          Run.liftAff $ FS.Aff.writeTextFile UTF8 bowerPath originalBower
-          Run.liftAff $ FS.Aff.writeTextFile UTF8 licensePath originalLicense
+          Run.liftAff $ FS.Aff.writeTextFile UTF8 manifestPath originalManifest
           API.publish effectPublishArgs >>= case _ of
             { matrix: Just _ } -> pure unit
             _ -> Except.throw "Expected retrying the incomplete publication to report a newly completed publication."
@@ -339,11 +333,6 @@ spec = do
     enterCleanEnv :: FilePath -> Aff PipelineEnv
     enterCleanEnv workdir = do
       Env.loadEnvFile ".env.example"
-
-      -- FIXME: The publish pipeline probably shouldn't require this. But...the
-      -- publish pipeline requires that there be a 'types' directory containing
-      -- dhall types for the registry in the current working directory.
-      FS.Extra.copy { from: "types", to: Path.concat [ workdir, "types" ], preserveTimestamps: true }
 
       testFixtures <- liftAff Tmp.mkTmpDir
       let copyFixture path = FS.Extra.copy { from: Path.concat [ "app", "fixtures", path ], to: Path.concat [ testFixtures, path ], preserveTimestamps: true }
@@ -409,41 +398,74 @@ checkBuildPlanToResolutions = do
   expectedResolutions = Map.fromFoldable do
     packageName /\ version <- (Map.toUnfoldable resolutions :: Array _)
     let
-      bowerName = RawPackageName ("purescript-" <> PackageName.print packageName)
+      pursuitName = "purescript-" <> PackageName.print packageName
       path = Path.concat [ installedResolutions, PackageName.print packageName <> "-" <> Version.print version ]
-    pure $ Tuple bowerName { path, version }
+    pure $ Tuple pursuitName { path, version }
 
 parseSourceManifestSpec :: Spec.Spec Unit
 parseSourceManifestSpec = do
+  Spec.it "Prefers purs.json over spago.yaml" do
+    result <- parse [ Tuple "purs.json" pursJson, Tuple "spago.yaml" spagoYaml ]
+    let
+      expected =
+        { manifest: unsafeFromRight $ parseJson Manifest.codec pursJson
+        , origin: API.FromPursJson
+        }
+    expected `Assert.shouldEqualRight` result
+
+  Spec.it "Accepts spago.yaml" do
+    result <- parse [ Tuple "spago.yaml" spagoYaml ]
+    let
+      json = String.replace (Pattern "registry-lib") (Replacement "yaml-package") pursJson
+      expected =
+        { manifest: unsafeFromRight $ parseJson Manifest.codec json
+        , origin: API.FromSpagoYaml
+        }
+    expected `Assert.shouldEqualRight` result
+
+  Spec.it "Rejects source without a manifest" do
+    result <- parse []
+    expectError "must contain a purs.json or spago.yaml" result
+
+  Spec.it "Rejects ill-typed purs.json without falling back to YAML" do
+    result <- parse [ Tuple "purs.json" "{}", Tuple "spago.yaml" spagoYaml ]
+    expectError "could not be decoded" result
+
   Spec.it "Rejects deprecated SPDX identifiers in purs.json" do
-    resourceEnv <- liftEffect Env.lookupResourceEnv
+    let input = String.replace (Pattern "BSD-3-Clause") (Replacement "AGPL-3.0") pursJson
+    result <- parse [ Tuple "purs.json" input, Tuple "spago.yaml" spagoYaml ]
+    expectError "license field is not canonical" result
+  where
+  pursJson = """{"name":"registry-lib","version":"0.0.1","license":"BSD-3-Clause","location":{"githubOwner":"purescript","githubRepo":"registry-dev"},"ref":"v0.0.1","dependencies":{"prelude":">=6.0.0 <7.0.0"}}"""
+
+  spagoYaml =
+    """
+package:
+  name: yaml-package
+  dependencies:
+    - prelude: ">=6.0.0 <7.0.0"
+  publish:
+    version: 0.0.1
+    license: BSD-3-Clause
+    location:
+      githubOwner: purescript
+      githubRepo: registry-dev
+"""
+
+  parse :: Array (Tuple FilePath String) -> Aff (Either String API.ParsedManifest)
+  parse files =
     Aff.bracket Tmp.mkTmpDir FS.Extra.remove \packageDir -> do
-      let
-        manifestPath = Path.concat [ packageDir, "purs.json" ]
-        args =
-          { packageDir
-          , name: Utils.unsafePackageName "registry-lib"
-          , version: Utils.unsafeVersion "0.0.1"
-          , ref: "v0.0.1"
-          , location: GitHub { owner: "purescript", repo: "registry-dev", subdir: Nothing }
-          }
+      for_ files \(Tuple path contents) -> FS.Aff.writeTextFile UTF8 (Path.concat [ packageDir, path ]) contents
+      API.parseSourceManifest { packageDir, ref: "v0.0.1" }
+        # Log.interpret (\(Log.Log _ _ next) -> pure next)
+        # Except.runExcept
+        # Run.runBaseAff'
 
-      FS.Aff.writeTextFile UTF8 manifestPath
-        """{"name":"registry-lib","version":"0.0.1","license":"AGPL-3.0","location":{"githubOwner":"purescript","githubRepo":"registry-dev"},"ref":"v0.0.1","dependencies":{"prelude":">=6.0.0 <7.0.0"}}"""
-
-      result <-
-        API.parseSourceManifest args
-          # Env.runResourceEnv resourceEnv
-          # Log.interpret (\(Log.Log _ _ next) -> pure next)
-          # Except.runExcept
-          # Run.runBaseAff'
-
-      case result of
-        Left err ->
-          unless (String.contains (Pattern "license field is not canonical") err) do
-            Assert.fail $ "Expected a canonical license error, but got: " <> err
-        Right _ ->
-          Assert.fail "Expected parseSourceManifest to reject deprecated SPDX identifiers"
+  expectError :: String -> Either String API.ParsedManifest -> Aff Unit
+  expectError expected = case _ of
+    Left err -> unless (String.contains (Pattern expected) err) do
+      Assert.fail $ "Expected error containing '" <> expected <> "', but got: " <> err
+    Right _ -> Assert.fail $ "Expected parseSourceManifest to fail with: " <> expected
 
 removeIgnoredTarballFiles :: Spec.Spec Unit
 removeIgnoredTarballFiles = Spec.before runBefore do

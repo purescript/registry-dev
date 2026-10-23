@@ -66,7 +66,6 @@
             "transformers",
             "tuples",
             "typelevel-prelude",
-            "unicode",
             "unsafe-coerce",
             "uuidv4"
           ]
@@ -161,7 +160,6 @@
             "aff",
             "aff-promise",
             "arrays",
-            "b64",
             "bifunctors",
             "codec",
             "codec-json",
@@ -184,13 +182,11 @@
             "newtype",
             "node-buffer",
             "node-path",
-            "nullable",
             "ordered-collections",
             "prelude",
             "profunctor",
             "registry-lib",
             "strings",
-            "transformers",
             "tuples",
             "unsafe-coerce",
             "variant"

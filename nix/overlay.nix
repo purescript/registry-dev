@@ -167,7 +167,7 @@ in
     npmFlags = [ "--omit=optional" ];
 
     # To update: run `prefetch-npm-deps package-lock.json` in the dev shell.
-    npmDepsHash = "sha256-1PENsd/EzRYVZ6RxTssbSzPu7SVVGlWnP7Zjt6im5GI=";
+    npmDepsHash = "sha256-SkkTzmtacCliKT5N3bO9kzd0OxjNYowXVkvO7TgNSaY=";
 
     installPhase = ''
       mkdir -p $out
@@ -220,8 +220,6 @@ in
     registry-compilers
     registry-purs-versions
 
-    dhall
-    dhall-json
     licensee
     git
     git-lfs
@@ -238,11 +236,8 @@ in
     description = "PureScript Registry API server";
     src = ../app;
     spagoLock = app;
-    # Keep runtime schemas in the server closure rather than relying on a
-    # separately referenced source path in the deployed environment.
     extraInstall = ''
       cp -r ${../db} $out/bin/db
-      cp -r ${../types} $out/bin/types
     '';
   }) { };
 

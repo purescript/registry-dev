@@ -17,8 +17,8 @@ let
 
     set -o allexport
     [ -f ${cfg.stateDir}/.env ] && source ${cfg.stateDir}/.env
-    # Deployment-managed values must override state-dir values. Otherwise a
-    # stale non-secret setting such as DHALL_TYPES can survive a deployment.
+    # Load deployment settings last so they override old values in the
+    # persistent .env file.
     source ${envFile}
     set +o allexport
 

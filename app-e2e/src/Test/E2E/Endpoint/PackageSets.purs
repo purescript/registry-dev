@@ -3,8 +3,11 @@ module Test.E2E.Endpoint.PackageSets (spec) where
 import Registry.App.Prelude
 
 import Control.Monad.Reader (ask)
+import Data.Map as Map
 import Effect.Aff as Aff
+import Node.Path as Path
 import Registry.API.V1 as V1
+import Registry.PackageSet as PackageSet
 import Registry.Test.Assert as Assert
 import Test.E2E.Support.Client as Client
 import Test.E2E.Support.Env (E2ESpec)
@@ -15,7 +18,7 @@ import Test.Spec as Spec
 spec :: E2ESpec
 spec = do
   Spec.describe "Package Sets endpoint" do
-    Spec.it "accepts unauthenticated add/upgrade requests" do
+    Spec.it "releases a registry package set" do
       -- First publish unsafe-coerce to create the tarball in storage
       { jobId: publishJobId } <- Client.publish Fixtures.unsafeCoercePublishData
       _ <- Env.pollJobOrFail publishJobId
@@ -23,6 +26,14 @@ spec = do
       { jobId } <- Client.packageSets Fixtures.packageSetAddRequest
       job <- Env.pollJobOrFail jobId
       Assert.shouldSatisfy (V1.jobInfo job).finishedAt isJust
+
+      { stateDir } <- ask
+      let setPath = Path.concat [ stateDir, "scratch", "registry", "package-sets", "0.1.0.json" ]
+      liftAff (readJsonFile PackageSet.codec setPath) >>= case _ of
+        Left err -> Assert.fail $ "Expected a released registry package set: " <> err
+        Right (PackageSet set) -> do
+          Map.lookup Fixtures.unsafeCoerce.name set.packages `Assert.shouldEqual` Just Fixtures.unsafeCoerce.version
+          Map.lookup Fixtures.prelude.name set.packages `Assert.shouldEqual` Just Fixtures.prelude.version
 
     Spec.it "rejects unauthenticated compiler change requests" do
       result <- Client.tryPackageSets Fixtures.packageSetCompilerChangeRequest

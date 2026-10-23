@@ -225,12 +225,11 @@ Changes that would break forward compatibility (such as removing required fields
 
 ### 3.2 Atomic Data
 
-This section contains schemas for `PackageName`, `Version`, `Range`, `Location`, `Sha256`, `Owner`, `License`, and other simple data used in the registry. Each is a subsection which includes its rules, the representations in Dhall and JSON, and a link to the PureScript implementation in `Schema.purs`.
+This section contains schemas for `PackageName`, `Version`, `Range`, `Location`, `Sha256`, `Owner`, `License`, and other simple data used in the registry. Each subsection includes its rules, JSON representation, and a link to its PureScript implementation.
 
 #### PackageName
 
 **[Source](./lib/src/Registry/PackageName.purs)**
-**[Spec](./types/v1/Manifest.dhall)**
 
 Packages are uniquely identified by their `PackageName`. No two packages in the registry can share the same name. A package name represented as a `string`, with the following restrictions:
 
@@ -247,7 +246,6 @@ We still encourage users to name their repositories with a `purescript-` prefix 
 #### Version
 
 **[Source](./lib/src/Registry/Version.purs)**
-**[Spec](./types/v1/Manifest.dhall)**
 
 Packages are associated with one or more versions, representing their source code at a point in time. The registry uses a restricted version of the SemVer spec which only allows versions with major, minor, and patch places (that means no build metadata and no prerelease identifiers). A version is represented as a `string` with the following restrictions:
 
@@ -271,7 +269,6 @@ The `X.Y.Z` form maps on to these three kinds of change with the following rules
 #### Range
 
 **[Source](./lib/src/Registry/Range.purs)**
-**[Spec](./types/v1/Manifest.dhall)**
 
 It is sometimes necessary to refer to a range of versions, such as when specifying dependency versions or supported compiler versions. The registry uses a restricted form of SemVer ranges; a version range is represented as a `string` with the following restrictions:
 
@@ -290,7 +287,6 @@ For example: `">=1.0.1 <2.0.0"`
 #### Location
 
 **[Source](./lib/src/Registry/Location.purs)**
-**[Spec](./types/v1/Location.dhall)**
 
 The registry operates on a pull-based model, in which package authors ask the registry to fetch their code and produce a package instead of uploading their package themselves. Accordingly, every package is associated with the location the registry will use to fetch it. A location is represented in JSON as an `object`.
 
@@ -338,7 +334,6 @@ Or, using a monorepo:
 #### Owner
 
 **[Source](./lib/src/Registry/Owner.purs)**
-**[Spec](./types/v1/Owner.dhall)**
 
 The registry relies on SSH key pairs to verify package ownership for the purposes of sensitive API operations like unpublishing versions or transferring packages. An `Owner` is made up of the three components of an SSH public key in text format ([RFC4253](https://www.rfc-editor.org/rfc/rfc4253#section-6.6)). That format looks like this:
 
@@ -366,7 +361,6 @@ Alternately, this can be written without an id:
 #### License
 
 **[Source](./lib/src/Registry/License.purs)**
-**[Spec](./types/v1/License.dhall)**
 
 All packages in the registry must have a license that grants permission for redistribution of the source code. Concretely, the registry requires that all packages use an SPDX license and specify an [SPDX license identifier](https://spdx.dev/ids/). `AND` and `OR` conjunctions are allowed, and licenses can contain exceptions using the `WITH` preposition. The SPDX specification describes [how licenses can be combined and exceptions applied](https://spdx.dev/ids#how). Newly submitted manifests must use current canonical SPDX identifiers, but registry readers should remain backward-compatible with historical stored manifests that still use deprecated SPDX spellings.
 
@@ -377,7 +371,6 @@ A `License` is represented as a string, which must be a valid SPDX identifier. F
 #### Sha256
 
 **[Source](./lib/src/Registry/Sha256.purs)**
-**[Spec](./types/v1/Sha256.dhall)**
 
 The registry produces an archive file when publishing a package. We use [tarballs](https://wiki.debian.org/TarBall) as our archive format. The registry produces a tarball when publishing a package. The hash of this tarball is recorded so that package managers can verify the integrity of packages they download from the registry. The hash is stored in the [subresource integrity (SRI) format](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity). A Sha256 is represented as a `string` in JSON. For example:
 
@@ -386,7 +379,6 @@ The registry produces an archive file when publishing a package. We use [tarball
 ### 3.3 Manifest
 
 **[Source](./lib/src/Registry/Manifest.purs)**
-**[Spec](./types/v1/Manifest.dhall)**
 
 All packages in the registry contain a `purs.json` manifest file in their root directory. The manifest file specifies information necessary for the registry to package the source code, and it also serves as a lingua franca for package managers: all package managers are expected to support this manifest format. The manifest file is an object with the following fields:
 
@@ -429,7 +421,6 @@ For example:
 ### 3.4 Metadata
 
 **[Source](./lib/src/Registry/Metadata.purs)**
-**[Spec](./types/v1/Metadata.dhall)**
 
 All packages in the registry have an associated metadata file, which is located in the `metadata` directory of the `registry` repository under the package name. For example, the metadata for the `aff` package is located at: https://github.com/purescript/registry/blob/main/metadata/aff.json. Metadata files are the source of truth on all published and unpublished versions for a particular package for what there content is and where the package is located. Metadata files are produced by the registry, not by package authors, though they take some information from package manifests.
 
@@ -623,7 +614,9 @@ First, the registry uses the [`PackageName`](#packagename) listed in the JSON pa
 1. The package name is not registered (ie. no metadata exists) AND a location is provided in the payload. In this case, the registry will create new metadata to register this package at the given location. It is possible to register a package at the same location as one that already exists.
 2. The package name is registered (ie. metadata exists) AND either no location is provided in the payload OR the provided location matches the location recorded in the metadata. When no location is provided, the registry will use the location from the metadata.
 
-Next, the registry will use the provided [`Location`](#location) to fetch the package source at the provided `ref`. Packages must contain a `purs.json` manifest or `spago.yaml` manifest in the package root (in the presence of multiple manifest files, the `purs.json` file takes precedence and others are ignored). The registry will verify that the manifest matches with the JSON payload and metadata:
+Next, the registry will use the provided [`Location`](#location) to fetch the package source at the provided `ref`. Packages must contain a `purs.json` manifest or `spago.yaml` manifest in the package root (in the presence of multiple manifest files, the `purs.json` file takes precedence and others are ignored).
+
+The registry will verify that the manifest matches with the JSON payload and metadata:
 
 1. The manifest MUST be usable to produce a well-formed [`Manifest`](#33-manifest).
 2. The manifest package name and JSON payload package name MUST match.
@@ -632,7 +625,7 @@ Next, the registry will use the provided [`Location`](#location) to fetch the pa
 5. The manifest location MUST match the authoritative registry metadata location (and therefore the JSON payload location, when provided).
 6. The manifest version MUST NOT have been unpublished before, according to the metadata file. A version already present in metadata, the manifest index, storage, and Pursuit is treated as an idempotent success; incomplete prior publications are reconciled.
 7. Either a `resolutions` key was provided in the JSON payload, in which case the resolutions MUST include every dependency listed in the manifest dependencies at a version within the specified version bounds for each dependency, OR the manifest dependencies MUST be solvable by the registry solver. ALL package versions indicated in the resolutions MUST already be registered.
-8. If the package source code includes a LICENSE file and/or a license listed in a bower.json or package.json manifest, then all licenses MUST match with the license specified in the PureScript [`Manifest`](#33-manifest). For example, if the package.json file specifies the "MIT" license and a LICENSE file specifies "BSD-3-Clause", then the PureScript license should admit at least "MIT AND BSD-3-Clause".
+8. If the package source code includes a LICENSE file and/or a license listed in a package.json manifest, then all licenses MUST match with the license specified in the PureScript [`Manifest`](#33-manifest). For example, if the package.json file specifies the "MIT" license and a LICENSE file specifies "BSD-3-Clause", then the PureScript license should admit at least "MIT AND BSD-3-Clause".
 
 Next, the registry will verify the package source code.
 
@@ -648,11 +641,7 @@ Finally, the registry will perform some processing on the source code, package t
 
 ###### Always-Included Files
 
-These files are always included in the tarball, if present:
-
-- The full contents of the `src` directory.
-- The `purs.json`, `spago.yaml`, `spago.dhall` and `packages.dhall`, `bower.json`, and `package.json` manifest formats (in the root of the package).
-- Any README or LICENSE files (in the root of the package).
+The registry always includes the full contents of `src`, package manifests, and root README and LICENSE files when present. The complete filename patterns are defined by `includedGlobs` and `includedInsensitiveGlobs` in [`Registry.Constants`](./lib/src/Constants.purs).
 
 ###### Always-Ignored Files
 
