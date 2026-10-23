@@ -17,8 +17,7 @@ import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Legacy.LenientVersion (LenientVersion(..))
-import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.App.Version as App.Version
 import Registry.Foreign.Gzip as Gzip
 import Registry.Foreign.Octokit (GitHubToken(..))
 import Registry.PackageName as PackageName
@@ -139,6 +138,6 @@ availableVersionsCodec = Profunctor.dimap toRep fromRep (CJ.array (CJ.array CJ.s
   toRep = map (\(Tuple version url) -> [ Version.print version, url ]) <<< Map.toUnfoldable
   fromRep = Map.fromFoldable <<< Array.mapMaybe \array -> do
     rawVersion <- Array.index array 0
-    LenientVersion { version } <- hush $ LenientVersion.parse rawVersion
+    version <- hush $ App.Version.parseLenient rawVersion
     url <- Array.index array 1
     pure $ Tuple version url

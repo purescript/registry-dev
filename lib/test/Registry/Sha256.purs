@@ -18,37 +18,17 @@ import Test.Spec as Spec
 
 spec :: Spec.Spec Unit
 spec = do
-  Spec.it "Hashes a spago.dhall file the same as openssl" do
-    hash <- Sha256.hashFile hooksSpago
-    hash `Assert.shouldEqual` hooksSpagoHash
-
   Spec.it "Hashes a LICENSE file the same as openssl" do
     hash <- Sha256.hashFile hooksLicense
     hash `Assert.shouldEqual` hooksLicenseHash
-
-  Spec.it "spago.dhall hash matches the nix hash" do
-    hash <- Sha256.hashFile hooksSpago
-    nix <- Except.runExceptT $ sha256Nix hooksSpago
-    hash `Assert.shouldEqualRight` nix
 
   Spec.it "LICENSE hash matches the nix hash" do
     hash <- Sha256.hashFile hooksLicense
     nix <- Except.runExceptT $ sha256Nix hooksLicense
     hash `Assert.shouldEqualRight` nix
 
-  Spec.it "Round-trips spago.dhall file" do
-    hooksSpagoHash `Assert.shouldEqualRight` Sha256.parse (Sha256.print hooksSpagoHash)
-
   Spec.it "Round-trips LICENSE file" do
     hooksLicenseHash `Assert.shouldEqualRight` Sha256.parse (Sha256.print hooksLicenseHash)
-
--- Test hash produced by `openssl`:
--- openssl dgst -sha256 -binary < fixtures/packages/halogen-hooks-0.5.0/spago.dhall | openssl base64 -A
-hooksSpagoHash :: Sha256.Sha256
-hooksSpagoHash = Utils.fromRight "Failed to parse Sha256" $ Sha256.parse "sha256-fN9RUAzN21ZY4Y0UwqUSxwUPVz1g7/pcqoDvbJZoT04="
-
-hooksSpago :: FilePath
-hooksSpago = Path.concat [ "lib", "fixtures", "packages", "halogen-hooks-0.5.0", "spago.dhall" ]
 
 -- Test hash produced by `openssl`:
 -- openssl dgst -sha256 -binary < fixtures/packages/halogen-hooks-0.5.0/LICENSE | openssl base64 -A

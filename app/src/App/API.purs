@@ -50,11 +50,9 @@ import Data.String.Regex as Regex
 import Effect.Aff as Aff
 import Effect.Unsafe (unsafePerformEffect)
 import JSON as JSON
-import Node.ChildProcess.Types (Exit(..))
 import Node.FS.Aff as FS.Aff
 import Node.FS.Stats as FS.Stats
 import Node.FS.Sync as FS.Sync
-import Node.Library.Execa as Execa
 import Node.Path as Path
 import Parsing as Parsing
 import Parsing.Combinators as Parsing.Combinators
@@ -69,7 +67,7 @@ import Registry.App.CLI.PursVersions as PursVersions
 import Registry.App.CLI.Tar as Tar
 import Registry.App.Effect.Cache (class FsEncodable, Cache)
 import Registry.App.Effect.Cache as Cache
-import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV, RESOURCE_ENV)
+import Registry.App.Effect.Env (PACCHETTIBOTTI_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.GitHub (GITHUB)
 import Registry.App.Effect.Log (LOG)
@@ -85,7 +83,6 @@ import Registry.App.Effect.Source (SOURCE)
 import Registry.App.Effect.Source as Source
 import Registry.App.Effect.Storage (STORAGE)
 import Registry.App.Effect.Storage as Storage
-import Registry.App.Legacy.Types (RawPackageName(..), rawPackageNameMapCodec)
 import Registry.App.Manifest.SpagoYaml as SpagoYaml
 import Registry.App.Server.MatrixBuilder as MatrixBuilder
 import Registry.Constants (ignoredDirectories, ignoredFiles, ignoredGlobs, includedGlobs, includedInsensitiveGlobs)
@@ -336,7 +333,7 @@ authenticated auth = case auth.payload of
         Registry.writeMetadata payload.name updated
         Log.notice "Successfully transferred your package!"
 
-type PublishEffects r = (RESOURCE_ENV + PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
+type PublishEffects r = (PURSUIT + REGISTRY + STORAGE + SOURCE + GITHUB + COMPILER_CACHE + PURS_GRAPH_CACHE + LOG + EXCEPT String + AFF + EFFECT + r)
 
 type PublishedPackage =
   { compiler :: Version
@@ -410,7 +407,7 @@ resolveCompilerAndDeps compilerIndex manifest@(Manifest { dependencies }) maybeC
     ]
 
 -- | Detect which manifest format is present in the package directory.
--- | Prefers purs.json over spago.yaml. Throws if neither is present.
+-- | Use purs.json when both formats are present. Fail if neither is present.
 detectManifestOrigin
   :: forall r
    . FilePath
@@ -426,14 +423,14 @@ detectManifestOrigin packageDir = do
   if hasPursJson then pure FromPursJson
   else if hasSpagoYaml then pure FromSpagoYaml
   else
-    Except.throw "Package source must contain a purs.json or spago.yaml manifest file. Publishing from bower.json or spago.dhall is no longer supported; migrate to purs.json or spago.yaml."
+    Except.throw "Package source must contain a purs.json or spago.yaml manifest file."
 
 -- | Parse a manifest from the package source directory. Returns the parsed
 -- | manifest along with which format it originated from.
 parseSourceManifest
   :: forall r
    . { packageDir :: FilePath, ref :: String }
-  -> Run (RESOURCE_ENV + LOG + EXCEPT String + AFF + EFFECT + r) ParsedManifest
+  -> Run (LOG + EXCEPT String + AFF + EFFECT + r) ParsedManifest
 parseSourceManifest { packageDir, ref } = do
   origin <- detectManifestOrigin packageDir
   manifest <- case origin of
@@ -442,21 +439,18 @@ parseSourceManifest { packageDir, ref } = do
       string <- Run.liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 pursJsonPath)) >>= case _ of
         Left error -> Except.throw $ "Could not read purs.json from path " <> pursJsonPath <> ": " <> Aff.message error
         Right s -> pure s
-      Env.askResourceEnv >>= \{ dhallTypes } -> Run.liftAff (jsonToDhallManifest dhallTypes string) >>= case _ of
-        Left error -> do
-          Log.error $ "Manifest does not typecheck: " <> error
-          Except.throw $ "Found a valid purs.json file in the package source, but it does not typecheck."
-        Right _ -> case validateCanonicalManifestLicense string of
-          Left err -> do
-            Log.error $ "Manifest license is not canonical: " <> err
-            Except.throw $ "Found a purs.json file in the package source, but its license field is not canonical."
-          Right _ -> case parseJson Manifest.codec string of
+      case parseJson Manifest.codec string of
+        Left err -> do
+          Log.error $ "Failed to parse manifest: " <> CJ.DecodeError.print err
+          Except.throw "Found a purs.json file in the package source, but it could not be decoded."
+        Right m -> do
+          case validateCanonicalManifestLicense string of
             Left err -> do
-              Log.error $ "Failed to parse manifest: " <> CJ.DecodeError.print err
-              Except.throw $ "Found a purs.json file in the package source, but it could not be decoded."
-            Right m -> do
-              Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec m
-              pure m
+              Log.error $ "Manifest license is not canonical: " <> err
+              Except.throw "Found a purs.json file in the package source, but its license field is not canonical."
+            Right _ -> pure unit
+          Log.debug $ "Read a valid purs.json manifest from the package source:\n" <> stringifyJson Manifest.codec m
+          pure m
 
     FromSpagoYaml -> do
       let spagoYamlPath = Path.concat [ packageDir, "spago.yaml" ]
@@ -1157,23 +1151,20 @@ publishToPursuit { source, compiler, resolutions, installedResolutions } = Excep
     Right _ ->
       FS.Extra.remove tmp
 
-type PursuitResolutions = Map RawPackageName { version :: Version, path :: FilePath }
+type PursuitResolutions = Map String { version :: Version, path :: FilePath }
 
 pursuitResolutionsCodec :: CJ.Codec PursuitResolutions
-pursuitResolutionsCodec = rawPackageNameMapCodec $ CJ.named "Resolution" $ CJ.Record.object { version: Version.codec, path: CJ.string }
+pursuitResolutionsCodec = CJ.Common.strMap $ CJ.named "Resolution" $ CJ.Record.object { version: Version.codec, path: CJ.string }
 
 -- Resolutions format: https://github.com/purescript/purescript/pull/3565
---
--- Note: This interfaces with Pursuit, and therefore we must add purescript-
--- prefixes to all package names for compatibility with the Bower naming format.
 formatPursuitResolutions :: { resolutions :: Map PackageName Version, installedResolutions :: FilePath } -> PursuitResolutions
 formatPursuitResolutions { resolutions, installedResolutions } =
   Map.fromFoldable do
     Tuple name version <- Map.toUnfoldable resolutions
     let
-      bowerPackageName = RawPackageName ("purescript-" <> PackageName.print name)
+      pursuitPackageName = "purescript-" <> PackageName.print name
       packagePath = Path.concat [ installedResolutions, PackageName.print name <> "-" <> Version.print version ]
-    [ Tuple bowerPackageName { path: packagePath, version } ]
+    [ Tuple pursuitPackageName { path: packagePath, version } ]
 
 -- | Copy files from the package source directory to the destination directory
 -- | for the tarball. This will copy all always-included files as well as files
@@ -1254,19 +1245,6 @@ removeIgnoredTarballFiles path = do
   globMatches <- FastGlob.match' path ignoredGlobs { caseSensitive: false }
   for_ (ignoredDirectories <> ignoredFiles <> globMatches.succeeded) \match ->
     FS.Extra.remove (Path.concat [ path, match ])
-
-jsonToDhallManifest :: FilePath -> String -> Aff (Either String String)
-jsonToDhallManifest dhallTypes jsonStr = do
-  let cmd = "json-to-dhall"
-  -- Dhall requires that the path begin with './', but joining paths together with Node
-  -- will remove the './' prefix. We need to manually append this to the relative path.
-  let args = [ "--records-loose", "--unions-strict", Path.concat [ dhallTypes, "v1", "Manifest.dhall" ] ]
-  process <- Execa.execa cmd args identity
-  for_ process.stdin \{ writeUtf8End } -> writeUtf8End jsonStr
-  result <- process.getResult
-  pure case result.exit of
-    Normally 0 -> Right jsonStr
-    _ -> Left result.stderr
 
 getPacchettiBotti :: forall r. Run (PACCHETTIBOTTI_ENV + r) Owner
 getPacchettiBotti = do
@@ -1352,7 +1330,7 @@ printLicenseValidationError = case _ of
     ]
 
 -- | Validate that the license in the manifest is consistent with licenses
--- | detected in the repository (LICENSE file, package.json, bower.json).
+-- | detected in the repository (LICENSE file, package.json).
 -- |
 -- | This check ensures that the SPDX identifier asserted in the package
 -- | manifest accurately represents the licenses present in the repository.

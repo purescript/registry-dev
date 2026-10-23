@@ -94,7 +94,6 @@ nixfmt *.nix nix/**/*.nix
 - `scripts/` — Runnable modules for registry tasks (PackageTransferrer, PackageSetUpdater, DailyImporter, etc.). Run via `nix run .#package-transferrer`, etc.
 - `test-utils/` — Shared test utilities.
 - `db/` — SQLite schemas and migrations (use `dbmate up` to initialize).
-- `types/` — Dhall type specifications.
 - `nix/` — Nix build and deployment configuration.
 
 ## Scratch Directory & Caching
@@ -104,7 +103,7 @@ The `scratch/` directory (gitignored) is used by scripts for:
 - `logs/` — Log files
 - `registry/`, `registry-index/` — Local clones for testing, also modified and optionally committed to by scripts
 
-Caching is critical for the legacy importer due to the expense of downloading packages. The `Registry.App.Effect.Cache` module handles caching.
+The `Registry.App.Effect.Cache` module caches API responses and package data to avoid repeated downloads.
 
 ## PureScript Conventions
 

@@ -42,7 +42,7 @@ import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
 import Registry.App.Effect.Registry (REGISTRY_READ)
 import Registry.App.Effect.Registry as Registry
-import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.App.Version as App.Version
 import Registry.Foreign.Octokit as Octokit
 import Registry.Location (Location(..))
 import Registry.Operation as Operation
@@ -168,10 +168,9 @@ combinedPublishedVersions metadata = Set.fromFoldable $ Map.keys metadata.publis
 -- | Find new version tags that point to recent commits and haven't been published
 findNewVersions :: Array Octokit.Tag -> Set String -> Set Version -> Array { version :: Version, ref :: String }
 findNewVersions tags recentShas publishedVersions = Array.catMaybes $ tags <#> \tag ->
-  case LenientVersion.parse tag.name of
+  case App.Version.parseLenient tag.name of
     Left _ -> Nothing -- Not a valid version tag
-    Right result -> do
-      let version = LenientVersion.version result
+    Right version -> do
       if not (Set.member tag.sha recentShas) then Nothing -- Tag doesn't point to a recent commit
       else if Set.member version publishedVersions then Nothing -- Already published
       else Just { version, ref: tag.name }

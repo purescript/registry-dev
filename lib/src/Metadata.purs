@@ -4,9 +4,6 @@
 -- | used location of the source code.
 -- | https://github.com/purescript/registry-dev/blob/master/SPEC.md#metadata
 -- |
--- | There is also a Dhall spec for this data type:
--- | https://github.com/purescript/registry-dev/blob/master/specs/v1/Metadata.dhall
--- |
 -- | Package metadata can be found at in the registry repository:
 -- | https://github.com/purescript/registry/blob/main/metadata
 module Registry.Metadata

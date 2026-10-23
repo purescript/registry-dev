@@ -3,7 +3,7 @@
 -- | Configuration Philosophy:
 -- | - Production infrastructure URLs are hardcoded here
 -- | - Secrets (tokens, keys) are required env vars with no defaults
--- | - Local dev conveniences (DATABASE_URL, DHALL_TYPES) have sensible defaults
+-- | - Local dev conveniences (e.g. DATABASE_URL) have sensible defaults
 module Registry.App.Effect.Env where
 
 import Registry.App.Prelude
@@ -16,7 +16,6 @@ import Dotenv as Dotenv
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Node.FS.Aff as FS.Aff
-import Node.Path as Path
 import Node.Process as Process
 import Registry.Foreign.Octokit (GitHubToken(..), IssueNumber)
 import Run (Run)
@@ -24,8 +23,7 @@ import Run.Reader (Reader)
 import Run.Reader as Run.Reader
 
 type ResourceEnv =
-  { dhallTypes :: FilePath
-  , databaseUrl :: DatabaseUrl
+  { databaseUrl :: DatabaseUrl
   , s3ApiUrl :: URL
   , s3BucketUrl :: URL
   , githubApiUrl :: URL
@@ -49,7 +47,6 @@ runResourceEnv = Run.Reader.runReaderAt _resourceEnv
 
 lookupResourceEnv :: forall m. MonadEffect m => m ResourceEnv
 lookupResourceEnv = do
-  dhallTypesEnv <- liftEffect <<< Path.resolve [] =<< lookupWithDefault dhallTypes "./types"
   databaseUrlEnv <- lookupWithDefault databaseUrl { prefix: "sqlite:", path: "db/registry.sqlite3" }
 
   s3ApiUrlEnv <- lookupWithDefault s3ApiUrl productionS3ApiUrl
@@ -61,8 +58,7 @@ lookupResourceEnv = do
   -- Optional - if not set, healthcheck pinging is disabled
   healthchecksUrlEnv <- lookupOptional healthchecksUrl
   pure
-    { dhallTypes: dhallTypesEnv
-    , databaseUrl: databaseUrlEnv
+    { databaseUrl: databaseUrlEnv
     , s3ApiUrl: s3ApiUrlEnv
     , s3BucketUrl: s3BucketUrlEnv
     , githubApiUrl: githubApiUrlEnv
@@ -183,10 +179,6 @@ type DatabaseUrl = { prefix :: String, path :: FilePath }
 -- | The location of the sqlite database.
 databaseUrl :: EnvKey DatabaseUrl
 databaseUrl = EnvKey { key: "DATABASE_URL", decode: decodeDatabaseUrl }
-
--- | The location of the Dhall specifications directory.
-dhallTypes :: EnvKey FilePath
-dhallTypes = EnvKey { key: "DHALL_TYPES", decode: pure }
 
 -- | Override for the S3 storage API URL.
 -- | If not set, uses productionS3ApiUrl.

@@ -1,6 +1,5 @@
 module Registry.App.Prelude
   ( LogVerbosity(..)
-  , PursPublishMethod(..)
   , Retry
   , RetryResult(..)
   , URL
@@ -22,7 +21,6 @@ module Registry.App.Prelude
   , parseYaml
   , partitionEithers
   , printJson
-  , pursPublishMethod
   , readJsonFile
   , readYamlFile
   , scratchDir
@@ -252,12 +250,3 @@ data LogVerbosity = Quiet | Normal | Verbose
 
 derive instance Eq LogVerbosity
 derive instance Ord LogVerbosity
-
--- | A temporary flag that records whether we are using legacy purs publish
--- | (which requires all packages to be a Git repository) or new purs publish
--- | (which accepts any directory with package sources).
-data PursPublishMethod = LegacyPursPublish | PursPublish
-
--- | The current purs publish method
-pursPublishMethod :: PursPublishMethod
-pursPublishMethod = LegacyPursPublish

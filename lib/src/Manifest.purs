@@ -5,9 +5,6 @@
 -- | dependencies, and more.
 -- | https://github.com/purescript/registry-dev/blob/master/SPEC.md#manifest
 -- |
--- | There is also a Dhall spec for this data type:
--- | https://github.com/purescript/registry-dev/blob/master/specs/v1/Manifest.dhall
--- |
 -- | Package manifests can be found in the tarball for each package, and they
 -- | are also cached in the registry index:
 -- | https://github.com/purescript/registry-index

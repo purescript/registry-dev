@@ -45,22 +45,12 @@
           (fileset.maybeMissing ./check)
           ./spago.lock
           ./spago.yaml
-          ./types
         ]
       );
 
       npmFileset = fileset.intersection (fileset.gitTracked ./.) (
         fileset.fileFilter (f: f.name == "package.json" || f.name == "package-lock.json") ./.
       );
-
-      # The location of the Dhall type specifications, used to type-check manifests.
-      DHALL_TYPES = ./types;
-      DHALL_PRELUDE = "${
-        builtins.fetchGit {
-          url = "https://github.com/dhall-lang/dhall-lang";
-          rev = "25cf020ab307cb2d66826b0d1ddac8bc89241e27";
-        }
-      }/Prelude/package.dhall";
 
       # We disable git from entering interactive mode at any time, as there is no
       # one there to answer prompts.
@@ -137,7 +127,6 @@
           spago-test =
             pkgs.runCommand "spago-test"
               {
-                inherit DHALL_TYPES DHALL_PRELUDE;
                 nativeBuildInputs =
                   with pkgs;
                   [
@@ -176,31 +165,6 @@
                 purs-tidy check $src && touch $out
               '';
 
-          verify-dhall =
-            pkgs.runCommand "verify-dhall"
-              {
-                src = fileset.toSource {
-                  root = ./.;
-                  fileset = fileset.unions [
-                    ./types
-                    ./lib/fixtures/manifests
-                  ];
-                };
-                nativeBuildInputs = with pkgs; [
-                  dhall
-                  dhall-json
-                  parallel
-                ];
-                inherit DHALL_PRELUDE;
-              }
-              ''
-                mkdir -p cache/dhall && export XDG_CACHE_HOME="$PWD/cache"
-                find $src/types/v1 -name "*.dhall" | parallel --will-cite 'dhall <<< {}'
-                find $src/lib/fixtures/manifests -name "*.json" | parallel --will-cite \
-                  'json-to-dhall --plain --records-loose --unions-strict --file {} $src/types/v1/Manifest.dhall'
-                touch $out
-              '';
-
           # Integration test - exercises the server API
           integration = import ./nix/test/integration.nix {
             inherit pkgs spagoSrc;
@@ -227,8 +191,7 @@
           SERVER_PORT = envDefaults.SERVER_PORT;
           DATABASE_URL = envDefaults.DATABASE_URL;
 
-          # Dhall environment variables needed for manifest typechecking
-          inherit DHALL_TYPES DHALL_PRELUDE GIT_TERMINAL_PROMPT;
+          inherit GIT_TERMINAL_PROMPT;
 
           # NOTE: Test-specific env vars (REGISTRY_API_URL, GITHUB_API_URL, PACCHETTIBOTTI_*)
           # are NOT set here to avoid conflicting with .env files used by production scripts.
@@ -299,11 +262,7 @@
                     # These env vars are known to Nix so we set them in advance.
                     # Others, like credentials, must be set in a .env file in
                     # the state directory, unless there are viable defaults.
-                    inherit
-                      DHALL_PRELUDE
-                      GIT_TERMINAL_PROMPT
-                      ;
-                    DHALL_TYPES = "${pkgs.registry-server}/bin/types";
+                    inherit GIT_TERMINAL_PROMPT;
                   };
                 };
                 system.stateVersion = "24.05";

@@ -9,5 +9,5 @@ package:
       githubOwner: purescript
       githubRepo: purescript-slug
 
-# Keep this source fixture separate from the registry development workspace.
+# Without a separate workspace, Spago treats this fixture as a registry-dev package.
 workspace: {}

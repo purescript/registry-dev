@@ -47,11 +47,10 @@ There is one additional directory for the web dashboard:
 
 - `dashboard` contains the static HTML/CSS/JS dashboard for monitoring registry jobs. It is deployed independently to GitHub Pages and requires no build step.
 
-There are three more directories containing code for the registry.
+There are two more directories containing code for the registry.
 
 - `db` contains schemas and migrations for the sqlite3 database used by the server.
 - `nix` contains Nix code for building and deploying the registry server to Digital Ocean.
-- `types` contains Dhall specifications for the core registry types
 
 Finally, the `flake.nix` file orchestrates builds for the whole repository.
 
@@ -182,7 +181,7 @@ The usual PureScript testing workflow applies in the registry — from within a 
 spago test
 ```
 
-There are also a number of checks run by the Nix flake for non-PureScript code, such as verifying Dhall types. Run them:
+The Nix flake also checks formatting, builds the dashboard, and runs integration and deployment tests. Run them:
 
 ```sh
 nix flake check -L
@@ -212,7 +211,7 @@ The registry source code is defined such that most effectful code is abstracted 
 
 We obviously don't want to perform these effects in our tests, but we still want to test that the `publish` function behaves as expected. If you are writing a test for a function written in `Run (SOME_EFFECT + r) a`, like `publish`, then you will need to mock effects when writing your tests. You can see the mock implementations in the [`Registry.Test.Assert.Run`](./app/test/Test/Assert/Run.purs) module.
 
-The mock tests use fixtures to represent remote resources. For example, instead of a remote S3 bucket we have the [`registry-storage`](./app/fixtures/registry-storage/) fixtures; this directory is our 'storage backend' and we can 'download' tarballs from it and 'upload' tarballs to it. Instead of accessing arbitrary GitHub repositories we have the [`github-packages`](./app/fixtures/github-packages/) fixtures. Instead of the upstream registry, registry-index, and package-sets repositories, we have e.g. the [`registry-index`](./app/fixtures/registry-index) fixtures.
+The mock tests use fixtures to represent remote resources. For example, instead of a remote S3 bucket we have the [`registry-storage`](./app/fixtures/registry-storage/) fixtures; this directory is our 'storage backend' and we can 'download' tarballs from it and 'upload' tarballs to it. Instead of accessing arbitrary GitHub repositories we have the [`github-packages`](./app/fixtures/github-packages/) fixtures. Instead of the upstream registry and registry-index repositories, we have the [`registry`](./app/fixtures/registry) and [`registry-index`](./app/fixtures/registry-index) fixtures.
 
 The function under test will only have access to data in these fixtures.
 
@@ -256,18 +255,18 @@ services.wiremock-github-api = {
     {
       request = {
         method = "GET";
-        url = "/repos/purescript/package-sets/tags";
+        url = "/repos/purescript/purescript-prelude/tags";
       };
       response = {
         status = 200;
         headers."Content-Type" = "application/json";
-        jsonBody = {
-          name = "psc-0.15.10-20230105";
+        jsonBody = [{
+          name = "v6.0.1";
           commit = {
             sha = "090897c992b2b310b1456506308db789672adac1";
-            url = "https://api.github.com/repos/purescript/package-sets/commits/090897c992b2b310b1456506308db789672adac1";
+            url = "https://api.github.com/repos/purescript/purescript-prelude/commits/090897c992b2b310b1456506308db789672adac1";
           };
-        };
+        }];
       };
     }
   ];

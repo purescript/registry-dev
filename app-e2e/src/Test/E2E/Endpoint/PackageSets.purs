@@ -3,10 +3,8 @@ module Test.E2E.Endpoint.PackageSets (spec) where
 import Registry.App.Prelude
 
 import Control.Monad.Reader (ask)
-import Data.Array as Array
 import Data.Map as Map
 import Effect.Aff as Aff
-import Node.FS.Sync as FS.Sync
 import Node.Path as Path
 import Registry.API.V1 as V1
 import Registry.PackageSet as PackageSet
@@ -15,13 +13,12 @@ import Test.E2E.Support.Client as Client
 import Test.E2E.Support.Env (E2ESpec)
 import Test.E2E.Support.Env as Env
 import Test.E2E.Support.Fixtures as Fixtures
-import Test.E2E.Support.WireMock as WireMock
 import Test.Spec as Spec
 
 spec :: E2ESpec
 spec = do
   Spec.describe "Package Sets endpoint" do
-    Spec.it "releases a registry package set without accessing legacy sets" do
+    Spec.it "releases a registry package set" do
       -- First publish unsafe-coerce to create the tarball in storage
       { jobId: publishJobId } <- Client.publish Fixtures.unsafeCoercePublishData
       _ <- Env.pollJobOrFail publishJobId
@@ -37,11 +34,6 @@ spec = do
         Right (PackageSet set) -> do
           Map.lookup Fixtures.unsafeCoerce.name set.packages `Assert.shouldEqual` Just Fixtures.unsafeCoerce.version
           Map.lookup Fixtures.prelude.name set.packages `Assert.shouldEqual` Just Fixtures.prelude.version
-
-      legacyCheckout <- liftEffect $ FS.Sync.exists $ Path.concat [ stateDir, "scratch", "package-sets" ]
-      legacyCheckout `Assert.shouldEqual` false
-      requests <- WireMock.getGithubRequests
-      Array.null (WireMock.filterByUrlContaining "/repos/purescript/package-sets" requests) `Assert.shouldEqual` true
 
     Spec.it "rejects unauthenticated compiler change requests" do
       result <- Client.tryPackageSets Fixtures.packageSetCompilerChangeRequest

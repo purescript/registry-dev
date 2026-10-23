@@ -1,10 +1,11 @@
-module Test.Registry.App.Legacy.LenientVersion (spec) where
+module Test.Registry.App.Version (spec) where
 
 import Registry.App.Prelude
 
 import Data.Either as Either
-import Registry.App.Legacy.LenientVersion as LenientVersion
+import Registry.App.Version as App.Version
 import Registry.Test.Assert as Assert
+import Registry.Version as Version
 import Test.Spec as Spec
 
 spec :: Spec.Spec Unit
@@ -12,13 +13,13 @@ spec = do
   Spec.describe "Parses malformed versions with fixable errors" do
     for_ fixable \{ raw, version } ->
       Spec.it raw do
-        let parsed = LenientVersion.parse raw
-        version `Assert.shouldEqualRight` map LenientVersion.print parsed
+        let parsed = App.Version.parseLenient raw
+        version `Assert.shouldEqualRight` map Version.print parsed
 
   Spec.describe "Fails to parse unfixable malformed versions" do
     for_ unfixable \{ raw, label } ->
       Spec.it label do
-        let parsed = LenientVersion.parse raw
+        let parsed = App.Version.parseLenient raw
         parsed `Assert.shouldSatisfy` Either.isLeft
 
 fixable :: Array { raw :: String, version :: String }
@@ -34,7 +35,7 @@ unfixable =
   [ { raw: ".12.0", label: "Malformed" }
   , { raw: "12.0", label: "Too few places" }
   , { raw: "0.12.12.1", label: "Too many places" }
-  , { raw: "1.0.1-rc.1", label: "Contains prerelease identiiers" }
+  , { raw: "1.0.1-rc.1", label: "Contains prerelease identifiers" }
   , { raw: "1.0.0+nightly", label: "Contains build metadata" }
   , { raw: "1.a.2", label: "Contains non-digit characters" }
   , { raw: "1.-1.2", label: "Contains non-digit characters" }

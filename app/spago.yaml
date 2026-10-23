@@ -67,7 +67,6 @@ package:
     - transformers
     - tuples
     - typelevel-prelude
-    - unicode
     - unsafe-coerce
     - uuidv4
   test:

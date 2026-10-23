@@ -6,10 +6,6 @@ module Registry.App.Effect.GitHub
   , GitHubCache
   , _github
   , _githubCache
-  , getCommitDate
-  , getContent
-  , getJsonFile
-  , getRefCommit
   , handle
   , interpret
   , listCommitsSince
@@ -29,15 +25,12 @@ import Data.Exists as Exists
 import Data.HTTP.Method (Method(..))
 import Data.Time.Duration as Duration
 import Foreign.Object as Object
-import JSON as JSON
 import Registry.App.Effect.Cache (class FsEncodable, class MemoryEncodable, Cache, CacheRef, FsEncoding(..), MemoryEncoding(..))
 import Registry.App.Effect.Cache as Cache
 import Registry.App.Effect.Env (RESOURCE_ENV)
 import Registry.App.Effect.Env as Env
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Legacy.Types (RawVersion(..))
-import Registry.Foreign.JsonRepair as JsonRepair
 import Registry.Foreign.Octokit (Address, GitHubError(..), GitHubRoute(..), Octokit, Request, Tag, Team)
 import Registry.Foreign.Octokit as Octokit
 import Registry.Internal.Codec as Internal.Codec
@@ -76,9 +69,6 @@ data GitHub a
   = ListTags Address (Either GitHubError (Array Tag) -> a)
   | ListCommitsSince Address DateTime (Either GitHubError (Array String) -> a)
   | ListTeamMembers Team (Either GitHubError (Array String) -> a)
-  | GetContent Address String FilePath (Either GitHubError String -> a)
-  | GetRefCommit Address String (Either GitHubError String -> a)
-  | GetCommitDate Address String (Either GitHubError DateTime -> a)
 
 derive instance Functor GitHub
 
@@ -100,30 +90,6 @@ listCommitsSince address since = Run.lift _github (ListCommitsSince address sinc
 -- | the request has read rights for the given organization and team.
 listTeamMembers :: forall r. Team -> Run (GITHUB + r) (Either GitHubError (Array String))
 listTeamMembers team = Run.lift _github (ListTeamMembers team identity)
-
--- | Read the content of a file in the provided repo.
-getContent :: forall r. Address -> RawVersion -> FilePath -> Run (GITHUB + r) (Either GitHubError String)
-getContent address (RawVersion ref) path = Run.lift _github (GetContent address ref path identity)
-
--- | Read the content of a JSON file in the provided repo, decoding its contents.
-getJsonFile :: forall r a. Address -> RawVersion -> CJ.Codec a -> FilePath -> Run (GITHUB + r) (Either GitHubError a)
-getJsonFile address ref codec path = do
-  content <- getContent address ref path
-  let
-    attemptDecode inner = case JSON.parse (JsonRepair.tryRepair inner) of
-      Left jsonError -> Left $ Octokit.DecodeError $ "Not Json: " <> jsonError
-      Right json -> case CJ.decode codec json of
-        Left decodeError -> Left $ Octokit.DecodeError $ CJ.DecodeError.print decodeError
-        Right decoded -> Right decoded
-  pure $ attemptDecode =<< content
-
--- | Get the commit SHA associated with a ref on the provided repo.
-getRefCommit :: forall r. Address -> RawVersion -> Run (GITHUB + r) (Either GitHubError String)
-getRefCommit address (RawVersion ref) = Run.lift _github (GetRefCommit address ref identity)
-
--- | Get the published date of a commit SHA
-getCommitDate :: forall r. Address -> String -> Run (GITHUB + r) (Either GitHubError DateTime)
-getCommitDate address commitSha = Run.lift _github (GetCommitDate address commitSha identity)
 
 -- | Interpret the GITHUB effect, given a handler.
 interpret :: forall r a. (GitHub ~> Run r) -> Run (GITHUB + r) a -> Run r a
@@ -154,27 +120,6 @@ handle env = Cache.interpret _githubCache (Cache.handleMemoryFs { cache: env.cac
     Log.debug $ "Listing members of team " <> team.org <> "/" <> team.team
     result <- request env.octokit (Octokit.listTeamMembersRequest team)
     pure $ reply $ map (map _.login) result
-
-  GetContent address ref path reply -> do
-    Log.debug $ "Fetching content from " <> address.owner <> "/" <> address.repo <> " at ref " <> ref <> " at path " <> path
-    request env.octokit (Octokit.getContentRequest { address, ref, path }) >>= case _ of
-      Left error -> pure $ reply $ Left error
-      Right result -> case Octokit.decodeBase64Content result of
-        Left base64Error -> do
-          Log.debug $ "Failed to decode base64-encoded file: " <> base64Error
-          pure $ reply $ Left $ DecodeError base64Error
-        Right decoded ->
-          pure $ reply $ Right decoded
-
-  GetRefCommit address ref reply -> do
-    Log.debug $ "Fetching commit associated with ref " <> ref <> " on repository " <> address.owner <> "/" <> address.repo
-    result <- request env.octokit (Octokit.getRefCommitRequest { address, ref })
-    pure $ reply result
-
-  GetCommitDate address commitSha reply -> do
-    Log.debug $ "Fetching commit date associated with commit sha " <> commitSha <> " on repository " <> address.owner <> "/" <> address.repo
-    result <- request env.octokit (Octokit.getCommitDateRequest { address, commitSha })
-    pure $ reply result
 
 -- | A helper function for implementing GET requests to the GitHub API that
 -- | relies on the GitHub API to report whether there is any new data, and falls

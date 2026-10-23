@@ -8,22 +8,13 @@ import Data.DateTime (DateTime)
 import Data.String as String
 import Effect.Aff (Milliseconds(..))
 import Effect.Aff as Aff
-import Effect.Exception as Exception
 import Effect.Now as Now
-import Fetch.Retry as Fetch
-import Node.Buffer as Buffer
-import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.App.CLI.Git as Git
-import Registry.App.CLI.Tar as Tar
-import Registry.App.Effect.GitHub (GITHUB)
-import Registry.App.Effect.GitHub as GitHub
 import Registry.App.Effect.Log (LOG)
 import Registry.App.Effect.Log as Log
-import Registry.App.Legacy.Types (RawVersion(..))
 import Registry.Foreign.FSExtra as FS.Extra
 import Registry.Foreign.Octokit as Octokit
-import Registry.Foreign.Tar as Foreign.Tar
 import Registry.Location as Location
 import Run (AFF, EFFECT, Run)
 import Run as Run
@@ -48,7 +39,6 @@ data FetchError
   | InaccessibleRepo Octokit.Address
   -- | A transient network error occurred (timeout, DNS failure, etc.). The caller should retry later.
   | TransientError { owner :: String, repo :: String, message :: String }
-  | NoToplevelDir
   | Fatal String
 
 printFetchError :: FetchError -> String
@@ -57,7 +47,6 @@ printFetchError = case _ of
   NoSubdir -> "Monorepos and the `subdir` key are not supported yet. See issue #16."
   InaccessibleRepo { owner, repo } -> "Repository located at https://github.com/" <> owner <> "/" <> repo <> ".git is inaccessible or does not exist."
   TransientError { owner, repo, message } -> "Transient error accessing repository " <> owner <> "/" <> repo <> ": " <> message <> ". This may succeed on retry."
-  NoToplevelDir -> "Downloaded tarball has no top-level directory."
   Fatal err -> "Unrecoverable error. " <> err
 
 -- | Fetch the provided location to the provided destination path.
@@ -73,7 +62,7 @@ interpret :: forall r a. (Source ~> Run r) -> Run (SOURCE + r) a -> Run r a
 interpret handler = Run.interpret (Run.on _source handler Run.send)
 
 -- | Handle the SOURCE effect by downloading package source to the file system.
-handle :: forall r a. Source a -> Run (GITHUB + LOG + AFF + EFFECT + r) a
+handle :: forall r a. Source a -> Run (LOG + AFF + EFFECT + r) a
 handle = case _ of
   Fetch destination location ref reply -> map (map reply) Except.runExcept do
     Log.info $ "Fetching " <> printJson Location.codec location
@@ -86,139 +75,74 @@ handle = case _ of
         -- TODO: Support subdir. In the meantime, we verify subdir is not present. (See #16)
         when (isJust subdir) $ Except.throw NoSubdir
 
-        case pursPublishMethod of
-          -- This needs to be removed so that we can support non-GitHub packages (#15)
-          -- and monorepo packages (#16).
-          --
-          -- However, the PureScript compiler requires packages to be a Git repo
-          -- with a tag checked out. Until we can replace using the compiler's
-          -- 'publish' command for docs we have to use this hacky checkout.
-          LegacyPursPublish -> do
-            Log.debug $ "Using legacy Git clone to fetch package source at tag: " <> show { owner, repo, ref }
+        Log.debug $ "Using Git clone to fetch package source at tag: " <> show { owner, repo, ref }
 
-            let
-              cloneUrl =
-                Array.fold [ "https://github.com/", owner, "/", repo ]
+        let
+          cloneUrl =
+            Array.fold [ "https://github.com/", owner, "/", repo ]
 
-            Log.debug $ "Verifying repository is accessible: " <> cloneUrl
-            Run.liftAff (Git.gitRepoIsAccessibleWithRetry cloneUrl) >>= case _ of
-              Git.RepoAccessible -> pure unit
-              Git.RepoNotFound -> do
-                Log.error $ "Repository " <> owner <> "/" <> repo <> " does not exist or is private."
-                Except.throw $ InaccessibleRepo { owner, repo }
-              Git.RepoTransientError err -> do
-                Log.error $ "Repository " <> owner <> "/" <> repo <> " could not be reached due to a transient error: " <> err
-                Except.throw $ TransientError { owner, repo, message: err }
+        Log.debug $ "Verifying repository is accessible: " <> cloneUrl
+        Run.liftAff (Git.gitRepoIsAccessibleWithRetry cloneUrl) >>= case _ of
+          Git.RepoAccessible -> pure unit
+          Git.RepoNotFound -> do
+            Log.error $ "Repository " <> owner <> "/" <> repo <> " does not exist or is private."
+            Except.throw $ InaccessibleRepo { owner, repo }
+          Git.RepoTransientError err -> do
+            Log.error $ "Repository " <> owner <> "/" <> repo <> " could not be reached due to a transient error: " <> err
+            Except.throw $ TransientError { owner, repo, message: err }
 
-            let
-              repoDir = Path.concat [ destination, repo <> "-" <> ref ]
+        let
+          repoDir = Path.concat [ destination, repo <> "-" <> ref ]
 
-              -- If a git clone is cancelled by the timeout, but had partially-cloned, then it will
-              -- leave behind files that prevent a retry.
-              retryOpts = defaultRetry
-                { cleanupOnCancel = FS.Extra.remove repoDir
-                , timeout = Milliseconds 15_000.0
-                }
+          -- If a git clone is cancelled by the timeout, but had partially-cloned, then it will
+          -- leave behind files that prevent a retry.
+          retryOpts = defaultRetry
+            { cleanupOnCancel = FS.Extra.remove repoDir
+            , timeout = Milliseconds 15_000.0
+            }
 
-              -- We disable Git LFS smudging because package sources should not
-              -- contain large binary files. This avoids downloading LFS objects
-              -- from misconfigured packages.
-              cloneArgs =
-                [ "-c"
-                , "filter.lfs.smudge=cat"
-                , "-c"
-                , "filter.lfs.process=cat"
-                , "clone"
-                , cloneUrl
-                , "--branch"
-                , ref
-                , "--single-branch"
-                , "-c"
-                , "advice.detachedHead=false"
-                , repoDir
-                ]
+          -- We disable Git LFS smudging because package sources should not
+          -- contain large binary files. This avoids downloading LFS objects
+          -- from misconfigured packages.
+          cloneArgs =
+            [ "-c"
+            , "filter.lfs.smudge=cat"
+            , "-c"
+            , "filter.lfs.process=cat"
+            , "clone"
+            , cloneUrl
+            , "--branch"
+            , ref
+            , "--single-branch"
+            , "-c"
+            , "advice.detachedHead=false"
+            , repoDir
+            ]
 
-              clonePackageAtTag =
-                withRetry retryOpts (Git.gitCLI cloneArgs Nothing) >>= case _ of
-                  Cancelled ->
-                    Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> cloneUrl <> " " <> ref
-                  Failed err ->
-                    Aff.throwError $ Aff.error err
-                  Succeeded _ ->
-                    pure unit
+          clonePackageAtTag =
+            withRetry retryOpts (Git.gitCLI cloneArgs Nothing) >>= case _ of
+              Cancelled ->
+                Aff.throwError $ Aff.error $ "Timed out attempting to clone git tag: " <> cloneUrl <> " " <> ref
+              Failed err ->
+                Aff.throwError $ Aff.error err
+              Succeeded _ ->
+                pure unit
 
-            Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
-              Right _ -> Log.debug $ "Cloned package source to " <> repoDir
-              Left error -> do
-                Log.warn $ "Git clone command failed:\n  " <> String.joinWith " " (Array.cons "git" cloneArgs)
-                Log.error $ "Failed to clone git tag: " <> Aff.message error
+        Run.liftAff (Aff.attempt clonePackageAtTag) >>= case _ of
+          Right _ -> Log.debug $ "Cloned package source to " <> repoDir
+          Left error -> do
+            Log.warn $ "Git clone command failed:\n  " <> String.joinWith " " (Array.cons "git" cloneArgs)
+            Log.error $ "Failed to clone git tag: " <> Aff.message error
 
-                -- We'll receive this message if we try to clone a repo which doesn't
-                -- exist, which is interpreted as an attempt to fetch a private repo.
-                let missingRepoErr = "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+            -- We'll receive this message if we try to clone a repo which doesn't
+            -- exist, which is interpreted as an attempt to fetch a private repo.
+            let missingRepoErr = "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
 
-                if String.contains (String.Pattern missingRepoErr) (Aff.message error) then
-                  Except.throw $ InaccessibleRepo { owner, repo }
-                else
-                  Except.throw $ Fatal $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref <> ": " <> Aff.message error
+            if String.contains (String.Pattern missingRepoErr) (Aff.message error) then
+              Except.throw $ InaccessibleRepo { owner, repo }
+            else
+              Except.throw $ Fatal $ "Failed to clone repository " <> owner <> "/" <> repo <> " at ref " <> ref <> ": " <> Aff.message error
 
-            Log.debug $ "Getting published time..."
-            publishedTime <- Run.liftEffect Now.nowDateTime
-            pure { path: repoDir, published: publishedTime }
-
-          -- This method is not currently used (see the comment on LegacyPursPublish),
-          -- but it's implemented here to demonstrate what we should do once we no
-          -- longer have to check out the repository.
-          PursPublish -> do
-            Log.debug $ "Using GitHub API to fetch package source at tag " <> show { owner, repo, ref }
-            commitDate <- do
-              let upstream = owner <> "/" <> repo
-              commit <- GitHub.getRefCommit { owner, repo } (RawVersion ref) >>= case _ of
-                Left githubError -> do
-                  Log.error $ "Failed to fetch " <> upstream <> " at ref " <> ref <> ": " <> Octokit.printGitHubError githubError
-                  Except.throw $ Fatal $ "Failed to fetch commit data associated with " <> upstream <> " at ref " <> ref
-                Right result -> pure result
-              GitHub.getCommitDate { owner, repo } commit >>= case _ of
-                Left githubError -> do
-                  Log.error $ "Failed to fetch " <> upstream <> " at commit " <> commit <> ": " <> Octokit.printGitHubError githubError
-                  Except.throw $ Fatal $ "Unable to get published time for commit " <> commit <> " associated with the given ref " <> ref
-                Right a -> pure a
-
-            let tarballName = ref <> ".tar.gz"
-            let absoluteTarballPath = Path.concat [ destination, tarballName ]
-            let archiveUrl = "https://github.com/" <> owner <> "/" <> repo <> "/archive/" <> tarballName
-            Log.debug $ "Fetching tarball from GitHub: " <> archiveUrl
-
-            response :: RetryResult Fetch.RetryRequestError Fetch.Response <-
-              Run.liftAff $ Fetch.withRetryRequest archiveUrl {}
-
-            case response of
-              Cancelled -> Except.throw $ Fatal $ "Could not download " <> archiveUrl
-              Failed (Fetch.FetchError error) -> do
-                Log.error $ "Failed to download " <> archiveUrl <> " because of an HTTP error: " <> Exception.message error
-                Except.throw $ Fatal $ "Could not download " <> archiveUrl
-              Failed (Fetch.StatusError { status, arrayBuffer: arrayBufferAff }) -> do
-                arrayBuffer <- Run.liftAff arrayBufferAff
-                buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
-                bodyString <- Run.liftEffect $ Buffer.toString UTF8 (buffer :: Buffer)
-                Log.error $ "Failed to download " <> archiveUrl <> " because of a non-200 status code (" <> show status <> ") with body " <> bodyString
-                Except.throw $ Fatal $ "Could not download " <> archiveUrl
-              Succeeded { arrayBuffer: arrayBufferAff } -> do
-                arrayBuffer <- Run.liftAff arrayBufferAff
-                Log.debug $ "Successfully downloaded " <> archiveUrl <> " into a buffer."
-                buffer <- Run.liftEffect $ Buffer.fromArrayBuffer arrayBuffer
-                Run.liftAff (Aff.attempt (FS.Aff.writeFile absoluteTarballPath buffer)) >>= case _ of
-                  Left error -> do
-                    Log.error $ "Downloaded " <> archiveUrl <> " but failed to write it to the file at path " <> absoluteTarballPath <> ":\n" <> Aff.message error
-                    Except.throw $ Fatal $ "Could not download " <> archiveUrl <> " due to an internal error."
-                  Right _ ->
-                    Log.debug $ "Tarball downloaded to " <> absoluteTarballPath
-
-            Log.debug "Verifying tarball..."
-            Foreign.Tar.getToplevelDir absoluteTarballPath >>= case _ of
-              Nothing ->
-                Except.throw NoToplevelDir
-              Just path -> do
-                Log.debug "Extracting the tarball..."
-                Tar.extract { cwd: destination, archive: tarballName }
-                pure { path, published: commitDate }
+        Log.debug $ "Getting published time..."
+        publishedTime <- Run.liftEffect Now.nowDateTime
+        pure { path: repoDir, published: publishedTime }

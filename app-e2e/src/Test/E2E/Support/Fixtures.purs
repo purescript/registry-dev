@@ -56,12 +56,11 @@ console = { name: Utils.unsafePackageName "console", version: Utils.unsafeVersio
 prelude :: PackageFixture
 prelude = { name: Utils.unsafePackageName "prelude", version: Utils.unsafeVersion "6.0.1" }
 
--- | slug@3.0.0 fixture package (uses spago.yaml manifest format)
 slug :: PackageFixture
 slug = { name: Utils.unsafePackageName "slug", version: Utils.unsafeVersion "3.0.0" }
 
 -- | Standard publish data for effect@4.0.1, used by E2E tests.
--- | Generated from app/fixtures/github-packages/effect-4.0.0 with updated version/ref.
+-- | The test setup copies effect-4.0.0 and updates its manifest for this release.
 effectPublishData :: Operation.PublishData
 effectPublishData =
   { name: effect.name
@@ -116,9 +115,6 @@ consolePublishData =
   , version: console.version
   }
 
--- | Publish data for slug@3.0.0, used for spago.yaml manifest format test.
--- | Slug depends on prelude only and uses spago.yaml as its manifest format.
--- | This matches the fixtures in app/fixtures/github-packages/slug-3.0.0
 slugPublishData :: Operation.PublishData
 slugPublishData =
   { name: slug.name
