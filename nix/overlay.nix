@@ -167,7 +167,7 @@ in
     npmFlags = [ "--omit=optional" ];
 
     # To update: run `prefetch-npm-deps package-lock.json` in the dev shell.
-    npmDepsHash = "sha256-1PENsd/EzRYVZ6RxTssbSzPu7SVVGlWnP7Zjt6im5GI=";
+    npmDepsHash = "sha256-YyQV5we2+W09rMAjF0evNRCei7GPDhZ6hh/4nSJjugw=";
 
     installPhase = ''
       mkdir -p $out
