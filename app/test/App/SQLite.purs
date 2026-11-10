@@ -2,6 +2,7 @@ module Test.Registry.App.SQLite (spec, withDatabaseAff) where
 
 import Registry.App.Prelude
 
+import Data.Array as Array
 import Effect.Aff as Aff
 import Effect.Exception as Exception
 import Registry.API.V1 (SortOrder(..))
@@ -22,7 +23,61 @@ withDatabaseAff :: forall a. (SQLite -> Aff a) -> Aff a
 withDatabaseAff = Aff.bracket (liftEffect openDatabase) (liftEffect <<< closeDatabase)
 
 spec :: Spec.Spec Unit
-spec = Spec.it "allows failed publishes to be retried without losing deduplication or job history" $ liftEffect $ withDatabase \db -> do
+spec = do
+  logSpec
+  publishSpec
+
+logSpec :: Spec.Spec Unit
+logSpec = Spec.it "filters job logs within a half-open window in either order, capped at 100" $ liftEffect $ withDatabase \db -> do
+  let
+    payload =
+      { name: Utils.unsafePackageName "log-test"
+      , version: Utils.unsafeVersion "1.0.0"
+      , ref: "v1.0.0"
+      , compiler: Nothing
+      , resolutions: Nothing
+      , location: Just $ GitHub { owner: "purescript", repo: "log-test", subdir: Nothing }
+      }
+    create name = SQLite.insertPublishJob db { payload: payload { name = Utils.unsafePackageName name } } >>= case _ of
+      SQLite.PublishJobCreated jobId -> pure jobId
+      _ -> Exception.throw "Expected a new publish job."
+    before = Utils.unsafeDateTime "2026-11-10T00:00:00.000Z"
+    since = Utils.unsafeDateTime "2026-11-10T00:00:01.000Z"
+    middle = Utils.unsafeDateTime "2026-11-10T00:00:02.000Z"
+    until = Utils.unsafeDateTime "2026-11-10T00:00:03.000Z"
+  jobId <- create "log-test"
+  otherJobId <- create "other-log-test"
+  let
+    insert job timestamp level message = SQLite.insertLogLine db { jobId: job, timestamp, level, message }
+    select level order = SQLite.selectLogsByJob db jobId level since until order
+  -- Insertion order differs from timestamp order; boundary and level checks
+  -- distinguish >= since, < until, and >= level from their alternatives.
+  insert jobId middle V1.Error "later"
+  insert jobId until V1.Error "excluded upper boundary"
+  insert otherJobId middle V1.Error "other job"
+  insert jobId before V1.Error "before window"
+  insert jobId since V1.Warn "lower boundary"
+  insert jobId middle V1.Debug "below level"
+  asc <- select V1.Warn ASC
+  asc.fail `Assert.shouldEqual` []
+  map _.message asc.success `Assert.shouldEqual` [ "lower boundary", "later" ]
+  desc <- select V1.Warn DESC
+  desc.fail `Assert.shouldEqual` []
+  map _.message desc.success `Assert.shouldEqual` [ "later", "lower boundary" ]
+  debug <- select V1.Debug ASC
+  Array.length debug.success `Assert.shouldEqual` 3
+  empty <- SQLite.selectLogsByJob db jobId V1.Debug since since ASC
+  empty.success `Assert.shouldEqual` []
+  for_ (Array.range 1 105) \_ -> insert jobId middle V1.Info "bulk"
+  for_ [ ASC, DESC ] \order -> do
+    capped <- select V1.Info order
+    Array.length capped.success `Assert.shouldEqual` 100
+    capped.fail `Assert.shouldEqual` []
+    let expectedFirst = if order == ASC then since else middle
+    map _.timestamp (Array.head capped.success) `Assert.shouldEqual` Just expectedFirst
+
+publishSpec :: Spec.Spec Unit
+publishSpec = Spec.it "allows failed publishes to be retried without losing deduplication or job history" $ liftEffect $ withDatabase \db -> do
   let
     payload =
       { name: Utils.unsafePackageName "puppy-runtime"

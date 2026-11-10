@@ -66,6 +66,7 @@ ON transfer_jobs (packageName);
 CREATE INDEX idx_job_info_pending
 ON job_info (createdAt)
 WHERE finishedAt IS NULL AND startedAt IS NULL;
+CREATE INDEX idx_logs_job_timestamp ON logs (jobId, timestamp);
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
   ('20230711143615'),
@@ -73,4 +74,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('20240914170550'),
   ('20240914171030'),
   ('20260721231201'),
-  ('20260722000000');
+  ('20260722000000'),
+  ('20261110000000');
