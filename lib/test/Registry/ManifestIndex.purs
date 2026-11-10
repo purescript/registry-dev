@@ -20,8 +20,11 @@ import Data.Set.NonEmpty as NonEmptySet
 import Data.String as String
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
+import Effect.Aff as Aff
 import Effect.Exception (Error)
 import JSON as JSON
+import Node.Encoding (Encoding(..))
+import Node.FS.Aff as FS.Aff
 import Node.Path as Path
 import Registry.Internal.Codec as Internal.Codec
 import Registry.LimitedString as LimitedString
@@ -45,6 +48,34 @@ spec = do
   Spec.it "Round-trips package entry fixture" do
     let parsedContext = ManifestIndex.parseEntry contextEntry
     contextEntry `Assert.shouldEqualRight` map (ManifestIndex.printEntry <<< NonEmptySet.fromFoldable1) parsedContext
+
+  Spec.it "Preserves an invalid entry file when inserting a manifest" do
+    let cleanup path = FS.Aff.rm' path { force: true, recursive: true, maxRetries: 0, retryDelay: 0 }
+    Aff.bracket (FS.Aff.mkdtemp "manifest-index-test-") cleanup \indexPath -> do
+      let
+        previous = unsafeManifest "prelude" "1.0.0" []
+        next = unsafeManifest "prelude" "2.0.0" []
+        entryPath = Path.concat [ indexPath, ManifestIndex.packageEntryFilePath (un Manifest previous).name ]
+        contents = ManifestIndex.printEntry (NonEmptySet.singleton previous) <> "\n{}"
+      ManifestIndex.readEntryFile indexPath (un Manifest previous).name >>= case _ of
+        ManifestIndex.EntryFileMissing -> pure unit
+        _ -> Assert.fail "Expected a missing entry before insertion."
+      created <- ManifestIndex.insertIntoEntryFile indexPath previous
+      created `Assert.shouldEqual` Right unit
+      appended <- ManifestIndex.insertIntoEntryFile indexPath next
+      appended `Assert.shouldEqual` Right unit
+      ManifestIndex.readEntryFile indexPath (un Manifest previous).name >>= case _ of
+        ManifestIndex.EntryFileValid manifests -> Array.fromFoldable manifests `Assert.shouldEqual` [ previous, next ]
+        _ -> Assert.fail "Expected a valid entry containing both versions."
+      FS.Aff.writeTextFile UTF8 entryPath contents
+
+      result <- ManifestIndex.insertIntoEntryFile indexPath next
+      remaining <- FS.Aff.readTextFile UTF8 entryPath
+      remaining `Assert.shouldEqual` contents
+      case result of
+        Left error -> unless (String.contains (String.Pattern entryPath) error) do
+          Assert.fail "Expected the error to identify the invalid entry file."
+        Right _ -> Assert.fail "Expected insertion to reject an invalid existing entry."
 
   Spec.it "Produces correct entry file paths" do
     let

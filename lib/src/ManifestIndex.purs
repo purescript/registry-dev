@@ -8,6 +8,7 @@
 module Registry.ManifestIndex
   ( ManifestIndex
   , IncludeRanges(..)
+  , EntryFileResult(..)
   , delete
   , dependants
   , empty
@@ -270,15 +271,24 @@ printEntry =
     <<< Array.sortBy (comparing (_.version <<< un Manifest))
     <<< Array.fromFoldable
 
+data EntryFileResult
+  = EntryFileMissing
+  | EntryFileError String
+  | EntryFileValid (NonEmptyArray Manifest)
+
 -- | Given the root of a manifest index on the file system and a package name,
 -- | retrieve the manifests associated with that package, in sorted order from
 -- | lowest to highest version.
-readEntryFile :: forall m. MonadAff m => FilePath -> PackageName -> m (Either String (NonEmptyArray Manifest))
+readEntryFile :: forall m. MonadAff m => FilePath -> PackageName -> m EntryFileResult
 readEntryFile indexPath package = do
   let entryPath = Path.concat [ indexPath, packageEntryFilePath package ]
-  liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 entryPath)) >>= case _ of
-    Left error -> pure $ Left $ "Failed to read entry: " <> Aff.message error
-    Right contents -> pure $ parseEntry contents
+  liftEffect (FS.Sync.exists entryPath) >>= case _ of
+    false -> pure EntryFileMissing
+    true -> liftAff (Aff.attempt (FS.Aff.readTextFile UTF8 entryPath)) >>= case _ of
+      Left error -> pure $ EntryFileError $ "Failed to read entry " <> entryPath <> ": " <> Aff.message error
+      Right contents -> pure $ case parseEntry contents of
+        Left error -> EntryFileError $ "Invalid entry " <> entryPath <> ": " <> error
+        Right manifests -> EntryFileValid manifests
 
 -- | Given the root of a manifest index on the file system, encode the provided
 -- | list of manifests as a package entry in the JSON Lines format. This will
@@ -310,31 +320,28 @@ writeEntryFile indexPath manifests = do
 -- | does not yet exist.
 insertIntoEntryFile :: forall m. MonadAff m => FilePath -> Manifest -> m (Either String Unit)
 insertIntoEntryFile indexPath manifest@(Manifest { name }) = do
-  entry <- readEntryFile indexPath name
-
-  let
-    existing :: Maybe (NonEmptySet Manifest)
-    existing = case entry of
-      Left _ -> Nothing
-      Right previous -> Just (NonEmptySet.fromFoldable1 previous)
-
-    modified :: NonEmptySet Manifest
-    modified = case existing of
-      Nothing -> NonEmptySet.singleton manifest
-      Just previous -> NonEmptySet.insert manifest previous
-
-  case existing of
-    Just previous | previous == modified -> pure (Right unit)
-    _ -> writeEntryFile indexPath modified
+  readEntryFile indexPath name >>= case _ of
+    EntryFileError error -> pure $ Left error
+    EntryFileMissing -> writeEntryFile indexPath (NonEmptySet.singleton manifest)
+    EntryFileValid manifests -> do
+      let
+        previous = NonEmptySet.fromFoldable1 manifests
+        modified = NonEmptySet.insert manifest previous
+      if previous == modified then
+        pure $ Right unit
+      else
+        writeEntryFile indexPath modified
 
 -- | Given the root of a manifest index on the file system, remove the specified
 -- | package version from the package entry.
 removeFromEntryFile :: forall m. MonadAff m => FilePath -> PackageName -> Version -> m (Either String Unit)
 removeFromEntryFile indexPath name version = do
   readEntryFile indexPath name >>= case _ of
-    Left error ->
+    EntryFileError error ->
       pure $ Left error
-    Right contents -> do
+    EntryFileMissing ->
+      pure $ Left $ "No manifest index entry for " <> PackageName.print name
+    EntryFileValid contents -> do
       let entryPath = Path.concat [ indexPath, packageEntryFilePath name ]
       case NonEmptySet.fromFoldable $ NonEmptyArray.filter (\(Manifest m) -> m.version /= version) contents of
         Nothing ->

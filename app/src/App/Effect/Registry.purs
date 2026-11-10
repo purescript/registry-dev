@@ -786,7 +786,11 @@ readManifestIndexFromDisk root = do
       , Array.foldMap (\(Tuple path err) -> "\n  - " <> path <> ": " <> err) packages.fail
       ]
 
-  entries <- map partitionEithers $ for packages.success (ManifestIndex.readEntryFile root)
+  entries <- map partitionEithers $ for packages.success \name ->
+    ManifestIndex.readEntryFile root name >>= case _ of
+      ManifestIndex.EntryFileError error -> pure $ Left error
+      ManifestIndex.EntryFileMissing -> pure $ Left $ "No manifest index entry for " <> PackageName.print name
+      ManifestIndex.EntryFileValid manifests -> pure $ Right manifests
   case entries.fail of
     [] -> case ManifestIndex.fromSet ManifestIndex.ConsiderRanges $ Set.fromFoldable $ Array.foldMap NonEmptyArray.toArray entries.success of
       Left errors -> do
