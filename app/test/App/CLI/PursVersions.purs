@@ -48,6 +48,7 @@ knownCompilers = map (unsafeFromRight <<< Version.parse)
   , "0.15.14"
   , "0.15.15"
   , "0.15.16"
+  , "0.15.17"
   ]
 
 spec :: Spec.Spec Unit
