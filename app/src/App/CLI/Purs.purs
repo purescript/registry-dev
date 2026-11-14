@@ -206,6 +206,8 @@ isCompilerRaceCondition failure = case failure of
 
 -- | Compile PureScript source files with automatic retry for transient errors.
 -- | Retries up to 3 times when the "Unexpected end of JSON input" race condition occurs.
+-- | Package builds that exhaust the heap get one serial, compacting attempt with
+-- | the same heap limit, using the profile already used for whole package sets.
 compile
   :: forall r
    . { globs :: Array FilePath, profile :: CompileProfile, version :: Maybe Version, cwd :: Maybe FilePath }
@@ -218,6 +220,11 @@ compile { globs, profile, version, cwd } = go 1
   go attempt = do
     result <- Run.liftAff $ callCompiler { command: Compile { globs, profile }, version, cwd }
     case result of
+      Left err | isCompilerHeapExhaustion err -> case profile of
+        PackageBuild -> do
+          Log.warn "Compiler heap exhausted; retrying once with serial compilation and compacting GC (3 GiB heap limit)."
+          Run.liftAff $ callCompiler { command: Compile { globs, profile: PackageSetBuild }, version, cwd }
+        PackageSetBuild -> pure result
       Left err | isCompilerRaceCondition err && attempt < maxRetries -> do
         Log.warn $ "Compiler race condition detected (attempt " <> show attempt <> "/" <> show maxRetries <> "), retrying..."
         go (attempt + 1)
